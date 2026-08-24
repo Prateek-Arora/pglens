@@ -1,0 +1,17 @@
+[sqlfluff]
+# Lint the pure-SQL files against the real Postgres dialect. We enforce
+# structural/parse correctness and a handful of high-signal rules, but disable
+# the most opinionated layout/capitalisation rules so hand-written demo SQL is
+# not a style-bikeshed. (seed.sql is excluded entirely — it is a psql script.)
+dialect = postgres
+templater = raw
+max_line_length = 200
+# Disabled rules are deliberate demo/style choices, not defects:
+#   LT01/LT02/LT05/LT09/LT14 - aligned DDL columns and compact one-line queries
+#   AM04/AM05/ST06/ST09       - SELECT * and bare JOINs are demonstrated anti-patterns
+#   RF02/RF04/AL01/CP03-05    - reference/alias/type capitalisation style
+# Parse correctness (PRS) and keyword capitalisation (CP01) are still enforced.
+exclude_rules = LT01, LT02, LT05, LT09, LT14, AM04, AM05, ST06, ST09, RF02, RF04, AL01, CP03, CP04, CP05
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper

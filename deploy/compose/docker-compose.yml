@@ -1,0 +1,66 @@
+# PgLens dev environment (Phase 0).
+#
+#   monitored-db : the "customer" database PgLens observes. Enables
+#                  pg_stat_statements + hypopg; seeded with deliberately slow
+#                  data (see demo/). Touched READ-ONLY by PgLens from Phase 2 on.
+#   metadata-db  : PgLens's own store (pgvector). Stands up now so the env is
+#                  complete; first used in Phase 2+.
+#
+# One command: `make up` (build + start + wait for health). Ports are exposed on
+# non-default host ports so a local Postgres on 5432 doesn't clash.
+
+services:
+  monitored-db:
+    build:
+      context: ./monitored
+    image: pglens/monitored-db:0.0.0
+    # pg_stat_statements MUST be loaded via a preload library at server start;
+    # setting it with ALTER SYSTEM after boot would not load it. Bake it in here.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pglens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
+      POSTGRES_DB: ${MONITORED_DB:-pglens_demo}
+    ports:
+      - "${MONITORED_PORT:-5433}:5432"
+    volumes:
+      - monitored-pgdata:/var/lib/postgresql/data
+      # Runs once, on a fresh data volume: registers extensions + creates schema.
+      - ./monitored/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Force TCP so the check only passes once the REAL server is up — during
+      # initdb the bootstrap server listens on the unix socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-pglens} -d ${MONITORED_DB:-pglens_demo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+
+  metadata-db:
+    # Pinned exact version (not the rolling :pg16 tag) for reproducibility;
+    # >= 0.8.2 also carries the CVE-2026-3172 fix.
+    image: pgvector/pgvector:0.8.6-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pglens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
+      POSTGRES_DB: ${METADATA_DB:-pglens_meta}
+    ports:
+      - "${METADATA_PORT:-5434}:5432"
+    volumes:
+      - metadata-pgdata:/var/lib/postgresql/data
+      - ./metadata/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-pglens} -d ${METADATA_DB:-pglens_meta}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+
+volumes:
+  monitored-pgdata:
+  metadata-pgdata:

@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: lint (shell, Dockerfile, SQL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh
+
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: deploy/compose/monitored/Dockerfile
+
+      - name: sqlfluff
+        run: |
+          pip install --user sqlfluff
+          sqlfluff lint \
+            deploy/compose/monitored/initdb/00_extensions.sql \
+            deploy/compose/monitored/initdb/10_schema.sql \
+            deploy/compose/metadata/initdb/00_extensions.sql \
+            demo/slow_queries.sql
+
+  smoke:
+    name: smoke test (compose end-to-end)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke test
+        run: bash scripts/smoke_test.sh
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yml down -v

@@ -1,0 +1,35 @@
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/
+*.iml
+
+# --- Java / Gradle / Maven (added in Phase 0) ---
+target/
+build/
+.gradle/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# --- Node / Next.js (dashboard, Phase 4) ---
+node_modules/
+.next/
+out/
+dist/
+*.log
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Local infra / data ---
+pgdata/
+*.local
+
+# --- Claude Code (keep shared config, ignore local overrides) ---
+.claude/settings.local.json
