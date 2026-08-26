@@ -2,7 +2,7 @@
 
 > End-state architecture and the **deliberate design choices** behind it. Read on demand. Update this file whenever structure changes. The *why* behind each choice also lives in `docs/decisions.md` (linked by ADR id).
 
-_Last updated: 2026-08-22 — pre-implementation; this is the target, not yet built._
+_Last updated: 2026-08-26 — end-state target below; Phases 0–1 are implemented (see the "implemented" sections)._
 
 ## System diagram (end state)
 
@@ -43,6 +43,28 @@ _Last updated: 2026-08-22 — pre-implementation; this is the target, not yet bu
 3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; proving it helps without building it (minutes on a big table) is the hard, valuable part. HypoPG gives a real planner-cost delta — the honest "expected improvement." Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*.
 4. **Local LLM (Ollama) for privacy** (ADR-0006). Query text never leaves the user's infra — the sharpest differentiator vs hosted AI-EXPLAIN tools.
 5. **gRPC server-streaming for ingest** (ADR-0001 stack). Continuous stats flow from agent → server; a real, justified gRPC use case (not bolted on).
+
+## Analysis engine (implemented — Phase 1)
+The CLI engine is built as **two clean halves** in a Gradle `:engine` library (+ a `:cli` Spring Boot
+bootJar), toolchain-pinned to JDK 21:
+- **Pure half** (`model` / `parse` / `detect` / `candidate` / `rank`) — **no Spring imports** (Jackson
+  only), so it unit-tests with no container and Phase 2 reuses it server-side unchanged.
+- **I/O half** (`db`) — spring-jdbc: `DataSources`, `StatsReader`, `CatalogReader`, `PlanCapturer`,
+  `HypoPGValidator`. The `PgLensEngine` facade wires the pipeline over **one** connection.
+
+Pipeline: `StatsReader` (rank + hygiene — including dropping PgLens's own `/*pglens:introspection*/`
+queries) → `PlanCapturer` (`EXPLAIN (GENERIC_PLAN, VERBOSE, JSON)`, rewriting `TYPE $N` typed-literal
+remnants to `$N::TYPE` so normalized text still parses) → `PlanParser` → `AntiPatternDetector`
+(R1/R3/R4/R7; R1 covers range/expression predicates) → `IndexCandidateGenerator` → `HypoPGValidator`
+(the decisive used-+-threshold gate; GIN/GiST/no-hypopg → labeled *not planner-validated*) →
+`Recommender` (cross-query ranking + btree-prefix dedupe). Output: a human report and a `--json`
+v1.0 contract that **is** the pure model record graph (can't drift). Rationale: ADR-0012…0021.
+
+**Safe-by-default is enforced, not assumed:** the whole scan runs on a single connection (HypoPG is
+session-local) set **read-only at the database** (`SET SESSION CHARACTERISTICS AS TRANSACTION READ
+ONLY`) with statement/lock timeouts — writes are rejected by Postgres, driver-independently
+(ADR-0020). HypoPG resets after every candidate (`hypopg() = 0` after a run); nothing is ever built
+on the monitored DB. A DB-level read-only **role** is still Phase 2.
 
 ## Dev environment (implemented — Phase 0)
 Docker Compose stands up the two Postgres instances (`deploy/compose/`): `monitored-db`

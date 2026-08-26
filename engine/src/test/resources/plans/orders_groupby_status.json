@@ -1,0 +1,79 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Aggregate",
+      "Strategy": "Sorted",
+      "Partial Mode": "Finalize",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 4529.94,
+      "Total Cost": 4530.60,
+      "Plan Rows": 5,
+      "Plan Width": 25,
+      "Output": ["status", "count(*)", "sum(total_cents)"],
+      "Group Key": ["orders.status"],
+      "Plans": [
+        {
+          "Node Type": "Gather Merge",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 4529.94,
+          "Total Cost": 4530.52,
+          "Plan Rows": 5,
+          "Plan Width": 25,
+          "Output": ["status", "(PARTIAL count(*))", "(PARTIAL sum(total_cents))"],
+          "Workers Planned": 1,
+          "Plans": [
+            {
+              "Node Type": "Sort",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 3529.93,
+              "Total Cost": 3529.94,
+              "Plan Rows": 5,
+              "Plan Width": 25,
+              "Output": ["status", "(PARTIAL count(*))", "(PARTIAL sum(total_cents))"],
+              "Sort Key": ["orders.status"],
+              "Plans": [
+                {
+                  "Node Type": "Aggregate",
+                  "Strategy": "Hashed",
+                  "Partial Mode": "Partial",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 3529.82,
+                  "Total Cost": 3529.87,
+                  "Plan Rows": 5,
+                  "Plan Width": 25,
+                  "Output": ["status", "PARTIAL count(*)", "PARTIAL sum(total_cents)"],
+                  "Group Key": ["orders.status"],
+                  "Planned Partitions": 0,
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": true,
+                      "Async Capable": false,
+                      "Relation Name": "orders",
+                      "Schema": "public",
+                      "Alias": "orders",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 2647.47,
+                      "Plan Rows": 117647,
+                      "Plan Width": 13,
+                      "Output": ["id", "customer_id", "status", "total_cents", "created_at"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Query Identifier": 7561085805725355232
+  }
+]

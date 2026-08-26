@@ -6,7 +6,7 @@
 | Phase | File | Title | Status |
 |---|---|---|---|
 | 0 | [`phase_0.md`](phase_0.md) | Foundations & Dev Environment | ✅ done (`v0.0.0-scaffold`) |
-| 1 | `phase_1.md` _(pending)_ | Core Advisor Engine (CLI) — MVP | ⬜ |
+| 1 | [`phase_1.md`](phase_1.md) | Core Advisor Engine (CLI) — MVP | 🟡 code-complete (`v0.0.1` pending) |
 | 2 | `phase_2.md` _(pending)_ | Collector Agent + Server + History | ⬜ |
 | 3 | `phase_3.md` _(pending)_ | RAG + LLM Explanation Layer | ⬜ |
 | 4 | `phase_4.md` _(pending)_ | Dashboard (Next.js) — **ship checkpoint** | ⬜ |

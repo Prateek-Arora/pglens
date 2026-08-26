@@ -6,7 +6,9 @@
 -- replays this file so pg_stat_statements accumulates real stats.
 --
 -- HONESTY NOTE: query 10 is a legitimate full scan. PgLens must NOT invent an
--- index recommendation for it. Not every Seq Scan is a bug.
+-- index recommendation for it. Not every Seq Scan is a bug. Query 11 is the GIN
+-- control: its fix is a GIN index, which HypoPG cannot simulate, so PgLens must
+-- surface it as "suggested -- not planner-validated", never with a fake delta.
 --
 -- To inspect any plan yourself: prefix the query with EXPLAIN (ANALYZE, BUFFERS)
 -- for the monitored (read-only, SELECT-only) demo DB it is always safe.
@@ -123,3 +125,15 @@ LIMIT 20;
 SELECT status, count(*) AS n, sum(total_cents) AS revenue_cents
 FROM orders
 GROUP BY status;
+
+
+-- 11. Events carrying a specific user-agent (jsonb containment -- GIN territory).
+--     Problem : events.payload is jsonb with no GIN index -> Seq Scan applies a
+--               @> containment filter across every row.
+--     Proof   : Seq Scan on events, Filter: (events.payload @> $1).
+--     Rec     : GIN index on events(payload) -- CREATE INDEX ... USING gin (payload).
+--     HONESTY (the point of this fixture): HypoPG CANNOT simulate a GIN index, so
+--     PgLens surfaces this as "suggested -- not planner-validated" and shows the
+--     real pg_stat_statements time as the measured "before" -- it never fabricates
+--     a cost delta for it. This is a different honesty lesson than #8 and #10.
+SELECT count(*) FROM events WHERE payload @> '{"ua":"agent-7"}';

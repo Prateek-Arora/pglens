@@ -1,0 +1,31 @@
+# Central, pinned dependency versions (reproducibility — a project value; see ADR-0011).
+# Verified latest-stable on 2026-08-25. spring-boot pins to the 3.5 line (Gradle-8-compatible,
+# well-documented) rather than 4.x; revisit at a deliberate major-version bump.
+
+[versions]
+springBoot = "3.5.16"
+dependencyManagement = "1.1.7"
+picocli = "4.7.7"
+postgresql = "42.7.13"
+testcontainers = "2.0.5"
+spotless = "8.10.0"
+
+[libraries]
+# Versionless entries get their version from a BOM applied via platform()/dependency-management.
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-jdbc = { module = "org.springframework:spring-jdbc" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+assertj-core = { module = "org.assertj:assertj-core" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+dependency-management = { id = "io.spring.dependency-management", version.ref = "dependencyManagement" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
