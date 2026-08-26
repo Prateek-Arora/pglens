@@ -1,6 +1,6 @@
 # Phase 1 — Core Advisor Engine (CLI)
 
-**Status:** 🟡 code-complete, awaiting `v0.0.1` tag (steps 1–12 done, 2026-08-26) · **Ships:** `pglens scan <conn>` — the costliest queries, the real plan, and HypoPG-validated `CREATE INDEX` recs (human + `--json`) · **Tag:** `v0.0.1` (on user go-ahead)
+**Status:** ✅ shipped — committed `7e22f4e` on `main`, tagged **`v0.0.1`** (2026-08-26) · **Ships:** `pglens scan <conn>` — the costliest queries, the real plan, and HypoPG-validated `CREATE INDEX` recs (human + `--json`)
 **Prereqs:** Phase 0 (`v0.0.0-scaffold`) — the two-instance compose env + the seeded, reliably-slow demo DB + `demo/slow_queries.sql` oracle. Plan verified via `../workflows/plan-verification.md`; full plan at `.claude/plans/prancy-spinning-panda.md`.
 
 ---
@@ -91,7 +91,7 @@ graph serialized `NON_NULL`, so it can't drift from the code (ADR-0018).
 - [x] No unlabeled numbers; real pgss mean-time shown as the measured "before".
 - [x] Safety proven: read-only session (write rejected), zero hypothetical indexes left behind — E2E test.
 - [x] `--json` schema documented as the Phase 2 contract (ADR-0018). Unit + Testcontainers tests green in CI.
-- [ ] Tag `v0.0.1` + README "Try it on your DB in 2 minutes" — **pending user go-ahead**.
+- [x] Tag `v0.0.1` (commit `7e22f4e` on `main`) + README "Try it on your DB in 2 minutes" quickstart. **Phase 1 complete.**
 
 ## 6. Verification (how it was proven)
 
