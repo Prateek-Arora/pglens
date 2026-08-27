@@ -9,6 +9,7 @@ Open-source, self-hosted **Postgres slow-query & index advisor** with **LLM-expl
 - **`docs/project.md`** — goals, scope, status, phase tracker, **Current focus** ← check FIRST each session
 - **`docs/architecture.md`** — end-state architecture, components, deliberate design choices, skill-coverage map
 - **`docs/decisions.md`** — decision log (the *why*); read before revisiting or contradicting a past decision
+- **`docs/backlog.md`** — consciously-deferred work (the *why-not-yet* + contributor tags); check before proposing a "new" engine feature
 - **`docs/phases/`** — per-phase plans (each self-contained); `README.md` indexes them
 - **`docs/workflows/plan-verification.md`** — how we turn a user-provided phase plan into a thorough, verified plan
 - **`docs/glossary.md`** — domain terms (HypoPG, pg_stat_statements, EXPLAIN, RAG, etc.)
