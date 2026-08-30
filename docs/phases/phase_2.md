@@ -29,7 +29,9 @@ a **recomposition, not an engine rewrite**.
 - **Reset detection corrected: global `pg_stat_statements_info.stats_reset`, not per-entry `stats_since`**
   (ADR-0024). The plan assumed PG16 pgss exposes `stats_since`; the monitored image's pgss is **1.10**, where
   `stats_since` is **PG17-only**. Deltas are computed **server-side, ack-anchored** to the last *persisted*
-  cumulative — which also auto-satisfies the "no lost window on a failed send" self-check with no disk buffer.
+  cumulative — so a failed/lost send loses **no query totals** (the next accepted delta spans the gap), with
+  no disk buffer. It is a resolution trade, not a data-loss one: N missed intervals collapse into one delta
+  point (their summed counts, not per-interval granularity). "No lost window" means no lost totals.
 - **`.proto` needs a `CatalogSnapshot`** the plan's message list omitted — server-side detection reasons over
   row estimates + existing indexes, read at the edge. Text + plan register **once per queryid**; per-interval
   samples carry only `queryid` + counters.
@@ -107,7 +109,7 @@ role) · 0031 (trend queries, null-not-fabricated) · 0032 (Docker packaging + `
 - [x] DB-level read-only role (`pglens_ro`) enforced for the agent — write rejected independently of the session guard.
 - [x] Unknown/unauthenticated agents rejected (token → `UNAUTHENTICATED`).
 - [x] **Dogfood result recorded in `docs/benchmarks.md`** with real, labeled before/after numbers → `BRIN(captured_at)` (V4).
-- [x] Agent survives server downtime (ack-anchored deltas) without losing a window (§10 self-check).
+- [x] Agent survives server downtime (ack-anchored deltas) losing no query totals — missed intervals merge into the next delta, a resolution trade, not data loss; no disk buffer (§10 self-check; proven by `IngestFlowIntegrationTest.aDroppedSampleLosesNoActivityInTheNextDelta`).
 - [x] `.proto` documented; Testcontainers integration test (agent+server+DB) green; CI extended to the new modules.
 - [x] ADRs 0023–0033 recorded; `project.md` / `architecture.md` / this `phase_2.md` / `.claude/rules/` updated.
 - [x] Tag **`v0.0.2`** — Phase 2 committed (`a019248`) → PR #3 → merged to `main` (`3898649`) → annotated tag pushed. **Phase 2 shipped.**

@@ -45,11 +45,14 @@ public class AnalysisRepository {
    * already in flight (PENDING/LEASED) — the partial UNIQUE {@code validation_jobs_inflight_uniq}
    * is the arbiter — or (b) it was already validated recently, i.e. a recommendation for this exact
    * candidate has {@code updated_at} at or after {@code revalidateBefore} (the analysis cooldown,
-   * F1). Without (b), every pass would re-enqueue a fresh job for an already-validated candidate
-   * the instant its prior job went DONE, growing the queue unboundedly and re-running edge HypoPG
-   * every tick. A candidate whose recommendation has aged past the cooldown IS re-enqueued, so a
-   * stale verdict still gets refreshed (e.g. retracted once the user actually adds the index).
-   * Returns 1 if enqueued, 0 if skipped.
+   * F1), or (c) it was dead-lettered recently, i.e. a {@code FAILED} job for this exact candidate
+   * has {@code completed_at} at or after {@code revalidateBefore} (the poison-candidate cooldown,
+   * ADR-0035). Without (b), every pass would re-enqueue a fresh job for an already-validated
+   * candidate the instant its prior job went DONE, growing the queue unboundedly and re-running
+   * edge HypoPG every tick. Without (c), a candidate whose validation deterministically throws
+   * would be re-enqueued every pass the moment reclaim dead-lettered it — a churn loop. A candidate
+   * whose recommendation (b) or FAILED job (c) has aged past the cooldown IS re-enqueued, so a
+   * stale verdict refreshes and a transient failure retries. Returns 1 if enqueued, 0 if skipped.
    */
   public int enqueue(
       long dbId,
@@ -64,6 +67,10 @@ public class AnalysisRepository {
             + "WHERE NOT EXISTS ("
             + "  SELECT 1 FROM recommendations r "
             + "  WHERE r.db_id = ? AND r.queryid = ? AND r.ddl = ? AND r.updated_at >= ?) "
+            + "AND NOT EXISTS ("
+            + "  SELECT 1 FROM validation_jobs j "
+            + "  WHERE j.db_id = ? AND j.queryid = ? AND j.candidate_ddl = ? "
+            + "    AND j.state = 'FAILED' AND j.completed_at >= ?) "
             + "ON CONFLICT (db_id, queryid, candidate_ddl) WHERE state IN ('PENDING', 'LEASED') "
             + "DO NOTHING",
         dbId,
@@ -74,7 +81,44 @@ public class AnalysisRepository {
         dbId,
         queryid,
         candidateDdl,
+        utc(revalidateBefore),
+        dbId,
+        queryid,
+        candidateDdl,
         utc(revalidateBefore));
+  }
+
+  /**
+   * Reclaims validation jobs stuck in {@code LEASED} whose lease is older than {@code cutoff} (the
+   * agent crashed or a validation threw before reporting, ADR-0035). A job that has already been
+   * reclaimed {@code maxAttempts} times is dead-lettered to {@code FAILED} (a genuinely-poison
+   * candidate must not reclaim-loop forever); every other timed-out lease goes back to {@code
+   * PENDING} with {@code attempts} bumped, so the next agent cycle re-leases it. Runs inside the
+   * singleton advisory-locked analysis transaction (alongside {@link #pruneTerminalJobs}), so only
+   * one replica reclaims per tick. {@code cutoff} must be set well past the longest legitimate
+   * validation batch so a merely-slow live validation is never reclaimed out from under the agent.
+   * Fence-less by design — safe because PgLens is one single-threaded agent per db (a fencing token
+   * for concurrent workers is backlog B12). Returns the number of jobs dead-lettered + reclaimed.
+   */
+  public int reclaimStuckLeases(Instant cutoff, int maxAttempts) {
+    OffsetDateTime cut = utc(cutoff);
+    // Dead-letter the exhausted first, so an over-cap job isn't first bumped back to PENDING.
+    int deadLettered =
+        jdbc.update(
+            "UPDATE validation_jobs "
+                + "SET state = 'FAILED', completed_at = now(), "
+                + "    reason = 'dead-lettered: exceeded max validation attempts' "
+                + "WHERE state = 'LEASED' AND leased_at < ? AND attempts >= ?",
+            cut,
+            maxAttempts);
+    int reclaimed =
+        jdbc.update(
+            "UPDATE validation_jobs "
+                + "SET state = 'PENDING', attempts = attempts + 1, leased_at = NULL "
+                + "WHERE state = 'LEASED' AND leased_at < ? AND attempts < ?",
+            cut,
+            maxAttempts);
+    return deadLettered + reclaimed;
   }
 
   /**

@@ -60,6 +60,13 @@ public class AnalysisService {
   private final long revalidateAfterMs;
   private final long jobRetentionMs;
 
+  // Reclaim knobs (ADR-0035): a LEASED job whose lease is older than lease-timeout-ms is reclaimed
+  // (a crashed/throwing agent), and one reclaimed more than max-validation-attempts times is
+  // dead-lettered. lease-timeout must be >> the longest legitimate validation batch (seconds), so a
+  // merely-slow live validation is never reclaimed — 5 min default is generous.
+  private final long leaseTimeoutMs;
+  private final int maxValidationAttempts;
+
   // Pure, stateless engine components — no Spring, safe to hold as fields.
   private final PlanParser planParser = new PlanParser();
   private final AntiPatternDetector detector = new AntiPatternDetector();
@@ -74,7 +81,9 @@ public class AnalysisService {
       AnalysisRepository analysis,
       HygieneRepository hygiene,
       @Value("${pglens.analysis.revalidate-after-ms:3600000}") long revalidateAfterMs,
-      @Value("${pglens.analysis.job-retention-ms:604800000}") long jobRetentionMs) {
+      @Value("${pglens.analysis.job-retention-ms:604800000}") long jobRetentionMs,
+      @Value("${pglens.analysis.lease-timeout-ms:300000}") long leaseTimeoutMs,
+      @Value("${pglens.analysis.max-validation-attempts:5}") int maxValidationAttempts) {
     this.tx = tx;
     this.jdbc = jdbc;
     this.monitoredDbs = monitoredDbs;
@@ -83,6 +92,8 @@ public class AnalysisService {
     this.hygiene = hygiene;
     this.revalidateAfterMs = revalidateAfterMs;
     this.jobRetentionMs = jobRetentionMs;
+    this.leaseTimeoutMs = leaseTimeoutMs;
+    this.maxValidationAttempts = maxValidationAttempts;
   }
 
   /**
@@ -109,6 +120,7 @@ public class AnalysisService {
     Instant now = Instant.now();
     Instant revalidateBefore = now.minusMillis(revalidateAfterMs);
     Instant retentionCutoff = now.minusMillis(jobRetentionMs);
+    Instant leaseCutoff = now.minusMillis(leaseTimeoutMs);
     Integer enqueued =
         tx.execute(
             status -> {
@@ -116,7 +128,13 @@ public class AnalysisService {
                 log.debug("analysis skipped — another replica holds the lock");
                 return 0;
               }
-              analysis.pruneTerminalJobs(retentionCutoff); // bound the queue (F1)
+              // Reclaim timed-out leases (crashed/throwing agent) and dead-letter poison candidates
+              // before enqueuing (ADR-0035), then bound the queue by retention (F1).
+              int reclaimed = analysis.reclaimStuckLeases(leaseCutoff, maxValidationAttempts);
+              if (reclaimed > 0) {
+                log.info("reclaimed/dead-lettered {} stuck validation lease(s)", reclaimed);
+              }
+              analysis.pruneTerminalJobs(retentionCutoff);
               int total = 0;
               for (MonitoredDb db : monitoredDbs.findAll()) {
                 total += analyzeDb(db, revalidateBefore);

@@ -205,37 +205,29 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 
 ## Validation work-queue reliability
 
-### B12. Lease-reclaim + dead-letter for stuck validation jobs
-- **What:** Recover a validation job stuck in `LEASED` when the agent crashes or a validation throws
-  before reporting (audit finding F4). Today such a job stays `LEASED` forever, and the inflight-unique
-  index (`validation_jobs_inflight_uniq`) then blocks re-enqueuing that one candidate. Fix = the
-  standard Postgres-`SKIP LOCKED`-queue lease/visibility-timeout pattern, tailored to PgLens.
-- **Chosen approach (researched — see sources below):**
-  1. **Lease timeout + janitor.** Reuse the existing `validation_jobs.leased_at`; fold a reclaim step
-     into the *singleton* analysis pass (already advisory-locked + periodic — no new scheduler): before
-     enqueue, `UPDATE validation_jobs SET state = CASE WHEN attempts >= :max THEN 'FAILED' ELSE
-     'PENDING' END WHERE state = 'LEASED' AND leased_at < now() - :lease-timeout`.
-  2. **Attempts counter + dead-letter.** Add an `attempts` column (new migration); `lease()` bumps it.
-     Past `:max-attempts` a poison candidate goes to `FAILED` instead of reclaim-looping forever.
-  3. **Fencing guard.** A slow-but-alive agent can outlive its lease so both it and the re-claimant run
-     the job. Carry the leased `attempts`/epoch in `ValidateRequest`; `recordResult` accepts a report
-     only if the job is still `LEASED` with that epoch, so a stale report can't clobber a re-leased job.
-     (PgLens validation is hypothetical/read-only/idempotent → double-processing is low-harm, so the
-     fence is belt-and-suspenders, not load-bearing.)
-  4. **Janitor index.** `LEASED` rows aren't covered by the PENDING-only partial index — add a small
-     partial index on `(leased_at) WHERE state = 'LEASED'` for the reclaim scan.
-  Terminal-row purge already ships (F1 `AnalysisRepository.pruneTerminalJobs`, ADR-0034).
-- **Why deferred (not fixed inline with F1–F3):** a schema change (new column + index = a new
-  migration) + two tuning constants (lease-timeout, max-attempts) + a fencing-token design — a genuine
-  reliability feature, not a code-only patch. A too-short timeout double-runs a live slow validation; a
-  missing fence reintroduces the double-processing it exists to prevent — so it deserves the
-  verify-before-implement rigor and interacts with F1's cooldown/retention. Not a Phase-2 DoD item (the
-  loop works); post-ship hardening like B10/B11.
-- **Constraints:** reclaim + fencing must stay coherent with F1's revalidate cooldown + retention;
-  never reclaim so aggressively that a legitimately-slow edge validation is double-run.
-- **Effort/type:** `needs-design` (one migration + reclaim/janitor in `AnalysisService` + a fencing
-  token through the proto).
-- **Refs:** audit finding F4; ADR-0034 (queue lifecycle). Pattern sources: [prisma.io — SKIP LOCKED
+### B12. Fencing token for concurrent validation workers
+- **What:** A fence so a slow-but-alive agent that outlived its lease can't clobber a job a re-claimant
+  has since re-leased and completed. Carry the leased `attempts`/epoch in `ValidateRequest`;
+  `recordResult` accepts a report only if the job is still `LEASED` with that same epoch.
+- **Status update (2026-08-30, ADR-0035):** the **reclaim + dead-letter core shipped** in the Phase-2
+  hardening patch — a lease-timeout reclaim (`AnalysisRepository.reclaimStuckLeases`, `LEASED` past
+  `pglens.analysis.lease-timeout-ms` → `PENDING`, bumping `attempts`; → `FAILED` past
+  `max-validation-attempts`), the `attempts` column + `validation_jobs_leased_idx` (migration V5), an
+  enqueue **poison-cooldown**, and a terminal-state guard on `recordResult` (a report for a DONE/FAILED
+  job is ignored). So a stuck `LEASED` job no longer permanently blocks its candidate — the original
+  F4 correctness harm is **closed**. What remains here is **only the epoch fencing token.**
+- **Why the fence is still deferred:** its whole job is preventing a *stale-worker-clobbers-re-leased-job*
+  race, which needs **≥2 concurrent validators on the same db**. PgLens is **one single-threaded agent
+  per db** (token = db identity; the `@Scheduled` loop can't re-lease a job it's still validating), and
+  `recordResult` upserts idempotently on `(db_id, queryid, ddl)` with the terminal-state guard — so the
+  fence-less reclaim has no double-write hazard *today*. The fence becomes load-bearing only when true
+  concurrent validation workers arrive (a Phase-5 scale concern), so it earns that deliberate design
+  then rather than speculative complexity now (YAGNI).
+- **Constraints:** the epoch fence must stay coherent with the shipped reclaim + F1 cooldown/retention;
+  set the lease-timeout well past the longest legitimate validation batch (the shipped 5-min default).
+- **Effort/type:** `needs-design` (a fencing token through the proto + `recordResult` epoch check).
+- **Refs:** audit finding F4; ADR-0034 (queue lifecycle), ADR-0035 (reclaim shipped, fence deferred).
+  Pattern sources: [prisma.io — SKIP LOCKED
   queue](https://www.prisma.io/blog/you-dont-need-a-job-queue-postgres-already-has-skip-locked),
   [PlanetScale — keeping a Postgres queue healthy](https://planetscale.com/blog/keeping-a-postgres-queue-healthy).
 

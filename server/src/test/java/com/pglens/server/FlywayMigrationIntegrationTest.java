@@ -73,14 +73,32 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(4); // V1 + V2 + V3 + V4
+    assertThat(applied).isEqualTo(5); // V1 + V2 + V3 + V4 + V5
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("4");
+    assertThat(version).isEqualTo("5");
+  }
+
+  /**
+   * V5 (ADR-0035): the lease-reclaim column + the partial index that keeps the reclaim scan tight.
+   */
+  @Test
+  void validationJobAttemptsColumnAndLeasedIndexExist() {
+    List<String> columns =
+        jdbc.queryForList(
+            "SELECT column_name FROM information_schema.columns "
+                + "WHERE table_name = 'validation_jobs'",
+            String.class);
+    assertThat(columns).contains("attempts");
+
+    List<String> indexes =
+        jdbc.queryForList(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'validation_jobs'", String.class);
+    assertThat(indexes).contains("validation_jobs_leased_idx");
   }
 
   @Test

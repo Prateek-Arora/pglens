@@ -55,8 +55,11 @@ public class ValidationRepository {
   /**
    * Records one reported verdict: upserts the recommendation (with its HypoPG evidence + a ranking
    * score) and marks the job DONE. Constrained to {@code dbId} — an agent can only report jobs for
-   * its own db. Returns false (and does nothing) if the job is unknown or not this db's. Call
-   * inside a transaction so the rec and the job state commit together.
+   * its own db — and to a non-terminal ({@code PENDING}/{@code LEASED}) job, so a stale report for
+   * an already-{@code DONE} or dead-lettered ({@code FAILED}) job is ignored rather than
+   * resurrected (ADR-0035, G6). A job reclaimed back to {@code PENDING} still accepts its late
+   * result. Returns false (and does nothing) if the job is unknown, not this db's, or already
+   * terminal. Call inside a transaction so the rec and the job state commit together.
    */
   public boolean recordResult(long dbId, ValidateResult r) {
     Optional<JobRef> job = findJob(dbId, r.getJobId());
@@ -119,7 +122,7 @@ public class ValidationRepository {
     return jdbc
         .query(
             "SELECT queryid, candidate_ddl, access_method FROM validation_jobs "
-                + "WHERE id = ? AND db_id = ?",
+                + "WHERE id = ? AND db_id = ? AND state IN ('PENDING', 'LEASED')",
             (rs, n) ->
                 new JobRef(
                     rs.getLong("queryid"),

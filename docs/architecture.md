@@ -71,10 +71,11 @@ Gradle modules recompose the Phase-1 engine's two halves across the wire — **n
 
 **`:proto`** is the single `.proto` contract (Ingest/Validation/Health) both apps depend on. The
 **metadata schema** (`monitored_dbs`, `query_texts`, `query_cumulative`, `query_stats`, catalog +
-hygiene + `recommendations` + `validation_jobs`) is forward-only Flyway **V1–V4**. PgLens **dogfooded
+hygiene + `recommendations` + `validation_jobs`) is forward-only Flyway **V1–V5**. PgLens **dogfooded
 its own** time-series index tuning: the deliberately-withheld `query_stats` trend index was measured and
 added as **`BRIN(captured_at)`** (V4 — ~73× fewer buffers on the cross-query top-movers scan; ADR-0033,
-`docs/benchmarks.md`). Ships **`v0.0.2`**.
+`docs/benchmarks.md`). The validation queue self-heals a stuck lease via a fence-less reclaim +
+dead-letter (V5 `attempts` column; ADR-0035). Ships **`v0.0.2`** (+ a v0.0.3 hardening patch).
 
 ## Analysis engine (implemented — Phase 1)
 The CLI engine is built as **two clean halves** in a Gradle `:engine` library (+ a `:cli` Spring Boot
