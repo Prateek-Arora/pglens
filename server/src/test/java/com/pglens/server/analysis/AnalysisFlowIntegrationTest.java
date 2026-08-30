@@ -199,6 +199,87 @@ class AnalysisFlowIntegrationTest {
     assertThat(jdbc.queryForObject("SELECT count(*) FROM validation_jobs", Integer.class)).isZero();
   }
 
+  @Test
+  void aTimedOutLeaseIsReclaimedToPendingAndBumpsAttempts() {
+    // A job leased 10 min ago — past the 5-min default lease timeout — with the agent having
+    // crashed
+    // before reporting (ADR-0035). The reclaim in the singleton pass returns it to PENDING.
+    insertLeasedJob("now() - interval '10 minutes'", /* attempts= */ 0);
+
+    assertThat(analysisService.run()).isZero(); // reclaim is not an enqueue
+
+    Map<String, Object> job = jdbc.queryForMap("SELECT * FROM validation_jobs");
+    assertThat(job.get("state")).isEqualTo("PENDING");
+    assertThat(job.get("attempts")).isEqualTo(1);
+    assertThat(job.get("leased_at")).isNull();
+  }
+
+  @Test
+  void aLeaseWithinTheTimeoutIsNotReclaimed() {
+    // A freshly-leased job (a slow-but-live validation the agent is still working) must not be
+    // reclaimed out from under it — the timeout is set well past the longest legitimate batch.
+    insertLeasedJob("now()", /* attempts= */ 0);
+
+    analysisService.run();
+
+    Map<String, Object> job = jdbc.queryForMap("SELECT * FROM validation_jobs");
+    assertThat(job.get("state")).isEqualTo("LEASED");
+    assertThat(job.get("attempts")).isEqualTo(0);
+  }
+
+  @Test
+  void aLeaseReclaimedPastMaxAttemptsIsDeadLettered() {
+    // A candidate whose validation keeps throwing (a genuinely-poison DDL) must not reclaim-loop
+    // forever: past the max-attempts cap the timed-out lease is dead-lettered to FAILED, not reset
+    // to PENDING. attempts=10 is safely over the default cap of 5.
+    insertLeasedJob("now() - interval '10 minutes'", /* attempts= */ 10);
+
+    analysisService.run();
+
+    Map<String, Object> job = jdbc.queryForMap("SELECT * FROM validation_jobs");
+    assertThat(job.get("state")).isEqualTo("FAILED");
+    assertThat((String) job.get("reason")).contains("dead-lettered");
+  }
+
+  @Test
+  void aRecentlyDeadLetteredCandidateIsNotReEnqueuedUntilTheCooldown() {
+    seedCapturedQuery();
+    seedCatalog(false);
+    assertThat(analysisService.run()).isEqualTo(1); // the real candidate enqueued
+
+    // Simulate reclaim dead-lettering it (poison candidate): FAILED with a fresh completion.
+    jdbc.update(
+        "UPDATE validation_jobs SET state = 'FAILED', completed_at = now(), "
+            + "reason = 'dead-lettered: exceeded max validation attempts' WHERE state = 'PENDING'");
+
+    // While the FAILED job is fresh, the poison cooldown blocks a re-enqueue — no churn loop
+    // (ADR-0035). Without it, every pass would immediately re-enqueue the same throwing candidate.
+    assertThat(analysisService.run()).isZero();
+    assertThat(pendingCount()).isZero();
+
+    // Once the FAILED job ages past the cooldown (default 1h), a fresh attempt IS enqueued — so a
+    // transient failure (agent was momentarily down) still gets retried.
+    jdbc.update(
+        "UPDATE validation_jobs SET completed_at = now() - interval '2 hours' WHERE state = 'FAILED'");
+    assertThat(analysisService.run()).isEqualTo(1);
+    assertThat(pendingCount()).isEqualTo(1);
+  }
+
+  /**
+   * Inserts one LEASED job for the reclaim tests; {@code leasedAtExpr} is a SQL time expression.
+   */
+  private void insertLeasedJob(String leasedAtExpr, int attempts) {
+    jdbc.update(
+        "INSERT INTO validation_jobs (db_id, queryid, normalized_sql, candidate_ddl, access_method, "
+            + "state, leased_at, attempts) "
+            + "VALUES (?, ?, 'sql', 'CREATE INDEX x ON customers (email);', 'BTREE', 'LEASED', "
+            + leasedAtExpr
+            + ", ?)",
+        dbId,
+        QUERYID,
+        attempts);
+  }
+
   /** Mimics a finished round-trip: mark the PENDING job DONE + persist a fresh recommendation. */
   private void completePendingJobWithAFreshRecommendation() {
     jdbc.update(

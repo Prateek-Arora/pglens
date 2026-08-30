@@ -171,6 +171,33 @@ class ValidationFlowIntegrationTest {
   }
 
   @Test
+  void aReportForAnAlreadyTerminalJobIsIgnored() throws Exception {
+    long jobId = lease(channel, 10).get(0).getJobId();
+    // The job reaches a terminal state out from under this report — e.g. reclaim dead-lettered it
+    // after the lease timed out, or it was already reported. A stale/late report must not resurrect
+    // it or write a recommendation (ADR-0035, G6).
+    jdbc.update(
+        "UPDATE validation_jobs SET state = 'FAILED', completed_at = now() WHERE id = ?", jobId);
+
+    ReportAck ack =
+        report(
+            channel,
+            ValidateResult.newBuilder()
+                .setJobId(jobId)
+                .setStatus(ValidationStatus.PLANNER_VALIDATED)
+                .setBeforeCost(1000.0)
+                .setAfterCost(400.0)
+                .setRelativeDrop(0.6)
+                .setUsed(true)
+                .setReason("stale report after dead-letter")
+                .build());
+
+    assertThat(ack.getAccepted()).isZero();
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM recommendations", Integer.class)).isZero();
+    assertThat(jobState(jobId)).isEqualTo("FAILED"); // not flipped to DONE
+  }
+
+  @Test
   void unknownTokenCannotLease() {
     ManagedChannel bad = channelWithToken("wrong-token");
     try {

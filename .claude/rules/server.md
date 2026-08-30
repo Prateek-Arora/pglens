@@ -35,8 +35,22 @@ paths:
   DONE job is not instantly re-enqueued every tick (that was audit finding F1 — unbounded
   `validation_jobs` + edge HypoPG re-run every 30s). A rec aged past the cooldown IS re-validated
   (refreshes a stale verdict). The singleton pass also `pruneTerminalJobs` older than
-  `job-retention-ms` (default 7d). A crashed-mid-lease job stays LEASED until **B12** (lease-reclaim,
-  deferred). Never drop either guard.
+  `job-retention-ms` (default 7d). Never drop either guard.
+- **Leases self-heal; reclaim is fence-less by design** (ADR-0035). The singleton pass runs
+  `reclaimStuckLeases` (alongside prune): a `LEASED` job whose `leased_at` is older than
+  `pglens.analysis.lease-timeout-ms` (default 5 min) → `PENDING` bumping `attempts`; past
+  `max-validation-attempts` (default 5) → `FAILED` (dead-lettered). `enqueue` also has a
+  **poison-cooldown** (skip a candidate with a recent `FAILED` job, reusing the revalidate cooldown)
+  so a deterministically-throwing candidate can't churn. Keep the lease-timeout ≫ the longest
+  validation batch so a slow-but-live validation is never reclaimed. **No fencing token** — safe
+  because PgLens is one single-threaded agent per db; the epoch fence for *concurrent* workers is
+  backlog **B12**. `recordResult` only accepts a `PENDING`/`LEASED` job, so a stale report for a
+  terminal (DONE/dead-lettered) job is ignored, never resurrected (G6).
+- **Ingest's no-double-count is the anchor-advance, not `captured_at` dedup** (ADR-0024, G7-corrected).
+  The atomic per-batch anchor upsert is what prevents double-counting across a lost/retried send; the
+  `ON CONFLICT (…, captured_at) DO NOTHING` only guards a *within-batch* duplicate `queryid`.
+  `captured_at` is the server receive time on purpose (the skew-immune trend axis + PK) — never re-key
+  it to the agent's sample epoch.
 - **Migrations are immutable, forward-only Flyway.** Add a new `V<n>__*.sql`; never edit an applied
   one (a comment change is a checksum change — `V1__init.sql`'s dogfood note stays as-is). Correctness/
   queue indexes belong in migrations; the time-series trend index was withheld for the dogfood
