@@ -7,7 +7,7 @@
 |---|---|---|---|
 | 0 | [`phase_0.md`](phase_0.md) | Foundations & Dev Environment | ✅ done (`v0.0.0-scaffold`) |
 | 1 | [`phase_1.md`](phase_1.md) | Core Advisor Engine (CLI) — MVP | ✅ done (`v0.0.1`) |
-| 2 | [`phase_2.md`](phase_2.md) | Collector Agent + Server + History | ✅ built — `v0.0.2` (tag on commit) |
+| 2 | [`phase_2.md`](phase_2.md) | Collector Agent + Server + History | ✅ done (`v0.0.2`) |
 | 3 | `phase_3.md` _(pending)_ | RAG + LLM Explanation Layer | ⬜ |
 | 4 | `phase_4.md` _(pending)_ | Dashboard (Next.js) — **ship checkpoint** | ⬜ |
 | 5 | `phase_5.md` _(pending)_ | Containerize + Kubernetes + Helm (v0.2) | ⬜ |

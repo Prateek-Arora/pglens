@@ -1,6 +1,6 @@
 # Phase 2 — Collector Agent + Server + History (gRPC)
 
-**Status:** ✅ built & verified — tagging **`v0.0.2`** (Phase 2 committed on the user's go-ahead → feature branch → PR) · **Ships:** a running `pglens-agent` that streams `pg_stat_statements` to a `pglens-server` over gRPC, which persists a **time-series**, runs the Phase-1 engine on a schedule with **edge-HypoPG-validated** recs, produces **index-hygiene** advice, and answers **trend / top-mover** queries — both apps as Docker images in compose.
+**Status:** ✅ shipped — PR #3 merged to `main` (`3898649`), tagged **`v0.0.2`** (2026-08-30), CI green · **Ships:** a running `pglens-agent` that streams `pg_stat_statements` to a `pglens-server` over gRPC, which persists a **time-series**, runs the Phase-1 engine on a schedule with **edge-HypoPG-validated** recs, produces **index-hygiene** advice, and answers **trend / top-mover** queries — both apps as Docker images in compose.
 **Prereqs:** Phase 1 (`v0.0.1`) — the two-clean-halves `:engine` (pure `parse/detect/candidate/rank` + I/O `db`) whose seam this phase recomposes across the wire, and the seeded, reliably-slow demo DB. Plan verified via `../workflows/plan-verification.md`; full plan at `.claude/plans/federated-inventing-quilt.md`.
 
 ---
@@ -110,7 +110,7 @@ role) · 0031 (trend queries, null-not-fabricated) · 0032 (Docker packaging + `
 - [x] Agent survives server downtime (ack-anchored deltas) without losing a window (§10 self-check).
 - [x] `.proto` documented; Testcontainers integration test (agent+server+DB) green; CI extended to the new modules.
 - [x] ADRs 0023–0033 recorded; `project.md` / `architecture.md` / this `phase_2.md` / `.claude/rules/` updated.
-- [ ] Tag **`v0.0.2`** — pending the user's go-ahead to commit Phase 2 (feature branch → PR), per the repo boundary "don't commit unless asked".
+- [x] Tag **`v0.0.2`** — Phase 2 committed (`a019248`) → PR #3 → merged to `main` (`3898649`) → annotated tag pushed. **Phase 2 shipped.**
 
 ## 6. Verification (how it was proven)
 
