@@ -31,6 +31,21 @@ final class MonitoredDbContainer {
 
   /** Runs the real 00_extensions.sql + 10_schema.sql against the started container. */
   static void initSchema(PostgreSQLContainer<?> db) {
+    runInitScript(db, "00_extensions.sql");
+    runInitScript(db, "10_schema.sql");
+  }
+
+  /**
+   * Runs the real 20_pglens_ro.sql, creating the {@code pglens_ro} read-only role the agent logs in
+   * as (ADR-0030). Call <em>after</em> {@link #initSchema} so its {@code GRANT SELECT ON ALL
+   * TABLES} covers the demo tables. The image doesn't bake the init scripts in (compose mounts them
+   * as a volume), so tests apply them over JDBC the same way.
+   */
+  static void initReadOnlyRole(PostgreSQLContainer<?> db) {
+    runInitScript(db, "20_pglens_ro.sql");
+  }
+
+  private static void runInitScript(PostgreSQLContainer<?> db, String scriptName) {
     String initdb = System.getProperty("pglens.repoRoot", ".") + "/deploy/compose/monitored/initdb";
     if (!new File(initdb).isDirectory()) {
       throw new IllegalStateException(
@@ -39,10 +54,9 @@ final class MonitoredDbContainer {
     DriverManagerDataSource ds =
         new DriverManagerDataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword());
     try (Connection c = ds.getConnection()) {
-      ScriptUtils.executeSqlScript(c, new FileSystemResource(initdb + "/00_extensions.sql"));
-      ScriptUtils.executeSqlScript(c, new FileSystemResource(initdb + "/10_schema.sql"));
+      ScriptUtils.executeSqlScript(c, new FileSystemResource(initdb + "/" + scriptName));
     } catch (SQLException e) {
-      throw new IllegalStateException("Failed to initialize demo schema", e);
+      throw new IllegalStateException("Failed to run init script " + scriptName, e);
     }
   }
 }

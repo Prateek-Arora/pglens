@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: pglens-agent
+  main:
+    # The agent is a headless daemon (scheduler + gRPC client) — no web server.
+    web-application-type: none
+
+# All values are env-var-overridable so a container run needs no mounted config.
+# The monitored DB is read as a dedicated read-only role (the pglens_ro role lands in Step 8).
+pglens:
+  agent:
+    monitored-db-url: ${PGLENS_MONITORED_DB_URL:postgresql://pglens_ro:pglens_ro@localhost:5432/pglens_demo}
+    db-name: ${PGLENS_DB_NAME:demo}
+    db-host: ${PGLENS_DB_HOST:localhost}
+    token: ${PGLENS_AGENT_TOKEN:}
+    server:
+      host: ${PGLENS_SERVER_HOST:localhost}
+      port: ${PGLENS_SERVER_PORT:9090}
+    sample:
+      interval-ms: ${PGLENS_SAMPLE_INTERVAL_MS:60000}
+      top-n: ${PGLENS_SAMPLE_TOP_N:200}
+      min-calls: ${PGLENS_SAMPLE_MIN_CALLS:1}
+    validation:
+      interval-ms: ${PGLENS_VALIDATION_INTERVAL_MS:30000}
+      max-lease: ${PGLENS_VALIDATION_MAX_LEASE:10}
+
+logging:
+  level:
+    com.pglens.agent: INFO

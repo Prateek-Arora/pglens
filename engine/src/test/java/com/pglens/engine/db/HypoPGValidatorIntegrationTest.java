@@ -120,6 +120,42 @@ class HypoPGValidatorIntegrationTest {
     assertNoHypotheticalIndexesLeft();
   }
 
+  @Test
+  void validateDdlIsTheEdgePathAndValidatesFromARawDdlString() {
+    // The a-pull edge API the agent calls: it holds only the leased DDL + access method, not an
+    // IndexCandidate. Same verdict as the object path, straight from the rendered DDL.
+    HypoPGValidator validator = new HypoPGValidator(jdbc);
+
+    var result =
+        validator.validateDdl(
+            Q_SELECTIVE,
+            "CREATE INDEX idx_orders_customer_id ON orders (customer_id);",
+            AccessMethod.BTREE);
+
+    assertThat(result.status()).isEqualTo(Status.PLANNER_VALIDATED);
+    assertThat(result.indexUsed()).isTrue();
+    assertThat(result.costAfter()).isLessThan(result.costBefore());
+    assertThat(result.relativeDelta()).isGreaterThanOrEqualTo(0.15);
+    assertNoHypotheticalIndexesLeft();
+  }
+
+  @Test
+  void validateDdlDegradesUnsupportedAccessMethodsWithoutFabricatingCosts() {
+    HypoPGValidator validator = new HypoPGValidator(jdbc);
+
+    var result =
+        validator.validateDdl(
+            "SELECT * FROM events WHERE payload @> $1",
+            "CREATE INDEX idx_events_payload ON events USING gin (payload);",
+            AccessMethod.GIN);
+
+    assertThat(result.status()).isEqualTo(Status.NOT_PLANNER_VALIDATED);
+    assertThat(result.costBefore()).isNull();
+    assertThat(result.costAfter()).isNull();
+    assertThat(result.label()).contains("GIN");
+    assertNoHypotheticalIndexesLeft();
+  }
+
   private void assertNoHypotheticalIndexesLeft() {
     Integer live = jdbc.queryForObject("SELECT count(*) FROM hypopg()", Integer.class);
     assertThat(live).as("no hypothetical index left behind").isZero();

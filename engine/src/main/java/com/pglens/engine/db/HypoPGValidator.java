@@ -1,5 +1,6 @@
 package com.pglens.engine.db;
 
+import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.IndexCandidate;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.model.Recommendation;
@@ -60,53 +61,87 @@ public class HypoPGValidator {
       return List.of();
     }
     reset(); // clean slate before the baseline
-    Double baselineCost =
-        capturer
-            .captureGenericPlanJson(normalizedSql)
-            .map(j -> parser.parse(j).totalCost())
-            .orElse(null);
+    Double baselineCost = captureBaseline(normalizedSql);
 
     List<Recommendation> out = new ArrayList<>();
     for (IndexCandidate candidate : candidates) {
-      out.add(validateOne(normalizedSql, baselineCost, candidate));
+      out.add(
+          new Recommendation(
+              candidate,
+              evaluate(
+                  normalizedSql,
+                  baselineCost,
+                  candidate.ddl(),
+                  candidate.plannerValidatable(),
+                  candidate.notValidatableReason())));
     }
     return out;
   }
 
-  private Recommendation validateOne(String sql, Double baselineCost, IndexCandidate candidate) {
+  /**
+   * The a-pull edge path (ADR-0023): validate a single candidate expressed as its rendered DDL and
+   * its access method — what the agent leases off the wire. Returns the raw {@link
+   * ValidationResult} (the server maps it to a {@code ValidateResult}), never a fabricated number:
+   * GIN/GiST, a missing hypopg, or a plan that can't be captured all degrade to
+   * NOT_PLANNER_VALIDATED with a label.
+   */
+  public ValidationResult validateDdl(String normalizedSql, String ddl, AccessMethod accessMethod) {
+    reset(); // clean slate before the baseline
+    Double baselineCost = captureBaseline(normalizedSql);
+    boolean validatable = accessMethod.hypoPgSupported();
+    String notValidatableReason =
+        validatable
+            ? null
+            : "HypoPG cannot simulate a "
+                + accessMethod.name()
+                + " index — surfaced but not planner-validated.";
+    return evaluate(normalizedSql, baselineCost, ddl, validatable, notValidatableReason);
+  }
+
+  private Double captureBaseline(String normalizedSql) {
+    return capturer
+        .captureGenericPlanJson(normalizedSql)
+        .map(j -> parser.parse(j).totalCost())
+        .orElse(null);
+  }
+
+  private ValidationResult evaluate(
+      String sql,
+      Double baselineCost,
+      String ddl,
+      boolean validatable,
+      String notValidatableReason) {
     if (!hypopgAvailable) {
       return notValidated(
-          candidate,
           "Not planner-validated — hypopg is not installed on the target "
               + "(run CREATE EXTENSION hypopg to validate).");
     }
-    if (!candidate.plannerValidatable()) {
-      return notValidated(candidate, candidate.notValidatableReason());
+    if (!validatable) {
+      return notValidated(notValidatableReason);
     }
     if (baselineCost == null) {
       return notValidated(
-          candidate, "Not planner-validated — could not capture a baseline plan for this query.");
+          "Not planner-validated — could not capture a baseline plan for this query.");
     }
 
     try {
-      String hypoName = createHypotheticalIndex(candidate.ddl());
+      String hypoName = createHypotheticalIndex(ddl);
       if (hypoName == null) {
-        return notValidated(candidate, "Not planner-validated — hypopg did not create the index.");
+        return notValidated("Not planner-validated — hypopg did not create the index.");
       }
       Optional<String> replanned = capturer.captureGenericPlanJson(sql);
       if (replanned.isEmpty()) {
         return notValidated(
-            candidate, "Not planner-validated — could not re-plan with the hypothetical index.");
+            "Not planner-validated — could not re-plan with the hypothetical index.");
       }
       PlanNode plan = parser.parse(replanned.get());
       boolean used = usesIndex(plan, hypoName);
       double afterCost = plan.totalCost();
       double relative = baselineCost > 0 ? (baselineCost - afterCost) / baselineCost : 0.0;
-      return verdict(candidate, baselineCost, afterCost, relative, used);
+      return verdict(baselineCost, afterCost, relative, used);
     } catch (DataAccessException unsupportedOrError) {
       // e.g. an access method HypoPG can't simulate — surface labeled, never crash the scan.
       return notValidated(
-          candidate,
           "Not planner-validated — HypoPG rejected the index ("
               + unsupportedOrError.getMostSpecificCause().getMessage()
               + ").");
@@ -115,16 +150,13 @@ public class HypoPGValidator {
     }
   }
 
-  private Recommendation verdict(
-      IndexCandidate candidate, double before, double after, double relative, boolean used) {
+  private ValidationResult verdict(double before, double after, double relative, boolean used) {
     if (used && relative >= minRelativeImprovement) {
       String label =
           "Planner-validated (HypoPG estimate): total cost %.0f → %.0f (−%.1f%%). "
                   .formatted(before, after, relative * 100)
               + "Estimate from the planner, not a runtime measurement.";
-      return new Recommendation(
-          candidate,
-          new ValidationResult(Status.PLANNER_VALIDATED, before, after, relative, true, label));
+      return new ValidationResult(Status.PLANNER_VALIDATED, before, after, relative, true, label);
     }
     String label =
         used
@@ -132,20 +164,17 @@ public class HypoPGValidator {
                 .formatted(relative * 100, minRelativeImprovement * 100)
             : "Suppressed: the planner did not use the hypothetical index — no benefit "
                 + "(a legitimate full scan).";
-    return new Recommendation(
-        candidate, new ValidationResult(Status.SUPPRESSED, before, after, relative, used, label));
+    return new ValidationResult(Status.SUPPRESSED, before, after, relative, used, label);
   }
 
-  private Recommendation notValidated(IndexCandidate candidate, String label) {
-    return new Recommendation(
-        candidate,
-        new ValidationResult(
-            Status.NOT_PLANNER_VALIDATED,
-            null,
-            null,
-            null,
-            false,
-            label == null ? "Not planner-validated." : label));
+  private ValidationResult notValidated(String label) {
+    return new ValidationResult(
+        Status.NOT_PLANNER_VALIDATED,
+        null,
+        null,
+        null,
+        false,
+        label == null ? "Not planner-validated." : label);
   }
 
   private String createHypotheticalIndex(String ddl) {

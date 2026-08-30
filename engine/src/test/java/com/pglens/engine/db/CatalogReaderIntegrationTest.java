@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.ConnectionTarget;
+import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.TableInfo;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -26,11 +27,12 @@ class CatalogReaderIntegrationTest {
   @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
 
   private static CatalogSnapshot catalog;
+  private static ConnectionTarget target;
 
   @BeforeAll
   static void readCatalog() {
     MonitoredDbContainer.initSchema(DB);
-    ConnectionTarget target =
+    target =
         new ConnectionTarget(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword(), "pglens_demo");
     catalog = new CatalogReader(new JdbcTemplate(DataSources.forScan(target))).read();
   }
@@ -56,5 +58,45 @@ class CatalogReaderIntegrationTest {
     assertThat(catalog.hasIndexLeadingWith("order_items", "order_id")).isFalse();
     assertThat(catalog.hasIndexLeadingWith("customers", "email")).isFalse();
     assertThat(catalog.hasIndexLeadingWith("events", "event_type")).isFalse();
+  }
+
+  @Test
+  void populatesTheHygieneFieldsForAPrimaryKeyIndex() {
+    TableInfo orders = catalog.table("orders").orElseThrow();
+    IndexInfo pk = orders.indexes().stream().filter(IndexInfo::primary).findFirst().orElseThrow();
+
+    // definition is the real pg_get_indexdef DDL; the PK backs a constraint (guarded); idx_scan is
+    // a
+    // real cumulative count (>= 0, never fabricated).
+    assertThat(pk.definition()).contains(pk.name()).containsIgnoringCase("orders");
+    assertThat(pk.constraintBacked()).isTrue();
+    assertThat(pk.guarded()).isTrue();
+    assertThat(pk.idxScan()).isGreaterThanOrEqualTo(0L);
+  }
+
+  @Test
+  void marksAnIndexCoveringAForeignKeyColumnAsConstraintBackedSoHygieneNeverDropsIt() {
+    // orders.customer_id REFERENCES customers(id) but has no index by default. Add one, and the
+    // reader must mark it constraint_backed (it speeds FK enforcement) even though it is not
+    // unique.
+    JdbcTemplate w = new JdbcTemplate(DataSources.forScan(target));
+    w.execute("CREATE INDEX tmp_orders_customer_id ON orders (customer_id)");
+    try {
+      CatalogSnapshot fresh = new CatalogReader(w).read();
+      IndexInfo fkIndex =
+          fresh.table("orders").orElseThrow().indexes().stream()
+              .filter(ix -> ix.name().equals("tmp_orders_customer_id"))
+              .findFirst()
+              .orElseThrow();
+
+      assertThat(fkIndex.unique()).isFalse();
+      assertThat(fkIndex.primary()).isFalse();
+      assertThat(fkIndex.constraintBacked())
+          .as("covers the FK orders.customer_id -> customers.id")
+          .isTrue();
+      assertThat(fkIndex.guarded()).isTrue();
+    } finally {
+      w.execute("DROP INDEX tmp_orders_customer_id");
+    }
   }
 }

@@ -1,0 +1,17 @@
+-- V4 (Phase 2, Step 11): the time-series trend index, added on EVIDENCE from the dogfood benchmark.
+--
+-- V1 deliberately WITHHELD a query_stats index on captured_at (see its DOGFOOD NOTE) so we could
+-- measure the real cost of the cross-query "top movers this week" scan and pick the right index type
+-- instead of guessing. docs/benchmarks.md records the measurement; ADR-0033 records the decision.
+--
+-- Finding: the cross-query captured_at-range scan (TrendRepository.windowTotals) touched ~163k buffers
+-- riding the PK; BRIN(captured_at) cut that to ~2.2k (~73x) for a 24 kB index, versus a 15 MB
+-- btree(db_id, captured_at) that was only marginally faster on warm wall-time. captured_at is
+-- append-only and physically time-ordered (ingest appends in time order), which is the textbook fit
+-- for BRIN: tiny, and near-free to maintain on insert (no per-row btree page splits) — the right call
+-- for an insert-heavy time-series. If a many-tenant metadata store later needs per-db isolation rather
+-- than just time-window pruning, btree(db_id, captured_at) is the measured alternative (backlog B11).
+--
+-- pages_per_range is left at the default 128; at this row width that summarizes ~fine and the whole
+-- index is kilobytes. Autovacuum keeps new block ranges summarized as ingest appends.
+CREATE INDEX query_stats_captured_brin ON query_stats USING brin (captured_at);

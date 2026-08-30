@@ -74,19 +74,20 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 
 ## Analysis engine — index hygiene (catalog-driven, not plan-driven)
 
-### B5. Unused & duplicate/redundant index detection
+### B5. Unused & duplicate/redundant index detection — ✅ DELIVERED (Phase 2, Step 6, ADR-0029)
 - **What:** A different *class* of advice from the query rules: flag indexes that are never scanned
   (`pg_stat_user_indexes.idx_scan`) and indexes that are exact or prefix duplicates of another
   (`pg_index` overlap). High real-world value (wasted disk, slower writes, VACUUM load).
-- **Why deferred *from Phase 1*, but NOT backlog-parked:** This is **pre-committed to Phase 2**, not
-  open-ended — "unused" is only honest over a *time window*, and Phase 2 is what persists snapshot
-  history (`idx_scan` delta between snapshots, not a single point-in-time read). See
-  `docs/project.md` → Phase 2 pre-commitments. Listed here for the contributor map; owned by Phase 2.
-- **Constraints:** 100% read-only, catalog-only, zero fabrication — the safest advice PgLens gives.
-  Never recommend dropping a unique/constraint-backing index or one used by an FK.
-- **Effort/type:** `good-first-issue` for the single-snapshot version; the time-window version rides
-  Phase 2's history.
-- **Refs:** Prior art — PgHero, `pg-index-health`. `docs/project.md` Phase 2 pre-commitments.
+- **Shipped:** pure `IndexHygieneAnalyzer` (`DUPLICATE`/`REDUNDANT`/`UNUSED`, one per index, priority
+  DUPLICATE>REDUNDANT>UNUSED); "unused" = zero `idx_scan` growth over the persisted `index_stats`
+  window (a backwards delta = reset = inconclusive); the never-drop guard (unique/PK/FK/constraint)
+  is one edge-computed `constraint_backed` boolean; findings replace-per-run into `index_hygiene`
+  (V3). Constraint honoured: 100% read-only, catalog-only, zero fabrication. See ADR-0029.
+- **Residual refinements (open, `good-first-issue`):** (1) **cross-table** duplicate detection —
+  today indexes are compared only within a table; (2) **schema-qualified** FK-coverage matching —
+  the leading-prefix match rides the single-schema `CatalogSnapshot` MVP assumption; (3) surface a
+  hygiene finding through the **REST/GraphQL API** (Phase 4 — it's persisted + queryable now).
+- **Refs:** ADR-0029; prior art — PgHero, `pg-index-health`.
 
 ---
 
@@ -167,6 +168,76 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
   `engine/src/test/resources/robustness/shape_stressors.sql`.
 
 ---
+
+## Deployment & operations
+
+### B10. Agent/monitored-DB registration API (replace the `make register` SQL bootstrap)
+- **What:** A first-class way to register a monitored DB + issue its agent token, instead of the
+  Phase-2 stopgap `make register` (a raw `INSERT` into `monitored_dbs` with a pgcrypto-hashed token).
+  Natural shape: a small admin REST endpoint (or CLI) that mints a token, stores only its hash
+  (ADR-0027), and returns the token once.
+- **Why deferred:** Phase 2's DoD is the collector→server→history loop, not an API; the full REST/
+  GraphQL surface is **Phase 4**. A one-row insert is the honest bootstrap until then, and it keeps
+  the token-hash-only invariant (the plaintext token never lands in the DB).
+- **Constraints:** never store the plaintext token (hash only, ADR-0027); registration is an
+  authenticated/admin action, not something an agent can self-serve.
+- **Effort/type:** `needs-design` — pairs with the Phase 4 API + auth story.
+- **Refs:** ADR-0027 (token auth), ADR-0032 (the `make register` stopgap + this deferral).
+
+## Metadata-schema tuning (dogfood)
+
+### B11. `btree(db_id, captured_at)` for a many-tenant metadata store
+- **What:** A composite btree on `query_stats (db_id, captured_at)` as an alternative (or companion) to
+  the V4 `BRIN(captured_at)` trend index, if PgLens ever collects from **many** monitored DBs into one
+  metadata store and per-db isolation — not just time-window pruning — becomes the trend-scan
+  bottleneck. The btree can seek straight to one db's time range; BRIN reads every db's rows in the
+  window and filters `db_id` in the recheck.
+- **Why deferred:** the Step-11 dogfood benchmark **measured** both — BRIN matched the btree's read
+  reduction (~73×) at **24 kB vs 15 MB** and near-zero insert cost, and Phase 2 is **single-tenant**
+  (one demo db), so per-db isolation buys nothing yet. Building the btree now would be speculative
+  generality (YAGNI) and pay real per-ingest write amplification for no current gain.
+- **Constraints:** don't add it "just in case" — add it only when a multi-db metadata store shows the
+  BRIN recheck reading other dbs' blocks is actually the cost; re-run `make bench` with several
+  `db_id`s to confirm before committing 15 MB + write overhead.
+- **Effort/type:** `good-first-issue` (one migration + a benchmark re-run), gated on a real multi-tenant
+  workload.
+- **Refs:** ADR-0033 (BRIN decision), `docs/benchmarks.md` (the measured trade-off).
+
+## Validation work-queue reliability
+
+### B12. Lease-reclaim + dead-letter for stuck validation jobs
+- **What:** Recover a validation job stuck in `LEASED` when the agent crashes or a validation throws
+  before reporting (audit finding F4). Today such a job stays `LEASED` forever, and the inflight-unique
+  index (`validation_jobs_inflight_uniq`) then blocks re-enqueuing that one candidate. Fix = the
+  standard Postgres-`SKIP LOCKED`-queue lease/visibility-timeout pattern, tailored to PgLens.
+- **Chosen approach (researched — see sources below):**
+  1. **Lease timeout + janitor.** Reuse the existing `validation_jobs.leased_at`; fold a reclaim step
+     into the *singleton* analysis pass (already advisory-locked + periodic — no new scheduler): before
+     enqueue, `UPDATE validation_jobs SET state = CASE WHEN attempts >= :max THEN 'FAILED' ELSE
+     'PENDING' END WHERE state = 'LEASED' AND leased_at < now() - :lease-timeout`.
+  2. **Attempts counter + dead-letter.** Add an `attempts` column (new migration); `lease()` bumps it.
+     Past `:max-attempts` a poison candidate goes to `FAILED` instead of reclaim-looping forever.
+  3. **Fencing guard.** A slow-but-alive agent can outlive its lease so both it and the re-claimant run
+     the job. Carry the leased `attempts`/epoch in `ValidateRequest`; `recordResult` accepts a report
+     only if the job is still `LEASED` with that epoch, so a stale report can't clobber a re-leased job.
+     (PgLens validation is hypothetical/read-only/idempotent → double-processing is low-harm, so the
+     fence is belt-and-suspenders, not load-bearing.)
+  4. **Janitor index.** `LEASED` rows aren't covered by the PENDING-only partial index — add a small
+     partial index on `(leased_at) WHERE state = 'LEASED'` for the reclaim scan.
+  Terminal-row purge already ships (F1 `AnalysisRepository.pruneTerminalJobs`, ADR-0034).
+- **Why deferred (not fixed inline with F1–F3):** a schema change (new column + index = a new
+  migration) + two tuning constants (lease-timeout, max-attempts) + a fencing-token design — a genuine
+  reliability feature, not a code-only patch. A too-short timeout double-runs a live slow validation; a
+  missing fence reintroduces the double-processing it exists to prevent — so it deserves the
+  verify-before-implement rigor and interacts with F1's cooldown/retention. Not a Phase-2 DoD item (the
+  loop works); post-ship hardening like B10/B11.
+- **Constraints:** reclaim + fencing must stay coherent with F1's revalidate cooldown + retention;
+  never reclaim so aggressively that a legitimately-slow edge validation is double-run.
+- **Effort/type:** `needs-design` (one migration + reclaim/janitor in `AnalysisService` + a fencing
+  token through the proto).
+- **Refs:** audit finding F4; ADR-0034 (queue lifecycle). Pattern sources: [prisma.io — SKIP LOCKED
+  queue](https://www.prisma.io/blog/you-dont-need-a-job-queue-postgres-already-has-skip-locked),
+  [PlanetScale — keeping a Postgres queue healthy](https://planetscale.com/blog/keeping-a-postgres-queue-healthy).
 
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):

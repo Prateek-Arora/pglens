@@ -1,0 +1,31 @@
+# PgLens server configuration.
+#
+# The datasource points at the METADATA database (Postgres + pgvector) — never a monitored DB. Flyway
+# runs the migrations under db/migration on startup. Defaults match the Phase 0 compose stack
+# (metadata-db on host port 5434); override via env for other environments.
+spring:
+  application:
+    name: pglens-server
+  datasource:
+    url: ${PGLENS_METADATA_URL:jdbc:postgresql://localhost:5434/pglens_meta}
+    username: ${PGLENS_METADATA_USER:pglens}
+    password: ${PGLENS_METADATA_PASSWORD:pglens}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# gRPC listener (wired from Step 3).
+pglens:
+  grpc:
+    port: ${PGLENS_GRPC_PORT:9090}
+  # Scheduled analysis job (ADR-0028): singleton across replicas via a transaction-scoped advisory
+  # lock. Enqueues HypoPG-validation work for the agent edge to run.
+  analysis:
+    interval-ms: ${PGLENS_ANALYSIS_INTERVAL_MS:30000}
+    initial-delay-ms: ${PGLENS_ANALYSIS_INITIAL_DELAY_MS:15000}
+    # Don't re-validate a candidate whose recommendation is younger than this (F1) — bounds redundant
+    # edge HypoPG re-runs while still refreshing a stale verdict once it ages out (default 1h).
+    revalidate-after-ms: ${PGLENS_ANALYSIS_REVALIDATE_AFTER_MS:3600000}
+    # Prune terminal (DONE/FAILED) validation jobs older than this (F1); the verdict lives on in
+    # `recommendations`, so this only bounds the work-queue's audit trail (default 7 days).
+    job-retention-ms: ${PGLENS_ANALYSIS_JOB_RETENTION_MS:604800000}

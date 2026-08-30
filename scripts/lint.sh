@@ -12,14 +12,17 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 if have shellcheck; then
     echo "== shellcheck =="
-    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh || status=1
+    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh scripts/dogfood_benchmark.sh || status=1
 else
     echo "(shellcheck not installed -- skipping)"
 fi
 
 if have hadolint; then
     echo "== hadolint =="
-    hadolint deploy/compose/monitored/Dockerfile || status=1
+    hadolint \
+        deploy/compose/monitored/Dockerfile \
+        deploy/compose/agent/Dockerfile \
+        deploy/compose/server/Dockerfile || status=1
 else
     echo "(hadolint not installed -- skipping)"
 fi

@@ -19,4 +19,8 @@ dependencyResolutionManagement {
   }
 }
 
-include("engine", "cli")
+// Phase 2 adds the collector/server split over gRPC:
+//   :proto  — the .proto contract + generated stubs (the spine; depended on by agent + server).
+//   :agent  — the collector (reuses :engine db half): scheduled sampler + gRPC ingest client.
+//   :server — the central server (reuses :engine pure half): gRPC ingest, persistence, trends.
+include("engine", "cli", "proto", "server", "agent")

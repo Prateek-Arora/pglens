@@ -39,8 +39,12 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> Bringing up the stack (build + wait for health)"
-if ! docker compose -f "$COMPOSE_FILE" up -d --build --wait; then
+# Only the data-plane dbs — the smoke test is the Phase-0/1 reproducibility gate, not the app loop
+# (the agent→server→metadata flow is covered deterministically by AgentToServerFlowIntegrationTest).
+# Naming the services also avoids building the server/agent images, whose COPY needs host-built jars
+# this script never produces.
+echo "==> Bringing up the data-plane dbs (build + wait for health)"
+if ! docker compose -f "$COMPOSE_FILE" up -d --build --wait monitored-db metadata-db; then
     echo "compose up failed" >&2
     exit 1
 fi
