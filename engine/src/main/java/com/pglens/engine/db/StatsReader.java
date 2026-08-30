@@ -3,6 +3,8 @@ package com.pglens.engine.db;
 import com.pglens.engine.PgLensException;
 import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.StatementStat;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
@@ -104,6 +106,27 @@ public class StatsReader {
     ensureExtensionPresent();
     try {
       return jdbc.query(BY_QUERYID_SQL, MAPPER, queryId).stream().findFirst();
+    } catch (DataAccessException e) {
+      throw statsReadError(e);
+    }
+  }
+
+  /**
+   * The time of the last <em>global</em> {@code pg_stat_statements_reset()} on the target — the
+   * single {@code stats_reset} timestamp in {@code pg_stat_statements_info} — or empty if it has
+   * never been reset. Present since pgss 1.9 (PG14); on PgLens's PG16 image (pgss 1.10) this is the
+   * reset signal the agent forwards each interval so the server can detect a mid-stream reset and
+   * anchor the delta to the post-reset cumulative (ADR-0024). Per-entry {@code stats_since} would
+   * be finer-grained but is PG17-only (pgss 1.11), so it is deliberately not used here.
+   */
+  public Optional<Instant> globalStatsReset() {
+    ensureExtensionPresent();
+    try {
+      OffsetDateTime ts =
+          jdbc.queryForObject(
+              DataSources.INTROSPECTION_MARKER + "SELECT stats_reset FROM pg_stat_statements_info",
+              OffsetDateTime.class);
+      return Optional.ofNullable(ts).map(OffsetDateTime::toInstant);
     } catch (DataAccessException e) {
       throw statsReadError(e);
     }

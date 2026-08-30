@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.StatementStat;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -107,6 +108,18 @@ class StatsReaderIntegrationTest {
   @Test
   void limitCapsTheNumberOfRows() {
     assertThat(reader.topStatements(RankBy.CALLS, 1, 1)).hasSize(1);
+  }
+
+  @Test
+  void globalStatsResetReflectsTheLastReset() {
+    // seedWorkload() called pg_stat_statements_reset() in @BeforeAll, so the info view's single
+    // stats_reset timestamp is present and recent. Asserted against a wide (1-hour) window, never a
+    // wall-clock timing, so it is deterministic in CI. This is the PG16 reset signal (ADR-0024).
+    Optional<Instant> reset = reader.globalStatsReset();
+    assertThat(reset).isPresent();
+    assertThat(reset.get())
+        .isBeforeOrEqualTo(Instant.now())
+        .isAfter(Instant.now().minusSeconds(3600));
   }
 
   private static String lower(StatementStat s) {

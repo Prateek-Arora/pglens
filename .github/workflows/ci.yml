@@ -11,25 +11,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: shellcheck
+      # Install all three linters, then run the SAME scripts/lint.sh developers run
+      # locally — one source of truth for the file lists, so CI and local never drift
+      # (lint.sh skips a missing linter locally; here all three are installed and enforced).
+      - name: Install linters (shellcheck, hadolint, sqlfluff)
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh
-
-      - name: hadolint
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: deploy/compose/monitored/Dockerfile
-
-      - name: sqlfluff
-        run: |
+          sudo curl -fsSL -o /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          sudo chmod +x /usr/local/bin/hadolint
           pip install --user sqlfluff
-          sqlfluff lint \
-            deploy/compose/monitored/initdb/00_extensions.sql \
-            deploy/compose/monitored/initdb/10_schema.sql \
-            deploy/compose/metadata/initdb/00_extensions.sql \
-            demo/slow_queries.sql
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Lint (scripts/lint.sh)
+        run: bash scripts/lint.sh
 
   smoke:
     name: smoke test (compose end-to-end)
@@ -58,13 +54,23 @@ jobs:
           cache: gradle
 
       # The Testcontainers integration tests boot the real monitored image
-      # (pglens/monitored-db:0.0.0) — build it first so it is in the local
-      # Docker cache before `check` runs `integrationTest`.
+      # (pglens/monitored-db:0.0.0) — build it first so it is in the local Docker
+      # cache before `check` runs `integrationTest`. The pgvector metadata image is
+      # pulled from Docker Hub by Testcontainers automatically.
       - name: Build monitored image (for Testcontainers integration tests)
         run: docker build -t pglens/monitored-db:0.0.0 deploy/compose/monitored
 
-      # `build` = Spotless check + unit tests + Testcontainers integration tests
-      # (wired into `check`) + the bootJar CLI. Ubuntu runners ship a working
-      # Docker daemon, which Testcontainers uses directly.
-      - name: Gradle build (spotless + unit + integration)
+      # Root `build` compiles every module (:proto, :engine, :cli, :agent, :server) and
+      # runs Spotless + unit tests + the Testcontainers integration tests wired into
+      # `check` — including the full agent→server→metadata flow IT in :server (Phase 2).
+      - name: Gradle build (spotless + unit + integration, all modules)
         run: ./gradlew build --no-daemon --stacktrace
+
+      # The bootJars now exist at <module>/build/libs/app.jar — validate the agent + server
+      # image Dockerfiles (base, COPY path, non-root) actually build. Cheap regression guard
+      # for the images that ship in docker-compose (Phase 2, ADR-0032); no full stack bring-up
+      # here (the flow IT above already covers the loop deterministically).
+      - name: Build agent + server images (validate Dockerfiles)
+        run: |
+          docker build -t pglens/server:0.0.2 -f deploy/compose/server/Dockerfile .
+          docker build -t pglens/agent:0.0.2 -f deploy/compose/agent/Dockerfile .

@@ -61,6 +61,57 @@ services:
       retries: 24
       start_period: 15s
 
+  # The PgLens server: gRPC ingest/validation + Flyway migrations + scheduled analysis. Talks to the
+  # metadata-db by its service name on the INTERNAL port 5432 (not the host-mapped 5434). The jar is
+  # built on the host by `make up`; the build context is the repo root so the Dockerfile can copy it.
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/server/Dockerfile
+    image: pglens/server:0.0.2
+    depends_on:
+      metadata-db:
+        condition: service_healthy
+    environment:
+      PGLENS_METADATA_URL: jdbc:postgresql://metadata-db:5432/${METADATA_DB:-pglens_meta}
+      PGLENS_METADATA_USER: ${POSTGRES_USER:-pglens}
+      PGLENS_METADATA_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
+      PGLENS_GRPC_PORT: "9090"
+    ports:
+      - "${PGLENS_GRPC_PORT:-9090}:9090"
+    healthcheck:
+      # gRPC only (no HTTP server) — a TCP connect to the gRPC port is the liveness signal. The JRE
+      # base image (Ubuntu) ships bash, so /dev/tcp works.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/9090' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  # The collector agent: reads the monitored-db as the read-only pglens_ro role (ADR-0030) and
+  # streams samples to the server. Headless daemon (no port). Its db-name + token must match a
+  # monitored_dbs row — run `make register` after `make up` to create it (until then the agent
+  # retries, logging UNAUTHENTICATED each cycle — non-fatal).
+  agent:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/agent/Dockerfile
+    image: pglens/agent:0.0.2
+    depends_on:
+      monitored-db:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    environment:
+      PGLENS_MONITORED_DB_URL: postgresql://pglens_ro:pglens_ro@monitored-db:5432/${MONITORED_DB:-pglens_demo}
+      PGLENS_DB_NAME: ${PGLENS_DB_NAME:-demo}
+      PGLENS_DB_HOST: monitored-db
+      PGLENS_SERVER_HOST: server
+      PGLENS_SERVER_PORT: "9090"
+      PGLENS_AGENT_TOKEN: ${PGLENS_AGENT_TOKEN:-devtoken}
+      # A livelier cadence than the 60s default so the demo accumulates trend points quickly.
+      PGLENS_SAMPLE_INTERVAL_MS: ${PGLENS_SAMPLE_INTERVAL_MS:-15000}
+
 volumes:
   monitored-pgdata:
   metadata-pgdata:

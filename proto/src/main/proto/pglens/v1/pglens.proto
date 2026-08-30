@@ -1,0 +1,168 @@
+// PgLens agent <-> server contract (Phase 2). Topology = "a-pull" (ADR-0023): the agent is a pure
+// dial-out client. It streams cumulative pg_stat_statements samples UP; for HypoPG validation it
+// LEASES candidate DDLs from the server (server-streaming) and reports results back — the server never
+// dials into the un-dialable agent, and no bidirectional stream is used. See docs/phases/phase_2.md.
+//
+// Design notes that keep the wire honest:
+//  - Samples carry RAW CUMULATIVE counters + pg_stat_statements.stats_since; the SERVER computes
+//    per-interval deltas against the last persisted snapshot (ADR-0024). The agent is stateless.
+//  - Query text + plan are registered ONCE per text_hash; per-interval samples carry only queryid +
+//    counters (dedups the wire). Query text does reach the central server — the privacy claim is
+//    narrow (no text to a third-party LLM), never "nothing leaves the host".
+//  - All timestamps are epoch milliseconds. The server also records its own receive time, so trends
+//    survive agent clock skew.
+
+syntax = "proto3";
+
+package pglens.v1;
+
+option java_multiple_files = true;
+option java_package = "com.pglens.proto.v1";
+option java_outer_classname = "PgLensProto";
+
+// ---------------------------------------------------------------------------
+// Ingest: agent -> server, client-streaming. Short-lived per interval (no
+// long-lived stream to be idle-timeout-killed by an LB).
+// ---------------------------------------------------------------------------
+
+service Ingest {
+  // The agent opens the stream, sends this interval's batch(es), half-closes, and receives one
+  // IngestSummary (the persisted watermark). Client-streaming so catalog + text registrations +
+  // samples can flow as distinct messages in a single call with flow control.
+  rpc StreamSnapshot(stream SampleBatch) returns (IngestSummary);
+}
+
+message SampleBatch {
+  string db_name = 1;                 // logical monitored-db identity (matches monitored_dbs.name)
+  string db_host = 2;                 // host as the agent sees it (diagnostic only)
+  int64 agent_sample_epoch_ms = 3;    // agent wall-clock at sample time (skew-aware; paired w/ receive time)
+  repeated QueryStatSample samples = 4;
+  repeated QueryText new_texts = 5;   // registrations for queryids/hashes the server hasn't seen yet
+  CatalogSnapshot catalog = 6;        // optional: row estimates + index catalog (for detection + hygiene)
+  // pg_stat_statements_info.stats_reset — the time of the last GLOBAL pg_stat_statements_reset().
+  // The server compares it against the value it last stored for this db: if it advanced, every
+  // counter restarted, so this interval's deltas are the post-reset cumulative (ADR-0024). Chosen
+  // over per-entry stats_since, which only exists in pgss 1.11 (PG17); we pin PG16 (ADR-0011).
+  int64 stats_reset_epoch_ms = 7;
+}
+
+// One pg_stat_statements row, CUMULATIVE (server deltas it). Times are milliseconds.
+message QueryStatSample {
+  int64 queryid = 1;
+  string text_hash = 2;               // hash of normalized text; maps to a QueryText registration
+  int64 calls = 3;                    // cumulative
+  double total_exec_time_ms = 4;      // cumulative
+  int64 rows = 5;                     // cumulative
+  int64 shared_blks_hit = 6;          // cumulative
+  int64 shared_blks_read = 7;         // cumulative
+}
+
+// Sent once per new (queryid, text_hash). plan_json is EXPLAIN (GENERIC_PLAN, VERBOSE, JSON), captured
+// at the edge; may be absent (some normalized shapes are not generic-plannable — surfaced, not silent).
+message QueryText {
+  int64 queryid = 1;
+  string text_hash = 2;
+  string normalized_text = 3;
+  string plan_json = 4;               // empty when plan_captured = false
+  bool plan_captured = 5;
+  bool truncated = 6;                 // query text hit track_activity_query_size (a property of the text)
+}
+
+// Row-count estimates + the existing index catalog for the monitored DB's user tables. Needed
+// server-side by AntiPatternDetector.detect(plan, catalog) and by the index-hygiene rule.
+message CatalogSnapshot {
+  repeated TableStat tables = 1;
+  repeated IndexStat indexes = 2;
+}
+
+message TableStat {
+  string table_name = 1;
+  int64 est_rows = 2;                 // reltuples estimate
+}
+
+message IndexStat {
+  string index_name = 1;
+  string table_name = 2;
+  string definition = 3;              // pg_get_indexdef (hygiene display); populated from Step 6
+  bool is_unique = 4;
+  bool is_primary = 5;
+  bool constraint_backed = 6;         // backs a UNIQUE/PK/exclusion constraint — never recommend dropping (Step 6)
+  int64 idx_scan = 7;                 // cumulative pg_stat_user_indexes.idx_scan; server deltas for "unused" (Step 6)
+  // Detection inputs (Step 5): the server rebuilds the engine's IndexInfo from these to run
+  // AntiPatternDetector — it needs the leading key column (hasIndexLeadingWith), plus the method and
+  // partial predicate to reason about existing coverage. Ordered key columns (plain column name, or
+  // the expression text for an expression key).
+  repeated string columns = 8;
+  string method = 9;                  // access method: btree / gin / ...
+  string predicate = 10;              // partial-index WHERE predicate; empty if the index is not partial
+}
+
+message IngestSummary {
+  int64 server_receive_epoch_ms = 1;  // watermark: the server persisted through here
+  int32 accepted_samples = 2;
+  int32 accepted_texts = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Validation: edge HypoPG via agent-pull. The agent leases pending candidate
+// DDLs (server-streaming), runs HypoPGValidator next to the DB, and reports
+// results back (client-streaming). No server->agent callback.
+// ---------------------------------------------------------------------------
+
+service Validation {
+  rpc LeaseValidations(LeaseRequest) returns (stream ValidateRequest);
+  rpc ReportValidations(stream ValidateResult) returns (ReportAck);
+}
+
+message LeaseRequest {
+  string db_name = 1;
+  int32 max = 2;                      // upper bound on jobs to lease in this call
+}
+
+message ValidateRequest {
+  int64 job_id = 1;
+  int64 queryid = 2;
+  string normalized_sql = 3;          // the agent re-captures the baseline plan itself
+  string candidate_ddl = 4;
+  string access_method = 5;           // mirrors engine AccessMethod (BTREE/GIN/...)
+}
+
+message ValidateResult {
+  int64 job_id = 1;
+  ValidationStatus status = 2;
+  // Costs are generic-plan planner estimates, present ONLY for PLANNER_VALIDATED / SUPPRESSED.
+  // optional (has-presence) so NOT_PLANNER_VALIDATED conveys a real absence, never a fabricated 0.0
+  // (charter #1) — the server stores NULL when unset.
+  optional double before_cost = 3;
+  optional double after_cost = 4;
+  optional double relative_drop = 5;
+  bool used = 6;                      // planner used the hypothetical index
+  string reason = 7;                  // honesty label (e.g. GIN not planner-validatable)
+}
+
+// Mirrors com.pglens.engine.model.ValidationResult.Status exactly (name-for-name).
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  PLANNER_VALIDATED = 1;
+  SUPPRESSED = 2;
+  NOT_PLANNER_VALIDATED = 3;
+}
+
+message ReportAck {
+  int32 accepted = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Health: unary liveness/auth probe.
+// ---------------------------------------------------------------------------
+
+service Health {
+  rpc Check(HealthRequest) returns (HealthStatus);
+}
+
+message HealthRequest {}
+
+message HealthStatus {
+  bool serving = 1;
+  string version = 2;
+}

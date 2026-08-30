@@ -9,6 +9,14 @@ picocli = "4.7.7"
 postgresql = "42.7.13"
 testcontainers = "2.0.5"
 spotless = "8.10.0"
+# Phase 2 (gRPC ingest). grpc-java + protobuf are pinned exactly; protoc must match protobuf-java
+# so codegen and runtime agree (see :proto build). We use plain grpc-java (not Spring gRPC, whose
+# maintained 1.0.x line requires Spring Boot 4.1 — incompatible with the pinned Boot 3.5; same call
+# as ADR-0012's plain-picocli decision). Flyway is managed by the Spring Boot BOM (no version here).
+grpc = "1.83.1"
+protobuf = "4.31.1"
+protobufPlugin = "0.9.5"
+tomcatAnnotations = "6.0.53"
 
 [libraries]
 # Versionless entries get their version from a BOM applied via platform()/dependency-management.
@@ -25,7 +33,25 @@ testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter" }
 testcontainers-postgresql = { module = "org.testcontainers:postgresql" }
 
+# gRPC / Protobuf (Phase 2). grpc-bom aligns all io.grpc artifacts to one version; protobuf-java is
+# pinned to match the protoc used for codegen. tomcat annotations-api supplies javax.annotation
+# for grpc-generated stubs on the JDK-21 toolchain (it isn't in the JDK).
+grpc-bom = { module = "io.grpc:grpc-bom", version.ref = "grpc" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded" }
+grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
+grpc-stub = { module = "io.grpc:grpc-stub" }
+grpc-testing = { module = "io.grpc:grpc-testing" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
+tomcat-annotations-api = { module = "org.apache.tomcat:annotations-api", version.ref = "tomcatAnnotations" }
+
+# DB migrations (Phase 2). Versionless: managed by the Spring Boot dependencies BOM. Since Flyway 10,
+# the Postgres support lives in a separate flyway-database-postgresql artifact.
+flyway-core = { module = "org.flywaydb:flyway-core" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 dependency-management = { id = "io.spring.dependency-management", version.ref = "dependencyManagement" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }

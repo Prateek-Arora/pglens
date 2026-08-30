@@ -2,7 +2,7 @@
 
 > End-state architecture and the **deliberate design choices** behind it. Read on demand. Update this file whenever structure changes. The *why* behind each choice also lives in `docs/decisions.md` (linked by ADR id).
 
-_Last updated: 2026-08-26 — end-state target below; Phases 0–1 are implemented (see the "implemented" sections)._
+_Last updated: 2026-08-29 — end-state target below; Phases 0–2 are implemented (see the "implemented" sections)._
 
 ## System diagram (end state)
 
@@ -42,7 +42,39 @@ _Last updated: 2026-08-26 — end-state target below; Phases 0–1 are implement
 2. **Deterministic core, LLM as a layer** (ADR-0004). The analyzer is correct and explainable with zero LLM; the LLM only translates to prose. Trustworthy + useful offline.
 3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; proving it helps without building it (minutes on a big table) is the hard, valuable part. HypoPG gives a real planner-cost delta — the honest "expected improvement." Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*.
 4. **Local LLM (Ollama) for privacy** (ADR-0006). Query text never leaves the user's infra — the sharpest differentiator vs hosted AI-EXPLAIN tools.
-5. **gRPC server-streaming for ingest** (ADR-0001 stack). Continuous stats flow from agent → server; a real, justified gRPC use case (not bolted on).
+5. **gRPC for ingest + edge-pull validation** (ADR-0001 stack; topology ADR-0023, lib ADR-0025). Stats flow agent → server as short-lived **client-streaming** calls; validation work is **server-streamed** to the agent and results **client-streamed** back — three of gRPC's four modes, chosen over live-bidi so calls stay short-lived and load-balanceable. A real, justified gRPC use case (not bolted on).
+
+## Collector agent, server & history — gRPC (implemented — Phase 2)
+Phase 1's one-shot CLI became a running two-process system, topology **`a-pull`** (ADR-0023). Two new
+Gradle modules recompose the Phase-1 engine's two halves across the wire — **no engine rewrite**:
+
+- **`:agent`** (Spring Boot daemon) reuses only the engine **I/O half** and is **stateless**: a
+  `@Scheduled` sampler reads cumulative `pg_stat_statements` + a catalog snapshot as the least-privilege
+  **`pglens_ro`** role (ADR-0030), and streams a `SampleBatch` to the server over **client-streaming**
+  gRPC (plain grpc-java, ADR-0025) with a bearer token (ADR-0027). Text + generic plan are registered
+  **once per queryid**; it never computes a delta (a sampled interval mean would be a fabricated number).
+- **`:server`** (Spring Boot) reuses only the engine **pure half** and owns all state — it has **no
+  connection to any monitored DB**. It computes **ack-anchored per-interval deltas** server-side (reset
+  detected via the global `pg_stat_statements_info.stats_reset`, ADR-0024) and persists a **delta
+  time-series** to the metadata DB (Flyway, ADR-0026). A **singleton `@Scheduled` analysis** (guarded by
+  a transaction-scoped advisory lock, ADR-0028) runs the pure `detect → candidate` pipeline over the
+  **persisted** catalog and enqueues candidate DDLs into a work queue.
+- **Validation is pulled to the edge:** the agent leases jobs (**server-streaming** `LeaseValidations`,
+  `FOR UPDATE SKIP LOCKED`), runs `HypoPGValidator` next to the DB, and **reports** verdicts back
+  (**client-streaming**) — **no bidi** (a deliberate, load-balanceable trade). The server persists
+  ranked `recommendations` with real HypoPG cost estimates (a not-validated candidate stores NULL
+  costs, never a fabricated 0.0).
+- **Also shipped:** **index-hygiene** advice (unused/duplicate/redundant, honest only over the snapshot
+  window; never a guarded PK/FK/unique index — ADR-0029); **trend / top-mover / new-slow** queries over
+  the series (null-not-fabricated derived numbers — ADR-0031); **Docker images + compose** for the whole
+  loop (non-root, copy-prebuilt jars — ADR-0032).
+
+**`:proto`** is the single `.proto` contract (Ingest/Validation/Health) both apps depend on. The
+**metadata schema** (`monitored_dbs`, `query_texts`, `query_cumulative`, `query_stats`, catalog +
+hygiene + `recommendations` + `validation_jobs`) is forward-only Flyway **V1–V4**. PgLens **dogfooded
+its own** time-series index tuning: the deliberately-withheld `query_stats` trend index was measured and
+added as **`BRIN(captured_at)`** (V4 — ~73× fewer buffers on the cross-query top-movers scan; ADR-0033,
+`docs/benchmarks.md`). Ships **`v0.0.2`**.
 
 ## Analysis engine (implemented — Phase 1)
 The CLI engine is built as **two clean halves** in a Gradle `:engine` library (+ a `:cli` Spring Boot
@@ -64,7 +96,8 @@ v1.0 contract that **is** the pure model record graph (can't drift). Rationale: 
 session-local) set **read-only at the database** (`SET SESSION CHARACTERISTICS AS TRANSACTION READ
 ONLY`) with statement/lock timeouts — writes are rejected by Postgres, driver-independently
 (ADR-0020). HypoPG resets after every candidate (`hypopg() = 0` after a run); nothing is ever built
-on the monitored DB. A DB-level read-only **role** is still Phase 2.
+on the monitored DB. Phase 2 added the second, independent layer: the agent logs in as a DB-level
+least-privilege **`pglens_ro`** role with no write grant (ADR-0030) — defense in depth.
 
 ## Dev environment (implemented — Phase 0)
 Docker Compose stands up the two Postgres instances (`deploy/compose/`): `monitored-db`

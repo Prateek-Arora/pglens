@@ -1,0 +1,22 @@
+# Build-context trimming for the agent/server images, whose build context is the repo root (so the
+# Dockerfiles can COPY <module>/build/libs/*.jar). The images need ONLY the prebuilt bootJar under
+# each module's build/libs, so exclude the heavy/irrelevant parts of the tree — a blocklist, so a
+# missed entry only makes the context larger, never drops the jar. (The monitored-db image has its
+# own small context, deploy/compose/monitored, and is unaffected by this file.)
+.git
+.gradle
+**/.gradle
+**/src
+**/build/classes
+**/build/generated
+**/build/resources
+**/build/tmp
+**/build/reports
+**/build/test-results
+**/build/spotless
+**/bin
+docs
+demo
+scripts
+*.md
+node_modules

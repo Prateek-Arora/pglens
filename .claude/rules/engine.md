@@ -3,10 +3,15 @@ description: Conventions for the analysis engine (:engine)
 paths:
   - "engine/**"
 ---
-- **Pure / I/O split is load-bearing.** Packages `model`, `parse`, `detect`, `candidate`, `rank`
-  carry **no Spring imports** (Jackson is allowed) so they unit-test with no container and Phase 2
-  reuses them server-side. Only `db` (and the `PgLensEngine` facade that wires it) may use
+- **Pure / I/O split is load-bearing.** Packages `model`, `parse`, `detect`, `candidate`, `rank`,
+  `hygiene` carry **no Spring imports** (Jackson is allowed) so they unit-test with no container and
+  Phase 2 reuses them server-side. Only `db` (and the `PgLensEngine` facade that wires it) may use
   spring-jdbc. The pure half must never import `db`.
+- **The hygiene safety invariant lives in the pure analyzer.** `IndexHygieneAnalyzer` must never emit
+  a finding for a `IndexInfo.guarded()` index (unique / PK / FK / constraint-backing). `CatalogReader`
+  computes that guard as one boolean at the edge (`constraint_backed` folds in FK-column coverage);
+  the analyzer only trusts `guarded()`. "Unused" comes from a persisted scan **window**, never a
+  single `idx_scan` read — a backwards delta is a reset, so it's inconclusive, not "unused".
 - **One connection per scan.** HypoPG hypothetical indexes are session-local, so the whole
   scan runs on a single `SingleConnectionDataSource` (`DataSources.forScan`). Don't open a second
   connection in the scan path.

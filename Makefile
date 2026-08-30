@@ -6,16 +6,22 @@ DB_USER ?= pglens
 MON_DB  ?= pglens_demo
 META_DB ?= pglens_meta
 
+# Agent identity for the local stack — must match the monitored_dbs row `make register` creates and
+# the agent service's env in docker-compose.yml.
+AGENT_DB_NAME ?= demo
+AGENT_TOKEN   ?= devtoken
+
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup test smoke down clean logs ps psql-monitored psql-metadata lint
+.PHONY: help up seed reseed warmup register test smoke bench down clean logs ps psql-monitored psql-metadata lint
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| sort \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
 
-up: ## Build images and start both databases, waiting for health
+up: ## Build jars + images and start the full stack (dbs + server + agent), waiting for health
 	@docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docker Desktop"; exit 1; }
+	./gradlew :server:bootJar :agent:bootJar
 	$(COMPOSE) up -d --build --wait
 
 seed: ## Load demo data (idempotent; skips if already seeded)
@@ -29,8 +35,19 @@ reseed: ## Wipe and reload demo data
 warmup: ## Replay slow queries so pg_stat_statements accumulates stats
 	bash demo/warmup.sh
 
+register: ## Register the demo agent (db name + token hash) so it can authenticate — run after `make up`
+	$(COMPOSE) exec -T metadata-db psql -v ON_ERROR_STOP=1 -q -U $(DB_USER) -d $(META_DB) -c \
+	  "CREATE EXTENSION IF NOT EXISTS pgcrypto; \
+	   INSERT INTO monitored_dbs (name, host, agent_token_hash) \
+	   VALUES ('$(AGENT_DB_NAME)', 'monitored-db', encode(digest('$(AGENT_TOKEN)', 'sha256'), 'hex')) \
+	   ON CONFLICT (name) DO UPDATE SET agent_token_hash = EXCLUDED.agent_token_hash;"
+	@echo "Registered agent db '$(AGENT_DB_NAME)'. The agent authenticates on its next cycle."
+
 test smoke: ## Run the smoke test (reproducibility gate + Phase 1 oracle)
 	bash scripts/smoke_test.sh
+
+bench: ## Dogfood benchmark — measure PgLens's own trend query, before/after the time-series index (KEEP=1 keeps the container)
+	bash scripts/dogfood_benchmark.sh
 
 lint: ## Lint shell, Dockerfile, and SQL (skips linters that aren't installed)
 	bash scripts/lint.sh
