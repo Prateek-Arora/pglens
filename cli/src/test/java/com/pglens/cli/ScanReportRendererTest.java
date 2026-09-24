@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pglens.engine.hygiene.WriteLoad;
 import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.Finding.Confidence;
@@ -15,6 +16,7 @@ import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ScanReport;
+import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TargetInfo;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
@@ -50,7 +52,14 @@ class ScanReportRendererTest {
 
     // Cross-query section + near-duplicate merge note.
     assertThat(out).contains("Top index recommendations (planner-validated");
-    assertThat(out).contains("(covered)", "served by idx_orders_customer_id_created_at");
+    assertThat(out)
+        .contains(
+            "(covered)",
+            "served by idx_orders_customer_id_created_at (HypoPG-validated against query #222");
+
+    // Phase 2.5: the write-load section with its real counts (ADR-0038).
+    assertThat(out)
+        .contains("Table write load", "orders: Write-dominant table: 95,000 rows written");
 
     // Honesty notes always present.
     assertThat(out).contains("Notes", "generic-plan planner estimates");
@@ -61,7 +70,11 @@ class ScanReportRendererTest {
     String json = ScanReportRenderer.toJson(sampleReport());
     JsonNode root = new ObjectMapper().readTree(json);
 
-    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.0");
+    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.1");
+    assertThat(root.get("tableWriteLoad").get(0).get("level").asText()).isEqualTo("WRITE_DOMINANT");
+    // Derived flags are part of the 1.1 contract, so a JSON consumer needn't recompute them.
+    assertThat(root.get("topRecommendations").get(0).has("actionable")).isTrue();
+    assertThat(root.get("topRecommendations").get(0).has("scoreBasis")).isTrue();
     assertThat(root.get("target").get("database").asText()).isEqualTo("pglens_demo");
     assertThat(root.get("queries")).hasSize(3);
     assertThat(root.get("topRecommendations")).isNotEmpty();
@@ -80,6 +93,7 @@ class ScanReportRendererTest {
             ScanReport.SCHEMA_VERSION,
             "2026-08-25T00:00:00Z",
             new TargetInfo("localhost", "pglens_demo", "16.4", List.of("hypopg")),
+            List.of(),
             List.of(),
             List.of(),
             List.of("Index cost deltas are HypoPG generic-plan planner estimates."));
@@ -188,7 +202,14 @@ class ScanReportRendererTest {
     // Rank exactly as the engine does: weight each rec by its query's real total time.
     List<Recommender.Weighted> weighted = new ArrayList<>();
     weight(weighted, queries);
-    List<RankedRecommendation> top = new Recommender().rank(weighted);
+    // …then, as the engine does, check each subsumed rec's query against the general index.
+    List<RankedRecommendation> top =
+        new Recommender()
+            .rank(weighted).stream()
+                .map(
+                    r ->
+                        r.subsumed() ? r.withCoverage(q1.recommendations().get(0).validation()) : r)
+                .toList();
 
     return new ScanReport(
         ScanReport.SCHEMA_VERSION,
@@ -196,6 +217,9 @@ class ScanReportRendererTest {
         new TargetInfo("localhost", "pglens_demo", "16.4", List.of("hypopg", "pg_stat_statements")),
         queries,
         top,
+        List.of(
+            WriteLoad.assess(
+                "orders", new TableActivity(90_000, 5_000, 0, 20_000), "over the test window")),
         List.of(
             "Index cost deltas are HypoPG generic-plan planner estimates, not runtime measurements.",
             "GIN/GiST recommendations are surfaced but not planner-validated."));

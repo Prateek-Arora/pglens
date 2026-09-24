@@ -38,6 +38,18 @@ class CatalogReaderIntegrationTest {
   }
 
   @Test
+  void carriesCumulativeReadWriteCountersForEveryTable() {
+    // Real pg_stat_user_tables counters (zero on a fresh schema), never absent (ADR-0038).
+    assertThat(catalog.tables().values())
+        .allSatisfy(
+            t -> {
+              assertThat(t.activity()).isNotNull();
+              assertThat(t.activity().tuplesWritten()).isNotNegative();
+              assertThat(t.activity().tuplesRead()).isNotNegative();
+            });
+  }
+
+  @Test
   void seesEveryDemoTable() {
     assertThat(catalog.tables().keySet())
         .contains("customers", "products", "orders", "order_items", "events");

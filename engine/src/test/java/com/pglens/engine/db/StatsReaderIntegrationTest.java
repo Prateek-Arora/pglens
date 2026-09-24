@@ -64,7 +64,7 @@ class StatsReaderIntegrationTest {
     jdbc.queryForObject("SELECT count(*) FROM hypopg()", Long.class);
     for (int i = 0; i < 3; i++) {
       jdbc.queryForObject(
-          DataSources.INTROSPECTION_MARKER + "SELECT count(*) FROM pg_class WHERE relkind = 'r'",
+          DataSources.introspection("SELECT count(*) FROM pg_class WHERE relkind = 'r'"),
           Long.class);
     }
 

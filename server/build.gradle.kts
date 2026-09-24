@@ -61,6 +61,11 @@ val integrationTest by
       classpath = sourceSets.test.get().runtimeClasspath
       useJUnitPlatform { includeTags("it") }
       shouldRunAfter(tasks.test)
+      // Monitored image under test: the PG16 default, or another major for the CI compatibility
+      // job (`-PmonitoredImage=pglens/monitored-db:pg17`, ADR-0036).
+      systemProperty(
+          "pglens.monitoredImage",
+          providers.gradleProperty("monitoredImage").getOrElse("pglens/monitored-db:0.0.0"))
     }
 
 tasks.named("check") {

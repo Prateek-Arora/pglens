@@ -62,6 +62,15 @@ paths:
   anti-join), never merely "quiet last window". The cross-query `windowTotals`/`newQueries` scans ride
   the `V4` `BRIN(captured_at)` trend index (ADR-0033); `newQueries` is anti-join-bound (PK-served), so
   the BRIN helps it little — don't add a second index chasing that (`docs/benchmarks.md`).
+- **Phase 2.5 (ADR-0038).** `recordResult` persists the edge's value-range + footprint evidence
+  (NULL when absent) and scores with the engine's `RankingScore.drop` + `score_basis` — never a
+  second formula. Per-table read/write counters are a **time-series** in `table_stats` (appended by
+  `CatalogRepository.recordTableStats`, windowed by `activityWindows`: ≥2 snapshots, a backwards
+  counter = reset = dropped). The analysis pass also enqueues `CoverageChecks.missing` as ordinary
+  `(queryid, ddl)` jobs (same idempotent + cooldown enqueue). `AdviceService` is the per-index read
+  model for Phase 4: group validated recs by DDL (summing only estimates validated against that
+  exact index), redundancy only when a wider index was validated for **all** the narrower one's
+  queries, plus write load.
 - **Auth is one choke point** (ADR-0027): the `AuthInterceptor` resolves the `x-pglens-token` header
   to a `MonitoredDb` in the gRPC `Context`; services read the authenticated db from there and never
   trust a `db_name` off the wire. Health is intentionally unauthenticated.

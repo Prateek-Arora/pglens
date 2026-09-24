@@ -1,15 +1,22 @@
 package com.pglens.engine.db;
 
+import com.pglens.engine.estimate.EqualityParameterLocator;
+import com.pglens.engine.estimate.ValueRanges;
 import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.IndexCandidate;
+import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
+import com.pglens.engine.model.ValueRangeEstimate;
 import com.pglens.engine.parse.PlanParser;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
@@ -23,8 +30,17 @@ import org.springframework.jdbc.core.ResultSetExtractor;
  * <p>Runs on the single scan connection (HypoPG is session-local) and resets after every candidate,
  * so none leak. GIN/GiST and a missing hypopg degrade to <em>not planner-validated</em> (never a
  * fabricated number), never a failed scan. Every cost is a generic-plan planner estimate.
+ *
+ * <p>A planner-validated verdict also gets two pieces of evidence (ADR-0038): the index's {@link
+ * IndexFootprint} (HypoPG size estimate vs the table's heap) and — when the index's leading column
+ * is equality-compared to a {@code $N} — a {@link ValueRangeEstimate}: the query re-planned with
+ * real {@code pg_stats} values substituted for that {@code $N}, without and with the index. The
+ * values are used only for planning here at the edge and never leave it.
  */
 public class HypoPGValidator {
+
+  /** At most this many of a query's equality parameters are varied (bounds extra planning). */
+  static final int MAX_VARIED_PARAMS = 3;
 
   /** Default minimum relative cost drop to accept a candidate (provisional; see plan/spike). */
   public static final double DEFAULT_MIN_RELATIVE_IMPROVEMENT = 0.15;
@@ -34,6 +50,7 @@ public class HypoPGValidator {
   private final PlanParser parser;
   private final double minRelativeImprovement;
   private final boolean hypopgAvailable;
+  private final ValueSampler sampler;
 
   public HypoPGValidator(JdbcTemplate jdbc) {
     this(jdbc, DEFAULT_MIN_RELATIVE_IMPROVEMENT);
@@ -45,6 +62,7 @@ public class HypoPGValidator {
     this.parser = new PlanParser();
     this.minRelativeImprovement = minRelativeImprovement;
     this.hypopgAvailable = detectHypopg();
+    this.sampler = new ValueSampler(jdbc);
   }
 
   /** Whether hypopg is installed on the target (else all candidates degrade to not-validated). */
@@ -61,7 +79,7 @@ public class HypoPGValidator {
       return List.of();
     }
     reset(); // clean slate before the baseline
-    Double baselineCost = captureBaseline(normalizedSql);
+    PlanNode baseline = captureBaseline(normalizedSql);
 
     List<Recommendation> out = new ArrayList<>();
     for (IndexCandidate candidate : candidates) {
@@ -70,7 +88,7 @@ public class HypoPGValidator {
               candidate,
               evaluate(
                   normalizedSql,
-                  baselineCost,
+                  baseline,
                   candidate.ddl(),
                   candidate.plannerValidatable(),
                   candidate.notValidatableReason())));
@@ -87,7 +105,7 @@ public class HypoPGValidator {
    */
   public ValidationResult validateDdl(String normalizedSql, String ddl, AccessMethod accessMethod) {
     reset(); // clean slate before the baseline
-    Double baselineCost = captureBaseline(normalizedSql);
+    PlanNode baseline = captureBaseline(normalizedSql);
     boolean validatable = accessMethod.hypoPgSupported();
     String notValidatableReason =
         validatable
@@ -95,22 +113,15 @@ public class HypoPGValidator {
             : "HypoPG cannot simulate a "
                 + accessMethod.name()
                 + " index — surfaced but not planner-validated.";
-    return evaluate(normalizedSql, baselineCost, ddl, validatable, notValidatableReason);
+    return evaluate(normalizedSql, baseline, ddl, validatable, notValidatableReason);
   }
 
-  private Double captureBaseline(String normalizedSql) {
-    return capturer
-        .captureGenericPlanJson(normalizedSql)
-        .map(j -> parser.parse(j).totalCost())
-        .orElse(null);
+  private PlanNode captureBaseline(String normalizedSql) {
+    return capturer.captureGenericPlanJson(normalizedSql).map(parser::parse).orElse(null);
   }
 
   private ValidationResult evaluate(
-      String sql,
-      Double baselineCost,
-      String ddl,
-      boolean validatable,
-      String notValidatableReason) {
+      String sql, PlanNode baseline, String ddl, boolean validatable, String notValidatableReason) {
     if (!hypopgAvailable) {
       return notValidated(
           "Not planner-validated — hypopg is not installed on the target "
@@ -119,14 +130,19 @@ public class HypoPGValidator {
     if (!validatable) {
       return notValidated(notValidatableReason);
     }
-    if (baselineCost == null) {
+    if (baseline == null) {
       return notValidated(
           "Not planner-validated — could not capture a baseline plan for this query.");
     }
+    double baselineCost = baseline.totalCost();
 
+    ValidationResult result;
+    IndexFootprint footprint = null;
+    List<Variant> variants = List.of();
+    List<Double> costsWithIndex = List.of();
     try {
-      String hypoName = createHypotheticalIndex(ddl);
-      if (hypoName == null) {
+      HypoIndex hypo = createHypotheticalIndex(ddl);
+      if (hypo == null) {
         return notValidated("Not planner-validated — hypopg did not create the index.");
       }
       Optional<String> replanned = capturer.captureGenericPlanJson(sql);
@@ -135,10 +151,17 @@ public class HypoPGValidator {
             "Not planner-validated — could not re-plan with the hypothetical index.");
       }
       PlanNode plan = parser.parse(replanned.get());
-      boolean used = usesIndex(plan, hypoName);
+      boolean used = usesIndex(plan, hypo.name());
       double afterCost = plan.totalCost();
       double relative = baselineCost > 0 ? (baselineCost - afterCost) / baselineCost : 0.0;
-      return verdict(baselineCost, afterCost, relative, used);
+      result = verdict(baselineCost, afterCost, relative, used);
+      if (result.isRecommended()) {
+        // Evidence is gathered only for a validated index, while it still exists (ADR-0038).
+        footprint =
+            footprint(hypo, IndexCandidate.parseDdl(ddl).map(IndexCandidate::table).orElse(null));
+        variants = variants(sql, baseline);
+        costsWithIndex = planCosts(variants);
+      }
     } catch (DataAccessException unsupportedOrError) {
       // e.g. an access method HypoPG can't simulate — surface labeled, never crash the scan.
       return notValidated(
@@ -148,6 +171,110 @@ public class HypoPGValidator {
     } finally {
       reset(); // drop this candidate's hypothetical index before the next
     }
+    // The same variants, planned now that the hypothetical index is gone.
+    ValueRangeEstimate range = valueRange(variants, planCosts(variants), costsWithIndex, result);
+    return result.withEvidence(range, footprint);
+  }
+
+  // --- value-range + footprint evidence (ADR-0038) ---------------------------------------------
+
+  /** The query with one sampled value substituted for the leading column's {@code $N}. */
+  private record Variant(String column, String sql, Double frequency) {}
+
+  /**
+   * One variant per sampled value of each of the query's equality parameters (up to {@value
+   * #MAX_VARIED_PARAMS} of them, the others left generic); none when it has no equality parameter
+   * (the generic figure then stands). Varying every equality parameter — not just the index's own
+   * column — is what catches a join index whose fetched rows are decided by another table's filter.
+   */
+  private List<Variant> variants(String sql, PlanNode baseline) {
+    List<Variant> out = new ArrayList<>();
+    List<EqualityParameterLocator.Binding> bindings = EqualityParameterLocator.all(baseline);
+    for (EqualityParameterLocator.Binding b :
+        bindings.subList(0, Math.min(MAX_VARIED_PARAMS, bindings.size()))) {
+      Pattern placeholder = Pattern.compile("\\$" + b.param() + "(?!\\d)");
+      for (ValueSampler.SampledValue v : sampler.sample(b.table(), b.column())) {
+        String substituted =
+            placeholder.matcher(sql).replaceAll(Matcher.quoteReplacement(v.literal()));
+        out.add(new Variant(b.table() + "." + b.column(), substituted, v.frequency()));
+      }
+    }
+    return out;
+  }
+
+  /** Total cost of each variant's generic plan (null where it can't be planned — skipped later). */
+  private List<Double> planCosts(List<Variant> variants) {
+    List<Double> costs = new ArrayList<>(variants.size());
+    for (Variant v : variants) {
+      costs.add(
+          capturer
+              .captureGenericPlanJson(v.sql())
+              .map(j -> parser.parse(j).totalCost())
+              .orElse(null));
+    }
+    return costs;
+  }
+
+  private ValueRangeEstimate valueRange(
+      List<Variant> variants, List<Double> before, List<Double> after, ValidationResult result) {
+    if (variants.isEmpty() || after.size() != variants.size()) {
+      return null;
+    }
+    List<ValueRanges.Sample> samples = new ArrayList<>(variants.size());
+    for (int i = 0; i < variants.size(); i++) {
+      Variant v = variants.get(i);
+      samples.add(new ValueRanges.Sample(v.column(), v.frequency(), before.get(i), after.get(i)));
+    }
+    double generic = result.relativeDelta() == null ? 0.0 : result.relativeDelta();
+    return ValueRanges.of(samples, generic, minRelativeImprovement).orElse(null);
+  }
+
+  /** HypoPG's size estimate for the hypothetical index vs the table's heap, or null if unknown. */
+  private IndexFootprint footprint(HypoIndex hypo, String table) {
+    if (table == null) {
+      return null;
+    }
+    try {
+      return jdbc.query(
+          DataSources.introspection(
+              "SELECT hypopg_relation_size(?::oid) AS idx, "
+                  + "pg_relation_size(to_regclass(?)) AS tbl"),
+          (ResultSetExtractor<IndexFootprint>)
+              rs -> {
+                if (!rs.next()) {
+                  return null;
+                }
+                long idx = rs.getLong("idx");
+                long tbl = rs.getLong("tbl");
+                return new IndexFootprint(idx, tbl, footprintLabel(idx, tbl));
+              },
+          hypo.oid(),
+          table);
+    } catch (DataAccessException sizeUnavailable) {
+      return null;
+    }
+  }
+
+  private static String footprintLabel(long indexBytes, long tableBytes) {
+    String size = "Estimated index size %s (HypoPG estimate)".formatted(bytes(indexBytes));
+    if (tableBytes > 0) {
+      size +=
+          ", ≈%.0f%% of the table's %s — every write to the indexed columns also maintains it."
+              .formatted(100.0 * indexBytes / tableBytes, bytes(tableBytes));
+    } else {
+      size += ".";
+    }
+    return size;
+  }
+
+  private static String bytes(long b) {
+    if (b >= 1L << 30) {
+      return String.format(Locale.US, "%.1f GB", b / (double) (1L << 30));
+    }
+    if (b >= 1L << 20) {
+      return String.format(Locale.US, "%.1f MB", b / (double) (1L << 20));
+    }
+    return String.format(Locale.US, "%d kB", Math.max(1, b / 1024));
   }
 
   private ValidationResult verdict(double before, double after, double relative, boolean used) {
@@ -177,13 +304,17 @@ public class HypoPGValidator {
         label == null ? "Not planner-validated." : label);
   }
 
-  private String createHypotheticalIndex(String ddl) {
+  /** A HypoPG hypothetical index: its oid (for {@code hypopg_relation_size}) and plan name. */
+  private record HypoIndex(long oid, String name) {}
+
+  private HypoIndex createHypotheticalIndex(String ddl) {
     // hypopg_create_index(text) parses the CREATE INDEX statement and returns (indexrelid,
     // indexname); it ignores our index name and assigns its own, which is what appears in EXPLAIN.
     String statement = ddl.strip().replaceAll(";\\s*$", "");
     return jdbc.query(
-        "SELECT indexname FROM hypopg_create_index(?)",
-        (ResultSetExtractor<String>) rs -> rs.next() ? rs.getString(1) : null,
+        "SELECT indexrelid::bigint AS oid, indexname FROM hypopg_create_index(?)",
+        (ResultSetExtractor<HypoIndex>)
+            rs -> rs.next() ? new HypoIndex(rs.getLong("oid"), rs.getString("indexname")) : null,
         statement);
   }
 
@@ -195,8 +326,8 @@ public class HypoPGValidator {
     try {
       Integer n =
           jdbc.queryForObject(
-              DataSources.INTROSPECTION_MARKER
-                  + "SELECT count(*) FROM pg_extension WHERE extname = 'hypopg'",
+              DataSources.introspection(
+                  "SELECT count(*) FROM pg_extension WHERE extname = 'hypopg'"),
               Integer.class);
       return n != null && n > 0;
     } catch (DataAccessException absent) {

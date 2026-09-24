@@ -65,7 +65,8 @@ class FlywayMigrationIntegrationTest {
             "index_stats",
             "index_hygiene", // V3
             "recommendations",
-            "validation_jobs");
+            "validation_jobs",
+            "table_stats"); // V6
   }
 
   @Test
@@ -73,14 +74,14 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(5); // V1 + V2 + V3 + V4 + V5
+    assertThat(applied).isEqualTo(6); // V1 … V6
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("5");
+    assertThat(version).isEqualTo("6");
   }
 
   /**

@@ -7,6 +7,7 @@ import com.pglens.engine.db.HypoPGValidator;
 import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.db.StatsReader;
 import com.pglens.engine.detect.AntiPatternDetector;
+import com.pglens.engine.hygiene.WriteLoad;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.Finding;
@@ -19,14 +20,19 @@ import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ScanReport;
 import com.pglens.engine.model.StatementStat;
+import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.engine.model.TargetInfo;
 import com.pglens.engine.parse.PlanParser;
 import com.pglens.engine.rank.Recommender;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -106,7 +112,8 @@ public final class PgLensEngine implements AutoCloseable {
         weighted.add(new Recommender.Weighted(s.queryId(), s.totalExecTimeMs(), r));
       }
     }
-    List<RankedRecommendation> topRecommendations = recommender.rank(weighted);
+    List<RankedRecommendation> topRecommendations =
+        checkCoverage(recommender.rank(weighted), stats);
 
     return new ScanReport(
         ScanReport.SCHEMA_VERSION,
@@ -114,7 +121,57 @@ public final class PgLensEngine implements AutoCloseable {
         targetInfo(),
         queries,
         topRecommendations,
+        writeLoad(topRecommendations, catalog),
         buildNotes());
+  }
+
+  /**
+   * For each rec subsumed by a more general one, HypoPG-validates that general index against the
+   * subsumed rec's own query (ADR-0038): only a pass makes the smaller index redundant. An exact
+   * duplicate (same DDL wanted by two queries) was already validated against this query, so its own
+   * verdict is the check — no extra planning.
+   */
+  private List<RankedRecommendation> checkCoverage(
+      List<RankedRecommendation> ranked, List<StatementStat> stats) {
+    Map<Long, String> sqlByQuery = new HashMap<>();
+    stats.forEach(s -> sqlByQuery.put(s.queryId(), s.query()));
+    List<RankedRecommendation> out = new ArrayList<>(ranked.size());
+    for (RankedRecommendation r : ranked) {
+      if (!r.subsumed()) {
+        out.add(r);
+      } else if (r.subsumedByDdl().equals(r.candidate().ddl())) {
+        out.add(r.withCoverage(r.recommendation().validation()));
+      } else {
+        out.add(
+            r.withCoverage(
+                validator.validateDdl(
+                    sqlByQuery.get(r.queryId()), r.subsumedByDdl(), r.candidate().accessMethod())));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Write-load of each table that has a planner-validated recommendation, from the catalog's
+   * cumulative counters — so the window is "since the database's stats reset" and says so.
+   */
+  private List<TableWriteLoad> writeLoad(
+      List<RankedRecommendation> ranked, CatalogSnapshot catalog) {
+    Set<String> tables = new LinkedHashSet<>();
+    ranked.forEach(r -> tables.add(r.candidate().table()));
+    if (tables.isEmpty()) {
+      return List.of();
+    }
+    String window =
+        catalogReader
+            .databaseStatsReset()
+            .map(reset -> "since the database's statistics were reset at " + reset)
+            .orElse("since statistics collection began (never reset)");
+    List<TableWriteLoad> out = new ArrayList<>();
+    for (String table : tables) {
+      catalog.table(table).ifPresent(t -> out.add(WriteLoad.assess(table, t.activity(), window)));
+    }
+    return out;
   }
 
   /** Drill into a single statement by {@code pg_stat_statements} queryid, if it is present. */
@@ -159,9 +216,9 @@ public final class PgLensEngine implements AutoCloseable {
   private List<String> installedExtensions() {
     try {
       return jdbc.queryForList(
-          DataSources.INTROSPECTION_MARKER
-              + "SELECT extname FROM pg_extension "
-              + "WHERE extname IN ('hypopg', 'pg_stat_statements', 'vector') ORDER BY extname",
+          DataSources.introspection(
+              "SELECT extname FROM pg_extension "
+                  + "WHERE extname IN ('hypopg', 'pg_stat_statements', 'vector') ORDER BY extname"),
           String.class);
     } catch (DataAccessException e) {
       return List.of();
@@ -176,6 +233,11 @@ public final class PgLensEngine implements AutoCloseable {
         "Generic-plan selectivity uses the planner's default assumptions and can overstate wins on "
             + "skewed columns; the real measured signal beside each is the query's "
             + "pg_stat_statements mean/total time.");
+    notes.add(
+        "Where an index's leading column is compared by equality, PgLens also re-plans the query "
+            + "with real common and typical values from pg_stats and ranks by the lowest estimate, "
+            + "so a hot value can't inflate the ranking. Sampled values never leave this "
+            + "session; only their frequencies are reported.");
     notes.add(
         "GIN/GiST recommendations (jsonb, full-text, LIKE '%…%') are surfaced but not "
             + "planner-validated — HypoPG cannot simulate those access methods.");

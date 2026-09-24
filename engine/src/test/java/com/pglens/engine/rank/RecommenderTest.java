@@ -1,13 +1,16 @@
 package com.pglens.engine.rank;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.IndexCandidate;
 import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
+import com.pglens.engine.model.ScoreBasis;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
+import com.pglens.engine.model.ValueRangeEstimate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -105,6 +108,62 @@ class RecommenderTest {
   }
 
   // --- fixtures ---------------------------------------------------------------
+
+  @Test
+  void ranksByTheValueRangeFloorWhenOneExists() {
+    // Same query weight; the generic plan says 99 % for both, but one index's worst common value
+    // gains only 20 % — it must rank below the index whose floor is 60 % (ADR-0038).
+    Recommendation hotKey = withRange(validated(btree("orders", "customer_id"), 0.99), 0.20, 0.018);
+    Recommendation evenKey =
+        withRange(validated(btree("events", "customer_id"), 0.99), 0.60, 0.001);
+
+    List<RankedRecommendation> ranked =
+        recommender.rank(List.of(w(1, 1000, hotKey), w(2, 1000, evenKey)));
+
+    assertThat(ranked.get(0).candidate().table()).isEqualTo("events");
+    assertThat(ranked.get(0).estimatedMsSaved()).isEqualTo(600.0);
+    assertThat(ranked.get(0).scoreBasis()).isEqualTo(ScoreBasis.VALUE_RANGE_FLOOR);
+    assertThat(ranked.get(1).estimatedMsSaved()).isCloseTo(200.0, within(1e-9));
+  }
+
+  @Test
+  void usesTheGenericFigureWithoutARange() {
+    List<RankedRecommendation> ranked =
+        recommender.rank(List.of(w(1, 100, validated(btree("t", "a"), 0.5))));
+    assertThat(ranked.get(0).scoreBasis()).isEqualTo(ScoreBasis.GENERIC_PLAN);
+    assertThat(ranked.get(0).estimatedMsSaved()).isEqualTo(50.0);
+  }
+
+  @Test
+  void aSubsumedRecStaysUnresolvedUntilItsCoverageIsChecked() {
+    List<RankedRecommendation> ranked =
+        recommender.rank(
+            List.of(
+                w(1, 100, validated(btree("orders", "customer_id"), 0.9)),
+                w(2, 500, validated(btree("orders", "customer_id", "created_at"), 0.9))));
+    RankedRecommendation prefix = row(ranked, "idx_orders_customer_id");
+
+    assertThat(prefix.subsumedByDdl())
+        .isEqualTo(
+            "CREATE INDEX idx_orders_customer_id_created_at ON orders (customer_id, created_at);");
+    assertThat(prefix.coverage()).isNull();
+    assertThat(prefix.actionable()).isFalse();
+
+    // The general index fails the prefix query's gate → the prefix index is still needed.
+    RankedRecommendation failed = prefix.withCoverage(suppressed(btree("x", "y")).validation());
+    assertThat(failed.actionable()).isTrue();
+    assertThat(failed.coveredBySubsumer()).isFalse();
+    // …and passes it → redundant.
+    RankedRecommendation passed = prefix.withCoverage(validated(btree("x", "y"), 0.8).validation());
+    assertThat(passed.actionable()).isFalse();
+    assertThat(passed.coveredBySubsumer()).isTrue();
+  }
+
+  private static Recommendation withRange(Recommendation r, double worst, double frequency) {
+    ValueRangeEstimate range =
+        new ValueRangeEstimate("t.c", 4, worst, frequency, 0.99, "range label");
+    return new Recommendation(r.candidate(), r.validation().withEvidence(range, null));
+  }
 
   private static IndexCandidate btree(String table, String... columns) {
     return IndexCandidate.of(table, List.of(columns), AccessMethod.BTREE, List.of("R1"), "test");

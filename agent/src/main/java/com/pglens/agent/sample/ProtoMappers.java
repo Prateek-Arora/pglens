@@ -1,9 +1,12 @@
 package com.pglens.agent.sample;
 
+import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.StatementStat;
+import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TableInfo;
 import com.pglens.engine.model.ValidationResult;
+import com.pglens.engine.model.ValueRangeEstimate;
 import com.pglens.proto.v1.IndexStat;
 import com.pglens.proto.v1.QueryStatSample;
 import com.pglens.proto.v1.QueryText;
@@ -70,8 +73,7 @@ public final class ProtoMappers {
     com.pglens.proto.v1.CatalogSnapshot.Builder builder =
         com.pglens.proto.v1.CatalogSnapshot.newBuilder();
     for (TableInfo table : catalog.tables().values()) {
-      builder.addTables(
-          TableStat.newBuilder().setTableName(table.name()).setEstRows(table.reltuples()).build());
+      builder.addTables(toTableStat(table));
       for (IndexInfo ix : table.indexes()) {
         builder.addIndexes(
             IndexStat.newBuilder()
@@ -97,6 +99,23 @@ public final class ProtoMappers {
    * verdict leaves them unset so the server stores NULL, never a fabricated 0.0 (charter #1). The
    * status enum names mirror the engine's exactly, so the mapping can't drift.
    */
+  /**
+   * One table's catalog entry: its row estimate plus the cumulative read/write counters the server
+   * turns into a write-load window (ADR-0038). Missing counters are sent as 0 ("no activity").
+   */
+  static TableStat toTableStat(TableInfo table) {
+    TableStat.Builder b =
+        TableStat.newBuilder().setTableName(table.name()).setEstRows(table.reltuples());
+    TableActivity a = table.activity();
+    if (a != null) {
+      b.setNTupIns(a.inserted())
+          .setNTupUpd(a.updated())
+          .setNTupDel(a.deleted())
+          .setTuplesRead(a.tuplesRead());
+    }
+    return b.build();
+  }
+
   public static ValidateResult toValidateResult(long jobId, ValidationResult vr) {
     ValidateResult.Builder builder =
         ValidateResult.newBuilder()
@@ -112,6 +131,26 @@ public final class ProtoMappers {
     }
     if (vr.relativeDelta() != null) {
       builder.setRelativeDrop(vr.relativeDelta());
+    }
+    // Phase 2.5 evidence (ADR-0038): frequencies and drops only — sampled values stay at the edge.
+    ValueRangeEstimate range = vr.valueRange();
+    if (range != null) {
+      builder
+          .setRangeWorstDrop(range.worstRelativeDrop())
+          .setRangeBestDrop(range.bestRelativeDrop())
+          .setRangeValuesSampled(range.valuesSampled())
+          .setRangeColumn(range.column())
+          .setRangeLabel(range.label());
+      if (range.worstValueFrequency() != null) {
+        builder.setRangeWorstFrequency(range.worstValueFrequency());
+      }
+    }
+    IndexFootprint size = vr.footprint();
+    if (size != null) {
+      builder
+          .setEstIndexBytes(size.estimatedIndexBytes())
+          .setTableBytes(size.tableBytes())
+          .setFootprintLabel(size.label());
     }
     return builder.build();
   }

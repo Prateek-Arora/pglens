@@ -25,6 +25,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -80,7 +81,9 @@ class AgentToServerFlowIntegrationTest {
   @Container
   static final PostgreSQLContainer<?> MONITORED =
       new PostgreSQLContainer<>(
-              DockerImageName.parse("pglens/monitored-db:0.0.0")
+              // Overridable so the CI compatibility job can run this flow on PG17/18 (ADR-0036).
+              DockerImageName.parse(
+                      System.getProperty("pglens.monitoredImage", "pglens/monitored-db:0.0.0"))
                   .asCompatibleSubstituteFor("postgres"))
           .withDatabaseName("pglens_demo")
           .withCommand(
@@ -252,6 +255,23 @@ class AgentToServerFlowIntegrationTest {
             Double.class,
             queryid);
     assertThat(after).isLessThan(before); // a real, labeled generic-plan cost drop
+
+    // Phase 2.5 (ADR-0038): the edge also sent a value range (the query compares customer_id by
+    // equality) and HypoPG's footprint; the score says which drop it used.
+    Map<String, Object> evidence =
+        metadata.queryForMap(
+            "SELECT score_basis, range_worst_drop, range_values_sampled, range_label, "
+                + "est_index_bytes, footprint_label FROM recommendations "
+                + "WHERE queryid = ? AND status = 'PLANNER_VALIDATED' LIMIT 1",
+            queryid);
+    assertThat(evidence.get("score_basis")).isEqualTo("VALUE_RANGE_FLOOR");
+    assertThat(evidence.get("range_worst_drop")).isNotNull();
+    assertThat((Integer) evidence.get("range_values_sampled")).isPositive();
+    assertThat((Long) evidence.get("est_index_bytes")).isPositive();
+    assertThat((String) evidence.get("footprint_label")).contains("HypoPG estimate");
+    // The agent also shipped table counters, so the advice view can build a write-load window.
+    assertThat(metadata.queryForObject("SELECT count(*) FROM table_stats", Integer.class))
+        .isPositive();
   }
 
   @Test

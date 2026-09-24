@@ -78,6 +78,13 @@ message CatalogSnapshot {
 message TableStat {
   string table_name = 1;
   int64 est_rows = 2;                 // reltuples estimate
+  // Phase 2.5 (ADR-0038): CUMULATIVE pg_stat_user_tables counters — the server deltas a persisted
+  // series of them into a window for the write-load note. Real counters, never estimates. An older
+  // agent leaves them 0, which the server reads as "no activity" (says nothing rather than guess).
+  int64 n_tup_ins = 3;
+  int64 n_tup_upd = 4;
+  int64 n_tup_del = 5;
+  int64 tuples_read = 6;              // seq_tup_read + idx_tup_fetch
 }
 
 message IndexStat {
@@ -138,6 +145,20 @@ message ValidateResult {
   optional double relative_drop = 5;
   bool used = 6;                      // planner used the hypothetical index
   string reason = 7;                  // honesty label (e.g. GIN not planner-validatable)
+
+  // Phase 2.5 evidence (ADR-0038), present ONLY on a PLANNER_VALIDATED result that has it.
+  // Value range: the query re-planned with real pg_stats values for its equality parameters. The
+  // sampled VALUES never go on the wire (they are real data) — only the worst value's frequency.
+  optional double range_worst_drop = 8;
+  optional double range_worst_frequency = 9;   // unset when the worst case was a typical value
+  optional double range_best_drop = 10;
+  int32 range_values_sampled = 11;
+  string range_column = 12;           // table.column whose value produced the worst case
+  string range_label = 13;
+  // Footprint: HypoPG's size estimate for the index vs the table's heap (a write-cost proxy).
+  optional int64 est_index_bytes = 14;
+  optional int64 table_bytes = 15;
+  string footprint_label = 16;
 }
 
 // Mirrors com.pglens.engine.model.ValidationResult.Status exactly (name-for-name).

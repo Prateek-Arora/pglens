@@ -2,7 +2,7 @@
 
 > End-state architecture and the **deliberate design choices** behind it. Read on demand. Update this file whenever structure changes. The *why* behind each choice also lives in `docs/decisions.md` (linked by ADR id).
 
-_Last updated: 2026-08-29 — end-state target below; Phases 0–2 are implemented (see the "implemented" sections)._
+_Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are implemented (see the "implemented" sections). Supported Postgres: 16+ (ADR-0036)._
 
 ## System diagram (end state)
 
@@ -40,9 +40,31 @@ _Last updated: 2026-08-29 — end-state target below; Phases 0–2 are implement
 ## Deliberate design choices (each ties to the "usable" bar)
 1. **Two Postgres instances, never one** (ADR-0003). The *monitored* DB is touched read-only. PgLens keeps its own *metadata* Postgres with pgvector. Bonus: gives us a real growing schema to dogfood indexing on.
 2. **Deterministic core, LLM as a layer** (ADR-0004). The analyzer is correct and explainable with zero LLM; the LLM only translates to prose. Trustworthy + useful offline.
-3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; proving it helps without building it (minutes on a big table) is the hard, valuable part. HypoPG gives a real planner-cost delta — the honest "expected improvement." Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*.
+3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; checking it helps without building it (minutes on a big table) is the valuable part. HypoPG gives the real planner's cost *estimate* with the index — the honest "expected improvement", always labeled an estimate. Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*. **Not a differentiator on its own** — Dexter, PoWA, Supabase `index_advisor` and Postgres MCP Pro use HypoPG too (ADR-0037); PgLens's edge is the integrated, history-aware loop on pgss + hypopg only.
 4. **Local LLM (Ollama) for privacy** (ADR-0006). Query text never leaves the user's infra — the sharpest differentiator vs hosted AI-EXPLAIN tools.
 5. **gRPC for ingest + edge-pull validation** (ADR-0001 stack; topology ADR-0023, lib ADR-0025). Stats flow agent → server as short-lived **client-streaming** calls; validation work is **server-streamed** to the agent and results **client-streamed** back — three of gRPC's four modes, chosen over live-bidi so calls stay short-lived and load-balanceable. A real, justified gRPC use case (not bolted on).
+
+## Recommendation accuracy (implemented — Phase 2.5, ADR-0038)
+The engine's *whether* (HypoPG used + ≥ 15 % gate) was already trustworthy; Phase 2.5 fixes the *how
+much* and the *which set*, reusing the same edge-validation path:
+- **Value range.** For a validated index, the validator finds every equality predicate on a bound
+  `$N` in the query's plan and re-plans the query with real `pg_stats` values (top-3 MCVs + a typical
+  histogram value) substituted for that `$N`, without and with the hypothetical index. It reports the
+  worst and best drop beside the generic one, and ranking uses the **worst case as a floor**
+  (`RankingScore`, shared by CLI + server). Sampled values stay at the edge; only frequencies and drops
+  travel. On the demo this moved `orders(customer_id)` from −98.7 % to its hot-customer −56.7 % and
+  dropped a join index the planner ignores for the hot customer from #1 to last.
+- **Footprint + write load.** HypoPG's size estimate vs the table heap (a per-write cost proxy), and a
+  tuple-level write-load note from `pg_stat_user_tables` (server: a persisted `table_stats` window; CLI:
+  cumulative since the database's stats reset). A note, never a suppression.
+- **Overlap.** When a validated index is a btree prefix of another, the wider one is HypoPG-validated
+  against the narrower one's query (`CoverageChecks`); only a pass makes the narrower redundant.
+  `AdviceService` groups recs per index for the Phase-4 API.
+- **External benchmark.** `make accuracy` builds a TPC-H-derived workload (pinned `tpch-kit`), runs
+  PgLens as `pglens_ro`, then builds every recommended index on the throwaway copy and measures it
+  (`docs/benchmarks.md`).
+- Contracts: `--json` **1.1** (additive), proto `ValidateResult`/`TableStat` optional fields, Flyway
+  **V6**.
 
 ## Collector agent, server & history — gRPC (implemented — Phase 2)
 Phase 1's one-shot CLI became a running two-process system, topology **`a-pull`** (ADR-0023). Two new
@@ -102,7 +124,7 @@ least-privilege **`pglens_ro`** role with no write grant (ADR-0030) — defense 
 
 ## Dev environment (implemented — Phase 0)
 Docker Compose stands up the two Postgres instances (`deploy/compose/`): `monitored-db`
-(custom image = `postgres:16-bookworm` + `postgresql-16-hypopg`; `pg_stat_statements`
+(custom image = `postgres:${PG_MAJOR}-bookworm` + `postgresql-${PG_MAJOR}-hypopg`, `PG_MAJOR` default 16, 17/18 in CI `compat`; `pg_stat_statements`
 loaded via `shared_preload_libraries`) on host port 5433, and `metadata-db`
 (`pgvector/pgvector:0.8.6-pg16`) on 5434. `demo/` holds a reproducible skewed dataset
 and `slow_queries.sql` — the documented, HypoPG-validated slow-query oracle later phases
@@ -133,4 +155,6 @@ from Phase 1 on.
 ## Known architectural risks (see charter §9 + `docs/decisions.md`)
 - Server horizontal scaling: streaming ingest + singleton `@Scheduled` analysis don't scale trivially → make analysis a leader-elected singleton / separate non-scaled component; Phase 5 HPA is a *learning* demo, not real horizontal scaling of stateful work.
 - Index-rec false positives → HypoPG validation gate with a minimum cost-win threshold.
+- Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value-range floors, footprint/write-load notes and prefix-overlap cross-validation; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
+- Postgres-version drift → PG16+ gate + CI `compat` on 17/18 (ADR-0036). PG18 already changed pgss behaviour (leading comments stripped), so new majors get tested, not assumed.
 - LLM hallucination → deterministic core owns all facts; validate suggested DDL parses and matches the analyzer's rec.

@@ -9,6 +9,11 @@ import java.util.List;
  * (the planner-validated recs ranked and near-duplicate-deduped by the {@code Recommender}), and
  * the honesty {@code notes} (generic-plan / HypoPG caveats). Pure model — no I/O.
  *
+ * <p>Contract 1.1 (ADR-0038, additive over 1.0): validations may carry {@code valueRange} and
+ * {@code footprint}; ranked recs carry {@code scoreBasis}, {@code subsumedByDdl} and {@code
+ * coverage}; and {@code tableWriteLoad} lists the write-load of each table that has a validated
+ * recommendation.
+ *
  * <p>A validated recommendation appears twice by design: once under its query ({@link
  * QueryReport#recommendations()}, the full per-query story) and once, ranked and scored, in {@link
  * #topRecommendations()} (the cross-query "indexes to create" summary).
@@ -19,17 +24,19 @@ public record ScanReport(
     TargetInfo target,
     List<QueryReport> queries,
     List<RankedRecommendation> topRecommendations,
+    List<TableWriteLoad> tableWriteLoad,
     List<String> notes) {
 
   /**
    * The frozen {@code --json} contract version. Bump on any breaking field change (Phase 2 reads
    * it).
    */
-  public static final String SCHEMA_VERSION = "1.0";
+  public static final String SCHEMA_VERSION = "1.1";
 
   public ScanReport {
     queries = queries == null ? List.of() : List.copyOf(queries);
     topRecommendations = topRecommendations == null ? List.of() : List.copyOf(topRecommendations);
+    tableWriteLoad = tableWriteLoad == null ? List.of() : List.copyOf(tableWriteLoad);
     notes = notes == null ? List.of() : List.copyOf(notes);
   }
 }

@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import com.pglens.engine.model.CatalogSnapshot;
+import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.StatementStat;
+import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TableInfo;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
+import com.pglens.engine.model.ValueRangeEstimate;
 import com.pglens.proto.v1.IndexStat;
 import com.pglens.proto.v1.QueryStatSample;
 import com.pglens.proto.v1.QueryText;
@@ -143,5 +146,57 @@ class ProtoMappersTest {
     assertThat(proto.hasAfterCost()).isFalse();
     assertThat(proto.hasRelativeDrop()).isFalse();
     assertThat(proto.getReason()).isEqualTo("GIN");
+  }
+
+  @Test
+  void toValidateResultCarriesTheEvidenceButNeverASampledValue() {
+    ValueRangeEstimate range =
+        new ValueRangeEstimate("orders.customer_id", 4, 0.567, 0.018, 0.99, "Across 4 …");
+    IndexFootprint size = new IndexFootprint(4_644_864L, 12_058_624L, "Estimated index size …");
+    ValidationResult vr =
+        new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 13.0, 0.987, true, "validated")
+            .withEvidence(range, size);
+
+    ValidateResult proto = ProtoMappers.toValidateResult(9, vr);
+
+    assertThat(proto.getRangeWorstDrop()).isCloseTo(0.567, within(1e-9));
+    assertThat(proto.getRangeWorstFrequency()).isCloseTo(0.018, within(1e-9));
+    assertThat(proto.getRangeBestDrop()).isCloseTo(0.99, within(1e-9));
+    assertThat(proto.getRangeValuesSampled()).isEqualTo(4);
+    assertThat(proto.getRangeColumn()).isEqualTo("orders.customer_id");
+    assertThat(proto.getEstIndexBytes()).isEqualTo(4_644_864L);
+    assertThat(proto.getTableBytes()).isEqualTo(12_058_624L);
+    // No field on the wire can carry a sampled value — only frequencies and drops (ADR-0038).
+    assertThat(ValidateResult.getDescriptor().getFields())
+        .noneMatch(f -> f.getName().contains("value") && !f.getName().contains("values_sampled"));
+  }
+
+  @Test
+  void aTypicalWorstCaseLeavesTheFrequencyUnsetAndNoEvidenceLeavesAllUnset() {
+    ValidationResult typical =
+        new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 400.0, 0.6, true, "v")
+            .withEvidence(new ValueRangeEstimate("t.c", 2, 0.3, null, 0.9, "l"), null);
+    assertThat(ProtoMappers.toValidateResult(1, typical).hasRangeWorstFrequency()).isFalse();
+    assertThat(ProtoMappers.toValidateResult(1, typical).hasEstIndexBytes()).isFalse();
+
+    ValidateResult bare =
+        ProtoMappers.toValidateResult(
+            2, new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 400.0, 0.6, true, "v"));
+    assertThat(bare.hasRangeWorstDrop()).isFalse();
+    assertThat(bare.hasEstIndexBytes()).isFalse();
+  }
+
+  @Test
+  void toProtoCatalogCarriesTableActivityCounters() {
+    TableInfo orders =
+        new TableInfo("orders", 1000, List.of(), new TableActivity(10, 20, 30, 4000));
+
+    TableStat t =
+        ProtoMappers.toProtoCatalog(new CatalogSnapshot(Map.of("orders", orders))).getTables(0);
+
+    assertThat(t.getNTupIns()).isEqualTo(10);
+    assertThat(t.getNTupUpd()).isEqualTo(20);
+    assertThat(t.getNTupDel()).isEqualTo(30);
+    assertThat(t.getTuplesRead()).isEqualTo(4000);
   }
 }

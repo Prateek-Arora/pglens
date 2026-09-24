@@ -74,3 +74,33 @@ jobs:
         run: |
           docker build -t pglens/server:0.0.2 -f deploy/compose/server/Dockerfile .
           docker build -t pglens/agent:0.0.2 -f deploy/compose/agent/Dockerfile .
+
+  compat:
+    name: compat (integration suite on PG ${{ matrix.pg }})
+    # The main `build` job pins PG16 (ADR-0011). Real users run newer majors, and PG18 already broke
+    # an assumption silently (it strips a leading comment from pg_stat_statements text — ADR-0036),
+    # so the same engine + server integration suite also runs against each newer supported major.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["17", "18"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build monitored image for PG ${{ matrix.pg }}
+        run: >-
+          docker build --build-arg PG_MAJOR=${{ matrix.pg }}
+          -t pglens/monitored-db:pg${{ matrix.pg }} deploy/compose/monitored
+
+      - name: Integration tests against PG ${{ matrix.pg }}
+        run: >-
+          ./gradlew :engine:integrationTest :server:integrationTest --no-daemon --stacktrace
+          -PmonitoredImage=pglens/monitored-db:pg${{ matrix.pg }}

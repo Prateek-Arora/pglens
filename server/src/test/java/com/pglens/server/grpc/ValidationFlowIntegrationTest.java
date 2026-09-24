@@ -148,6 +148,70 @@ class ValidationFlowIntegrationTest {
   }
 
   @Test
+  void theValueRangeFloorDrivesTheScoreAndTheEvidenceIsPersisted() throws Exception {
+    long jobId = lease(channel, 10).get(0).getJobId();
+
+    report(
+        channel,
+        ValidateResult.newBuilder()
+            .setJobId(jobId)
+            .setStatus(ValidationStatus.PLANNER_VALIDATED)
+            .setBeforeCost(1000.0)
+            .setAfterCost(13.0)
+            .setRelativeDrop(0.987)
+            .setUsed(true)
+            .setReason("Planner-validated (HypoPG estimate).")
+            .setRangeWorstDrop(0.567)
+            .setRangeWorstFrequency(0.018)
+            .setRangeBestDrop(0.99)
+            .setRangeValuesSampled(4)
+            .setRangeColumn("orders.customer_id")
+            .setRangeLabel("Across 4 sampled values …")
+            .setEstIndexBytes(4_644_864L)
+            .setTableBytes(12_058_624L)
+            .setFootprintLabel("Estimated index size 4.4 MB …")
+            .build());
+
+    Map<String, Object> rec =
+        jdbc.queryForMap(
+            "SELECT * FROM recommendations WHERE db_id = ? AND queryid = ?", dbId, QUERYID);
+    // Ranked by the hot-value floor (0.567 × 5000), not the generic 0.987 — ADR-0038.
+    assertThat((Double) rec.get("estimated_ms_saved")).isCloseTo(2835.0, within(1e-6));
+    assertThat(rec.get("score_basis")).isEqualTo("VALUE_RANGE_FLOOR");
+    assertThat((Double) rec.get("range_worst_drop")).isCloseTo(0.567, within(1e-9));
+    assertThat((Double) rec.get("range_worst_frequency")).isCloseTo(0.018, within(1e-9));
+    assertThat(rec.get("range_values_sampled")).isEqualTo(4);
+    assertThat(rec.get("range_column")).isEqualTo("orders.customer_id");
+    assertThat(rec.get("est_index_bytes")).isEqualTo(4_644_864L);
+    assertThat(rec.get("footprint_label")).isEqualTo("Estimated index size 4.4 MB …");
+  }
+
+  @Test
+  void withoutARangeTheGenericDropIsTheBasisAndTheEvidenceColumnsStayNull() throws Exception {
+    long jobId = lease(channel, 10).get(0).getJobId();
+    report(
+        channel,
+        ValidateResult.newBuilder()
+            .setJobId(jobId)
+            .setStatus(ValidationStatus.PLANNER_VALIDATED)
+            .setBeforeCost(1000.0)
+            .setAfterCost(400.0)
+            .setRelativeDrop(0.6)
+            .setUsed(true)
+            .setReason("ok")
+            .build());
+
+    Map<String, Object> rec =
+        jdbc.queryForMap(
+            "SELECT * FROM recommendations WHERE db_id = ? AND queryid = ?", dbId, QUERYID);
+    assertThat(rec.get("score_basis")).isEqualTo("GENERIC_PLAN");
+    assertThat(rec.get("range_worst_drop")).isNull();
+    assertThat(rec.get("range_values_sampled")).isNull();
+    assertThat(rec.get("range_label")).isNull();
+    assertThat(rec.get("est_index_bytes")).isNull();
+  }
+
+  @Test
   void aNotValidatedVerdictStoresNullCostsNeverAFabricatedZero() throws Exception {
     long jobId = lease(channel, 10).get(0).getJobId();
 

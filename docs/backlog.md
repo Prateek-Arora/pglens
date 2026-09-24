@@ -12,7 +12,7 @@
 > first. Every item must preserve principle #1 (**no fabricated evidence**) and #2 (**safe-by-default
 > vs the monitored DB**).
 
-_Last updated: 2026-08-27._
+_Last updated: 2026-09-24._
 
 ## How an item is written
 **What** (the capability) · **Why deferred** (the honest reason) · **Constraints** (invariants it must
@@ -163,6 +163,12 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
   shape-stressor pack; this shape is its one documented `EXPECTED_SKIP`.
 - **Constraints:** Any rewrite must not alter the plan's access-method/column shape (that's what
   detection reads). Prefer type-aware casting over structural collapse.
+- **Status update (2026-09-24, ADR-0039):** the TPC-H accuracy benchmark found 6 of 21 real
+  statements uncapturable. Two shapes needed no type info and are **fixed** in
+  `PlanCapturer.normalizeForExplain`: `extract($N FROM x)` → `date_part($N, x)` and untyped
+  `$a ± $b` arithmetic → `$a::numeric ± $b::numeric` (capture 16/21 → 20/21). Still open here:
+  `= ANY (ARRAY[$1,…])` on non-text columns and an untyped `CASE … THEN $N ELSE $M END` inside an
+  aggregate (`sum(text)`, TPC-H Q12) — both need the column/context type.
 - **Effort/type:** `needs-design`.
 - **Refs:** ADR-0021 (typed-literal rewrite — the same family of fix), ADR-0022 (robustness harness),
   `engine/src/test/resources/robustness/shape_stressors.sql`.
@@ -230,6 +236,41 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
   Pattern sources: [prisma.io — SKIP LOCKED
   queue](https://www.prisma.io/blog/you-dont-need-a-job-queue-postgres-already-has-skip-locked),
   [PlanetScale — keeping a Postgres queue healthy](https://planetscale.com/blog/keeping-a-postgres-queue-healthy).
+
+## Recommendation accuracy (from the 2026-09-24 plan review, ADR-0037)
+
+### B13. Write-overhead + same-table overlap awareness — ✅ DELIVERED (Phase 2.5, ADR-0038)
+- **What:** Attach each rec's estimated index size (`hypopg_relation_size`) and write-overhead ratio,
+  flag write-heavy tables from a persisted write-rate window, and offer one HypoPG-validated composite
+  where two same-table recs overlap.
+- **Why deferred until now:** Phases 1–2 validated one query at a time on purpose (get the gate right
+  first). The review showed per-query advice with no write cost trends towards index sprawl, which
+  pganalyze and Postgres MCP Pro both model.
+- **Constraints:** flag, never auto-suppress; every size/overhead is labeled *estimate*; a backwards
+  counter = reset = inconclusive (same rule as hygiene).
+- **Effort/type:** `needs-design`. **Refs:** `docs/phases/phase_2_5.md` Step B; ADR-0017, ADR-0029.
+
+### B14. Representative-value corroboration of HypoPG deltas — ✅ DELIVERED as *value-range floors* (Phase 2.5, ADR-0038)
+- **What:** Re-plan each validated candidate with frequency-weighted `pg_stats` values substituted for
+  `$N` (quoted server-side), reporting that planner estimate beside the generic one and ranking by it.
+- **Why:** generic plans overstate skewed wins (spike: −98.7 % generic vs ~−57 % real). Also makes
+  partial indexes (B4) validatable.
+- **Constraints:** simple `col <op> $N` shapes only; everything else keeps the generic label, never
+  a guessed value. Read-only session; `hypopg() = 0` after.
+- **Effort/type:** `needs-design`. **Refs:** `docs/phases/phase_2_5.md` Step A; ADR-0013, ADR-0016.
+
+### B15. External-workload accuracy benchmark — ✅ DELIVERED (`make accuracy`, Phase 2.5, ADR-0038)
+- **What:** Run PgLens on a public workload it didn't author (TPC-H-derived / JOB), build each rec on a
+  throwaway copy, and publish measured precision + estimate error.
+- **Why:** today's accuracy tests use a self-written oracle, so they can't tell us how accurate it is.
+- **Effort/type:** `good-first-issue` once the harness shape is agreed. **Refs:** Step C; ADR-0033 method.
+
+### B16. Workload-wide index-set selection (solver) — deferred
+- **What:** Choose the best *set* of indexes across all queries within a budget (pganalyze-style CP-SAT
+  or a DTA/Anytime greedy search), trading scan savings against write overhead.
+- **Why deferred:** B13's flag + overlap consolidation captures most of the value at a fraction of the
+  complexity; revisit if the B15 benchmark shows sprawl.
+- **Effort/type:** `needs-design`. **Refs:** pganalyze Indexing Engine docs; Postgres MCP Pro.
 
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):
