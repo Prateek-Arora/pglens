@@ -1,10 +1,17 @@
 package com.pglens.server.persistence;
 
+import com.pglens.engine.rank.CoverageChecks;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -38,6 +45,34 @@ public class AnalysisRepository {
             new AnalyzableQuery(
                 rs.getLong("queryid"), rs.getString("normalized_text"), rs.getString("plan_json")),
         dbId);
+  }
+
+  /**
+   * Every planner-validated index DDL for {@code dbId} → the queries it was validated for — the
+   * input to the coverage checks (ADR-0038).
+   */
+  public Map<String, Set<Long>> validatedQueriesByDdl(long dbId) {
+    Map<String, Set<Long>> out = new LinkedHashMap<>();
+    jdbc.query(
+        "SELECT ddl, queryid FROM recommendations "
+            + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED' ORDER BY ddl, queryid",
+        (RowCallbackHandler)
+            rs ->
+                out.computeIfAbsent(rs.getString("ddl"), k -> new LinkedHashSet<>())
+                    .add(rs.getLong("queryid")),
+        dbId);
+    return out;
+  }
+
+  /** Every (query, DDL) pair with a verdict of any status for {@code dbId}. */
+  public Set<CoverageChecks.Verdict> verdicts(long dbId) {
+    Set<CoverageChecks.Verdict> out = new HashSet<>();
+    jdbc.query(
+        "SELECT queryid, ddl FROM recommendations WHERE db_id = ?",
+        (RowCallbackHandler)
+            rs -> out.add(new CoverageChecks.Verdict(rs.getLong("queryid"), rs.getString("ddl"))),
+        dbId);
+    return out;
   }
 
   /**

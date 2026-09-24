@@ -90,3 +90,10 @@ SELECT customer_id, count(*) FROM orders GROUP BY customer_id HAVING count(*) > 
 
 -- Three-table join with a filter (multi-join plan shape).
 SELECT c.id, count(oi.id) FROM customers c JOIN orders o ON o.customer_id = c.id JOIN order_items oi ON oi.order_id = o.id WHERE c.country = 'BR' GROUP BY c.id;
+
+-- extract(field FROM x): pgss normalizes the field to $N (TPC-H Q7/Q8/Q9 shape).
+SELECT extract(year FROM created_at) AS y, count(*) FROM orders GROUP BY 1;
+
+-- Literal arithmetic between two constants → two untyped $N (TPC-H Q6/Q19 shape).
+SELECT count(*) FROM orders WHERE total_cents BETWEEN 100 - 50 AND 100 + 50;
+

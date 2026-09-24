@@ -3,13 +3,17 @@ package com.pglens.engine.db;
 import com.pglens.engine.PgLensException;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.IndexInfo;
+import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TableInfo;
 import java.sql.Array;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -18,21 +22,27 @@ import org.springframework.jdbc.core.RowCallbackHandler;
  * Reads the table + index catalog the pure detector needs into a {@link CatalogSnapshot}. Under
  * GENERIC_PLAN there are no ANALYZE actuals, so this supplies row-count estimates ({@code
  * reltuples}) and the existing indexes as detection input — keeping the rules pure and
- * offline-testable.
+ * offline-testable. It also carries each table's cumulative read/write counters ({@link
+ * TableActivity}, from {@code pg_stat_user_tables}) for the write-load note (ADR-0038).
  *
  * <p>Scope: ordinary user tables ({@code relkind = 'r'}) outside the system schemas.
  */
 public class CatalogReader {
 
   private static final String TUPLES_SQL =
-      DataSources.INTROSPECTION_MARKER
-          + """
-      SELECT c.relname AS table_name, c.reltuples::bigint AS reltuples
+      DataSources.introspection(
+          """
+      SELECT c.relname AS table_name, c.reltuples::bigint AS reltuples,
+             COALESCE(st.n_tup_ins, 0) AS n_tup_ins,
+             COALESCE(st.n_tup_upd, 0) AS n_tup_upd,
+             COALESCE(st.n_tup_del, 0) AS n_tup_del,
+             COALESCE(st.seq_tup_read, 0) + COALESCE(st.idx_tup_fetch, 0) AS tuples_read
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
+      LEFT JOIN pg_stat_user_tables st ON st.relid = c.oid
       WHERE c.relkind = 'r'
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-      """;
+      """);
 
   // Ordered key columns come from pg_get_indexdef(index, col, pretty): for a plain column it
   // returns
@@ -44,8 +54,8 @@ public class CatalogReader {
   // appears as some constraint's conindid), and cumulative `idx_scan` (pg_stat_user_indexes; 0 when
   // the view has no row yet). FK coverage is folded into constraint_backed afterwards, in Java.
   private static final String INDEX_SQL =
-      DataSources.INTROSPECTION_MARKER
-          + """
+      DataSources.introspection(
+          """
       SELECT t.relname AS table_name,
              i.relname AS index_name,
              ix.indisunique AS is_unique,
@@ -66,15 +76,15 @@ public class CatalogReader {
       LEFT JOIN pg_stat_user_indexes psui ON psui.indexrelid = ix.indexrelid
       WHERE t.relkind = 'r'
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-      """;
+      """);
 
   // Per-table FOREIGN KEY referencing-column lists (ordered). An index whose leading key columns
   // cover one of these lists speeds that FK's enforcement, so it must never be recommended for
   // removal — we fold that into constraint_backed. conkey holds the referencing attnums in FK
   // order.
   private static final String FK_SQL =
-      DataSources.INTROSPECTION_MARKER
-          + """
+      DataSources.introspection(
+          """
       SELECT t.relname AS table_name,
              (SELECT array_agg(a.attname ORDER BY x.ord)
                 FROM unnest(con.conkey) WITH ORDINALITY AS x(attnum, ord)
@@ -86,7 +96,7 @@ public class CatalogReader {
       WHERE con.contype = 'f'
         AND t.relkind = 'r'
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-      """;
+      """);
 
   private final JdbcTemplate jdbc;
 
@@ -94,14 +104,42 @@ public class CatalogReader {
     this.jdbc = jdbc;
   }
 
+  /**
+   * When this database's statistics were last reset ({@code pg_stat_database.stats_reset}) — the
+   * start of the window the cumulative {@link TableActivity} counters cover. Empty if never reset.
+   */
+  public Optional<Instant> databaseStatsReset() {
+    try {
+      OffsetDateTime reset =
+          jdbc.queryForObject(
+              DataSources.introspection(
+                  "SELECT stats_reset FROM pg_stat_database WHERE datname = current_database()"),
+              OffsetDateTime.class);
+      return Optional.ofNullable(reset).map(OffsetDateTime::toInstant);
+    } catch (DataAccessException e) {
+      return Optional.empty();
+    }
+  }
+
   /** Snapshots row-count estimates and existing indexes for every user table. */
   public CatalogSnapshot read() {
     try {
       Map<String, Long> tuples = new LinkedHashMap<>();
+      Map<String, TableActivity> activity = new LinkedHashMap<>();
       jdbc.query(
           TUPLES_SQL,
           (RowCallbackHandler)
-              rs -> tuples.put(lower(rs.getString("table_name")), rs.getLong("reltuples")));
+              rs -> {
+                String table = lower(rs.getString("table_name"));
+                tuples.put(table, rs.getLong("reltuples"));
+                activity.put(
+                    table,
+                    new TableActivity(
+                        rs.getLong("n_tup_ins"),
+                        rs.getLong("n_tup_upd"),
+                        rs.getLong("n_tup_del"),
+                        rs.getLong("tuples_read")));
+              });
 
       Map<String, List<List<String>>> fkColumnsByTable = readForeignKeyColumns();
 
@@ -114,7 +152,11 @@ public class CatalogReader {
           (table, reltuples) ->
               tables.put(
                   table,
-                  new TableInfo(table, reltuples, indexesByTable.getOrDefault(table, List.of()))));
+                  new TableInfo(
+                      table,
+                      reltuples,
+                      indexesByTable.getOrDefault(table, List.of()),
+                      activity.get(table))));
       return new CatalogSnapshot(tables);
     } catch (DataAccessException e) {
       throw new PgLensException(

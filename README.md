@@ -2,7 +2,7 @@
 
 > Open-source, self-hosted Postgres **slow-query & index advisor** with **HypoPG-validated** index recommendations and **local-LLM-explained** query plans.
 
-PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **proves each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is a measured cost delta, not a guess. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is ever sent to a third-party service).
+PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **checks each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is the planner's own cost estimate for that index — not a guess, and always labeled as an estimate rather than a measured runtime. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is ever sent to a third-party service).
 
 **Status:** 🟢 **Phase 2 shipped (`v0.0.2`) — the collector agent, server & time-series history.** A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot. Next: a local-LLM plan explainer (Phase 3) and a Next.js dashboard (Phase 4, the ship target) — see the [roadmap](docs/project.md).
 
@@ -11,7 +11,7 @@ PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries tha
 - **No fabricated evidence.** Every number is real and labeled — a HypoPG cost *estimate* is shown as such, alongside the real `pg_stat_statements` time as the measured "before".
 - **Safe by default.** The monitored database is opened **read-only** at two independent layers — a least-privilege login role with no write grant, plus a session-level `READ ONLY` guard — so writes are rejected by the database itself. Recommendations are validated with *hypothetical* indexes only (HypoPG) — nothing is ever created on your DB.
 - **Deterministic core, optional AI.** Analysis is correct and complete with no LLM; the LLM (later) only phrases facts the core already owns.
-- **HypoPG honesty.** btree/brin/hash/bloom recs are planner-validated with a real cost delta. GIN/GiST recs (jsonb, full-text, `LIKE '%…%'`) are surfaced but clearly labeled **"not planner-validated"** — HypoPG can't simulate them, and PgLens never pretends it did.
+- **HypoPG honesty.** btree/brin/hash/bloom recs are planner-validated with a planner cost estimate. GIN/GiST recs (jsonb, full-text, `LIKE '%…%'`) are surfaced but clearly labeled **"not planner-validated"** — HypoPG can't simulate them, and PgLens never pretends it did.
 
 ## Try it on your DB in 2 minutes
 
@@ -49,6 +49,15 @@ You'll get a ranked report of the costliest queries, each with the offending pla
 
 Legitimate full scans get **no** recommendation, and jsonb/GIN cases are shown as `[not planner-validated]` — never with a fabricated number.
 
+**Skew-aware ranking.** A generic plan assumes an average parameter value, which overstates the win on a skewed column. So for every validated index PgLens also re-plans the query with the column's real most-common and typical values from `pg_stats` and ranks by the **worst case** — e.g. on the demo, `orders(customer_id)` is −98.7 % generically but −56.7 % for the hottest customer, and it's ranked by the latter:
+
+```
+6. CREATE INDEX idx_orders_customer_id ON orders (customer_id);
+     est. saves ~215 ms of query #-4700…'s 379.0 ms total  (−56.7% worst case over sampled values; generic plan −98.7%, HypoPG planner estimates)
+```
+
+The sampled values never leave your database session — only their frequencies are reported. Each recommendation also shows HypoPG's size estimate for the index, and each table its real read/write balance, so you can weigh the write cost. Every estimate is labeled as one, and nothing is ever built on your database.
+
 ### 3. Point it at your own database
 
 ```bash
@@ -57,6 +66,7 @@ Legitimate full scans get **no** recommendation, and jsonb/GIN cases are shown a
 
 Your database needs:
 
+- **PostgreSQL 16 or newer** — PgLens plans normalized `pg_stat_statements` text with `EXPLAIN (GENERIC_PLAN)`, added in PG16. Older servers are refused up front with a clear message. (CI runs the integration suite on PG16; PG17 and PG18 are verified by a compatibility job.)
 - **`pg_stat_statements` enabled** — add it to `shared_preload_libraries`, restart, then `CREATE EXTENSION pg_stat_statements;`
 - **a login role with read access to stats** — e.g. `GRANT pg_read_all_stats TO <role>;`
 - **`hypopg` (optional but recommended)** — `CREATE EXTENSION hypopg;` enables planner-validated cost deltas. Without it, PgLens still detects anti-patterns and suggests indexes, labeled *not planner-validated*.

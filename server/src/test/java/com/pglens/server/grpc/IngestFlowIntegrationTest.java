@@ -3,11 +3,14 @@ package com.pglens.server.grpc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pglens.proto.v1.CatalogSnapshot;
 import com.pglens.proto.v1.IngestGrpc;
 import com.pglens.proto.v1.IngestSummary;
 import com.pglens.proto.v1.QueryStatSample;
 import com.pglens.proto.v1.QueryText;
 import com.pglens.proto.v1.SampleBatch;
+import com.pglens.proto.v1.TableStat;
+import com.pglens.server.persistence.CatalogRepository;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -67,6 +70,7 @@ class IngestFlowIntegrationTest {
   @Autowired GrpcServerLifecycle grpcServer;
   @Autowired MonitoredDbRepository monitoredDbs;
   @Autowired JdbcTemplate jdbc;
+  @Autowired CatalogRepository catalogs;
 
   private ManagedChannel channel;
 
@@ -154,6 +158,24 @@ class IngestFlowIntegrationTest {
   }
 
   @Test
+  void tableCountersBecomeAWriteLoadWindowAndAResetIsInconclusive() throws Exception {
+    long dbId = monitoredDbs.findByTokenHash(Tokens.sha256Hex(TOKEN)).orElseThrow().id();
+    send(withCatalog(batch(1_000L, RESET_A, sample(100, 500.0, 1000), text()), 1_000, 50_000));
+    send(withCatalog(batch(1_060L, RESET_A, sample(150, 800.0, 1600)), 6_000, 52_000));
+
+    CatalogRepository.ActivityWindow orders = catalogs.activityWindows(dbId).get("orders");
+    assertThat(orders).isNotNull();
+    assertThat(orders.snapshots()).isEqualTo(2);
+    // Real window deltas: 5,000 rows written vs 2,000 read → write-dominant (ADR-0038).
+    assertThat(orders.activity().tuplesWritten()).isEqualTo(5_000L);
+    assertThat(orders.activity().tuplesRead()).isEqualTo(2_000L);
+
+    // A counter going backwards is a stats reset: the window can't be judged, so it's dropped.
+    send(withCatalog(batch(1_120L, RESET_A, sample(200, 900.0, 1700)), 10, 10));
+    assertThat(catalogs.activityWindows(dbId)).doesNotContainKey("orders");
+  }
+
+  @Test
   void unknownTokenIsRejected() throws InterruptedException {
     ManagedChannel bad = channelWithToken("wrong-token");
     try {
@@ -235,6 +257,19 @@ class IngestFlowIntegrationTest {
       b.addNewTexts(t);
     }
     return b.build();
+  }
+
+  private static SampleBatch withCatalog(SampleBatch b, long inserted, long tuplesRead) {
+    return b.toBuilder()
+        .setCatalog(
+            CatalogSnapshot.newBuilder()
+                .addTables(
+                    TableStat.newBuilder()
+                        .setTableName("orders")
+                        .setEstRows(1000)
+                        .setNTupIns(inserted)
+                        .setTuplesRead(tuplesRead)))
+        .build();
   }
 
   private static QueryStatSample sample(long calls, double totalMs, long rows) {

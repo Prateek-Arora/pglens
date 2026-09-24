@@ -11,6 +11,7 @@ import com.pglens.engine.model.IndexCandidate;
 import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.parse.PlanParser;
+import com.pglens.engine.rank.CoverageChecks;
 import com.pglens.server.persistence.AnalysisRepository;
 import com.pglens.server.persistence.AnalysisRepository.AnalyzableQuery;
 import com.pglens.server.persistence.CatalogRepository;
@@ -18,6 +19,7 @@ import com.pglens.server.persistence.HygieneRepository;
 import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -165,12 +167,42 @@ public class AnalysisService {
                 revalidateBefore);
       }
     }
+    enqueued += enqueueCoverageChecks(db, revalidateBefore);
     if (enqueued > 0) {
       log.info("analysis for db '{}' enqueued {} validation job(s)", db.name(), enqueued);
     }
     // Hygiene is independent of query plans — it runs over the same catalog + the idx_scan window
     // even when no query produced a candidate this pass.
     runHygiene(db, catalog);
+    return enqueued;
+  }
+
+  /**
+   * Enqueues "does the more general index also serve this query?" validations (ADR-0038): for a
+   * validated index whose key is a prefix of another validated index, the wider one is validated
+   * against the narrower one's queries. They are ordinary {@code (queryid, ddl)} jobs, so the same
+   * idempotent + cooldown-gated enqueue bounds them; their verdicts land as ordinary
+   * recommendations, which is what lets the advice view say "one index instead of two".
+   */
+  private int enqueueCoverageChecks(MonitoredDb db, Instant revalidateBefore) {
+    List<CoverageChecks.Check> checks =
+        CoverageChecks.missing(analysis.validatedQueriesByDdl(db.id()), analysis.verdicts(db.id()));
+    if (checks.isEmpty()) {
+      return 0;
+    }
+    Map<Long, String> sqlByQuery = new HashMap<>();
+    for (AnalyzableQuery q : analysis.planCapturedQueries(db.id())) {
+      sqlByQuery.put(q.queryid(), q.normalizedText());
+    }
+    int enqueued = 0;
+    for (CoverageChecks.Check c : checks) {
+      String sql = sqlByQuery.get(c.queryId());
+      if (sql != null) {
+        enqueued +=
+            analysis.enqueue(
+                db.id(), c.queryId(), sql, c.ddl(), c.accessMethod(), revalidateBefore);
+      }
+    }
     return enqueued;
   }
 

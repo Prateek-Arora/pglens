@@ -33,6 +33,9 @@ paths:
   mTLS is Phase 6.
 - **Failure is per-cycle and non-fatal** — catch, log, and let the next `@Scheduled` tick retry.
   Never let a sample cycle throw past the scheduler.
+- **Never put a sampled value on the wire** (ADR-0038). `ProtoMappers.toValidateResult` maps the
+  value-range *drops/frequency/column/label* and the footprint — the `pg_stats` values used to plan
+  stay inside the engine validator. Table read/write counters ride the existing `TableStat`.
 - **Keep this module consumable as a library.** The bootJar is named `app.jar` (for the Docker
   COPY), but **don't disable the plain `jar`** — the full-loop IT consumes `:agent` as a test
   dependency, and a disabled `jar` empties the runtime variant so `project(":agent")` resolves

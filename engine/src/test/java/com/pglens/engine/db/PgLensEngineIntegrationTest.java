@@ -8,8 +8,10 @@ import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.QueryReport;
 import com.pglens.engine.model.RankBy;
+import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ScanReport;
+import com.pglens.engine.model.ScoreBasis;
 import com.pglens.engine.model.ValidationResult.Status;
 import java.util.List;
 import java.util.Optional;
@@ -135,6 +137,33 @@ class PgLensEngineIntegrationTest {
               assertThat(rr.candidate().table()).isEqualTo("orders");
               assertThat(rr.candidate().columns()).containsExactly("customer_id");
             });
+  }
+
+  @Test
+  void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
+    assertThat(report.schemaVersion()).isEqualTo("1.1");
+    RankedRecommendation top =
+        report.topRecommendations().stream()
+            .filter(rr -> rr.candidate().columns().equals(List.of("customer_id")))
+            .findFirst()
+            .orElseThrow();
+
+    // Equality on the leading column → a value range, ranked by its floor (ADR-0038).
+    assertThat(top.recommendation().validation().valueRange()).isNotNull();
+    assertThat(top.scoreBasis()).isEqualTo(ScoreBasis.VALUE_RANGE_FLOOR);
+    assertThat(top.recommendation().validation().footprint().estimatedIndexBytes()).isPositive();
+    // Every table with a validated rec gets a write-load note (cumulative counters, labeled).
+    assertThat(report.tableWriteLoad())
+        .anySatisfy(
+            w -> {
+              assertThat(w.table()).isEqualTo("orders");
+              assertThat(w.activity()).isNotNull();
+              assertThat(w.window()).startsWith("since");
+            });
+    // Nothing subsumed is left unchecked.
+    assertThat(report.topRecommendations())
+        .filteredOn(RankedRecommendation::subsumed)
+        .allSatisfy(rr -> assertThat(rr.coverage()).isNotNull());
   }
 
   @Test

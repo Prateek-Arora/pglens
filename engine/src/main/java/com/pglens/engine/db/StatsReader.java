@@ -82,6 +82,13 @@ public class StatsReader {
               rs.getLong("shared_blks_hit"),
               rs.getLong("shared_blks_read"));
 
+  /**
+   * Oldest supported server ({@code server_version_num}): PG16 added {@code EXPLAIN
+   * (GENERIC_PLAN)}, which is how PgLens plans normalized {@code $N} text without inventing
+   * parameter values.
+   */
+  static final int MIN_SERVER_VERSION_NUM = 160000;
+
   private final JdbcTemplate jdbc;
 
   public StatsReader(JdbcTemplate jdbc) {
@@ -92,7 +99,7 @@ public class StatsReader {
    * Top {@code limit} statements ranked by {@code rankBy}, keeping only those called ≥ minCalls.
    */
   public List<StatementStat> topStatements(RankBy rankBy, int limit, long minCalls) {
-    ensureExtensionPresent();
+    ensureSupportedTarget();
     String sql = TOP_SQL.formatted(orderColumn(rankBy));
     try {
       return jdbc.query(sql, MAPPER, minCalls, limit);
@@ -103,7 +110,7 @@ public class StatsReader {
 
   /** The single statement with this {@code queryid} in the current database, if present. */
   public Optional<StatementStat> findByQueryId(long queryId) {
-    ensureExtensionPresent();
+    ensureSupportedTarget();
     try {
       return jdbc.query(BY_QUERYID_SQL, MAPPER, queryId).stream().findFirst();
     } catch (DataAccessException e) {
@@ -120,11 +127,11 @@ public class StatsReader {
    * be finer-grained but is PG17-only (pgss 1.11), so it is deliberately not used here.
    */
   public Optional<Instant> globalStatsReset() {
-    ensureExtensionPresent();
+    ensureSupportedTarget();
     try {
       OffsetDateTime ts =
           jdbc.queryForObject(
-              DataSources.INTROSPECTION_MARKER + "SELECT stats_reset FROM pg_stat_statements_info",
+              DataSources.introspection("SELECT stats_reset FROM pg_stat_statements_info"),
               OffsetDateTime.class);
       return Optional.ofNullable(ts).map(OffsetDateTime::toInstant);
     } catch (DataAccessException e) {
@@ -140,24 +147,49 @@ public class StatsReader {
         e);
   }
 
-  private void ensureExtensionPresent() {
-    final Integer present;
+  /**
+   * Fails fast, with an actionable message, unless the target is PG16+ with {@code
+   * pg_stat_statements} installed (one round trip). Before PG16 every plan capture would fail and
+   * the report would be a list of uncaptured queries — refusing up front is the honest outcome
+   * (ADR-0036).
+   */
+  private void ensureSupportedTarget() {
+    final Target target;
     try {
-      present =
+      target =
           jdbc.queryForObject(
-              DataSources.INTROSPECTION_MARKER
-                  + "SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements'",
-              Integer.class);
+              DataSources.introspection(
+                  "SELECT current_setting('server_version_num')::int AS version_num, "
+                      + "current_setting('server_version') AS version, "
+                      + "EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements') "
+                      + "AS pgss"),
+              (rs, rowNum) ->
+                  new Target(
+                      rs.getInt("version_num"), rs.getString("version"), rs.getBoolean("pgss")));
     } catch (DataAccessException e) {
       throw new PgLensException(
           "Cannot query the target database: " + e.getMostSpecificCause().getMessage(), e);
     }
-    if (present == null || present == 0) {
+    requireSupportedVersion(target.versionNum(), target.version());
+    if (!target.pgss()) {
       throw new PgLensException(
           "pg_stat_statements is not enabled on the target database. Add it to "
               + "shared_preload_libraries, restart, then run: CREATE EXTENSION pg_stat_statements;");
     }
   }
+
+  /** Pure version gate, split out so it is unit-testable without an old Postgres. */
+  static void requireSupportedVersion(int versionNum, String version) {
+    if (versionNum < MIN_SERVER_VERSION_NUM) {
+      throw new PgLensException(
+          "PgLens requires PostgreSQL 16 or newer; the target is PostgreSQL "
+              + version
+              + ". PgLens plans the normalized pg_stat_statements text with EXPLAIN (GENERIC_PLAN),"
+              + " which was added in PostgreSQL 16.");
+    }
+  }
+
+  private record Target(int versionNum, String version, boolean pgss) {}
 
   private static String orderColumn(RankBy rankBy) {
     return switch (rankBy) {

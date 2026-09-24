@@ -1,5 +1,6 @@
 package com.pglens.server.persistence;
 
+import com.pglens.engine.rank.RankingScore;
 import com.pglens.proto.v1.ValidateResult;
 import com.pglens.proto.v1.ValidationStatus;
 import java.util.List;
@@ -71,25 +72,46 @@ public class ValidationRepository {
     Double afterCost = r.hasAfterCost() ? r.getAfterCost() : null;
     Double relativeDrop = r.hasRelativeDrop() ? r.getRelativeDrop() : null;
 
-    // Ranking score (ADR-0017): the query's real total exec time × the estimated relative drop —
-    // only for a validated rec, only when we have both numbers. Always a labeled estimate.
+    // Phase 2.5 evidence (ADR-0038) — NULL when absent, never a fabricated 0.
+    Double worstDrop = r.hasRangeWorstDrop() ? r.getRangeWorstDrop() : null;
+    Double worstFrequency = r.hasRangeWorstFrequency() ? r.getRangeWorstFrequency() : null;
+    Double bestDrop = r.hasRangeBestDrop() ? r.getRangeBestDrop() : null;
+    Long indexBytes = r.hasEstIndexBytes() ? r.getEstIndexBytes() : null;
+    Long tableBytes = r.hasTableBytes() ? r.getTableBytes() : null;
+
+    // Ranking score (ADR-0017, ADR-0038): the query's real total exec time × the ranking drop —
+    // the value-range floor when present, else the generic drop — computed by the SAME engine
+    // function the CLI uses. Only for a validated rec with both numbers. Always a labeled estimate.
     Double estimatedMsSaved = null;
+    String scoreBasis = null;
     if (r.getStatus() == ValidationStatus.PLANNER_VALIDATED && relativeDrop != null) {
       Double totalExecTimeMs = queryTotalExecTimeMs(dbId, job.get().queryid());
       if (totalExecTimeMs != null) {
-        estimatedMsSaved = relativeDrop * totalExecTimeMs;
+        RankingScore.Drop drop = RankingScore.drop(relativeDrop, worstDrop);
+        estimatedMsSaved = drop.value() * totalExecTimeMs;
+        scoreBasis = drop.basis().name();
       }
     }
 
     jdbc.update(
         "INSERT INTO recommendations (db_id, queryid, ddl, access_method, status, before_cost, "
-            + "after_cost, relative_drop, used, reason, estimated_ms_saved, updated_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+            + "after_cost, relative_drop, used, reason, estimated_ms_saved, score_basis, "
+            + "range_column, range_values_sampled, range_worst_drop, range_worst_frequency, "
+            + "range_best_drop, range_label, est_index_bytes, table_bytes, footprint_label, "
+            + "updated_at) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
             + "ON CONFLICT (db_id, queryid, ddl) DO UPDATE SET "
             + "  status = excluded.status, before_cost = excluded.before_cost, "
             + "  after_cost = excluded.after_cost, relative_drop = excluded.relative_drop, "
             + "  used = excluded.used, reason = excluded.reason, "
-            + "  estimated_ms_saved = excluded.estimated_ms_saved, updated_at = now()",
+            + "  estimated_ms_saved = excluded.estimated_ms_saved, "
+            + "  score_basis = excluded.score_basis, range_column = excluded.range_column, "
+            + "  range_values_sampled = excluded.range_values_sampled, "
+            + "  range_worst_drop = excluded.range_worst_drop, "
+            + "  range_worst_frequency = excluded.range_worst_frequency, "
+            + "  range_best_drop = excluded.range_best_drop, range_label = excluded.range_label, "
+            + "  est_index_bytes = excluded.est_index_bytes, table_bytes = excluded.table_bytes, "
+            + "  footprint_label = excluded.footprint_label, updated_at = now()",
         dbId,
         job.get().queryid(),
         job.get().candidateDdl(),
@@ -100,7 +122,17 @@ public class ValidationRepository {
         relativeDrop,
         r.getUsed(),
         r.getReason(),
-        estimatedMsSaved);
+        estimatedMsSaved,
+        scoreBasis,
+        blankToNull(r.getRangeColumn()),
+        worstDrop == null ? null : r.getRangeValuesSampled(),
+        worstDrop,
+        worstFrequency,
+        bestDrop,
+        blankToNull(r.getRangeLabel()),
+        indexBytes,
+        tableBytes,
+        blankToNull(r.getFootprintLabel()));
 
     jdbc.update(
         "UPDATE validation_jobs SET state = 'DONE', result_status = ?, before_cost = ?, "
@@ -114,6 +146,10 @@ public class ValidationRepository {
         r.getReason(),
         r.getJobId());
     return true;
+  }
+
+  private static String blankToNull(String s) {
+    return s == null || s.isEmpty() ? null : s;
   }
 
   private record JobRef(long queryid, String candidateDdl, String accessMethod) {}

@@ -39,4 +39,28 @@ class PlanCapturerTest {
     String sql = "created_at >= now() - $1::interval";
     assertThat(PlanCapturer.normalizeTypedLiterals(sql)).isEqualTo(sql);
   }
+
+  @Test
+  void rewritesANormalizedExtractFieldToDatePart() {
+    assertThat(
+            PlanCapturer.normalizeForExplain(
+                "SELECT extract($1 from o_orderdate) AS y, EXTRACT( $2 FROM l.shipdate) FROM t"))
+        .isEqualTo("SELECT date_part($1, o_orderdate) AS y, date_part($2, l.shipdate) FROM t");
+  }
+
+  @Test
+  void typesUntypedParameterArithmeticAsNumeric() {
+    assertThat(PlanCapturer.normalizeForExplain("l_discount between $4 - $5 and $6 + $7"))
+        .isEqualTo("l_discount between $4::numeric - $5::numeric and $6::numeric + $7::numeric");
+  }
+
+  @Test
+  void leavesTypedArithmeticAndOtherParametersAlone() {
+    // After the typed-literal rewrite, `date $1 + interval $2` is already typed — untouched.
+    assertThat(PlanCapturer.normalizeForExplain("d < date $1 + interval $2 AND x = $10"))
+        .isEqualTo("d < $1::date + $2::interval AND x = $10");
+    assertThat(PlanCapturer.normalizeForExplain("a = $1 AND b > $2"))
+        .isEqualTo("a = $1 AND b > $2");
+    assertThat(PlanCapturer.normalizeForExplain(null)).isNull();
+  }
 }

@@ -1,6 +1,11 @@
 package com.pglens.engine.model;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A proposed index derived from one or more {@link Finding}s: the table, the ordered key columns,
@@ -44,6 +49,61 @@ public record IndexCandidate(
                 + " index — surfaced but not planner-validated.";
     return new IndexCandidate(
         table, columns, accessMethod, validatable, reason, sourceRuleIds, rationale);
+  }
+
+  // Inverse of ddl(): "CREATE INDEX <name> ON <table> [USING <am> ](<c1>, <c2>);"
+  private static final Pattern DDL =
+      Pattern.compile(
+          "^\\s*CREATE INDEX \\S+ ON (\\S+) (?:USING (\\w+) )?\\((.+)\\);?\\s*$",
+          Pattern.CASE_INSENSITIVE);
+
+  /**
+   * Parses a DDL string this class rendered ({@link #ddl()}) back into a candidate — the server and
+   * the edge validator only carry the DDL text, and need its table / key columns / access method
+   * (ADR-0038). Empty for anything not in that exact shape (never guessed).
+   */
+  public static Optional<IndexCandidate> parseDdl(String ddl) {
+    if (ddl == null) {
+      return Optional.empty();
+    }
+    Matcher m = DDL.matcher(ddl);
+    if (!m.matches()) {
+      return Optional.empty();
+    }
+    AccessMethod method;
+    try {
+      method =
+          m.group(2) == null
+              ? AccessMethod.BTREE
+              : AccessMethod.valueOf(m.group(2).toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException unknownMethod) {
+      return Optional.empty();
+    }
+    List<String> columns = Arrays.stream(m.group(3).split(",")).map(String::strip).toList();
+    if (columns.stream().anyMatch(String::isEmpty)) {
+      return Optional.empty();
+    }
+    return Optional.of(of(m.group(1), columns, method, List.of(), null));
+  }
+
+  /**
+   * True if this index serves {@code specific}'s lookups by btree-prefix: same table and access
+   * method, and {@code specific}'s key columns are a leading prefix of this one's (or equal). A
+   * structural hint only — whether it actually serves a query is HypoPG's call (ADR-0038).
+   */
+  public boolean covers(IndexCandidate specific) {
+    if (!table.equalsIgnoreCase(specific.table()) || accessMethod != specific.accessMethod()) {
+      return false;
+    }
+    if (specific.columns().size() > columns.size()) {
+      return false;
+    }
+    for (int i = 0; i < specific.columns().size(); i++) {
+      if (!columns.get(i).equalsIgnoreCase(specific.columns().get(i))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /** A deterministic index name for the rendered DDL (HypoPG assigns its own name internally). */

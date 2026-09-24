@@ -10,7 +10,10 @@ import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ScanReport;
+import com.pglens.engine.model.ScoreBasis;
+import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.engine.model.TargetInfo;
+import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
 import java.util.List;
 import java.util.Locale;
@@ -64,6 +67,7 @@ final class ScanReportRenderer {
     }
 
     appendTopRecommendations(sb, report.topRecommendations());
+    appendWriteLoad(sb, report.tableWriteLoad());
     appendNotes(sb, report.notes());
     return sb.toString();
   }
@@ -140,6 +144,12 @@ final class ScanReportRenderer {
             .append(r.candidate().ddl())
             .append('\n');
         sb.append("          ").append(r.validation().label()).append('\n');
+        if (r.validation().valueRange() != null) {
+          sb.append("          ").append(r.validation().valueRange().label()).append('\n');
+        }
+        if (r.validation().footprint() != null) {
+          sb.append("          ").append(r.validation().footprint().label()).append('\n');
+        }
       }
     }
   }
@@ -149,7 +159,7 @@ final class ScanReportRenderer {
     List<RankedRecommendation> actionable =
         ranked.stream().filter(RankedRecommendation::actionable).toList();
     List<RankedRecommendation> covered =
-        ranked.stream().filter(RankedRecommendation::subsumed).toList();
+        ranked.stream().filter(r -> r.subsumed() && !r.actionable()).toList();
 
     sb.append("\nTop index recommendations (planner-validated, by estimated total time saved)\n");
     if (actionable.isEmpty()) {
@@ -168,9 +178,14 @@ final class ScanReportRenderer {
           .append(r.queryId())
           .append("'s ")
           .append(ms(r.queryTotalExecTimeMs()))
-          .append(" ms total  (−")
-          .append(pct(r.recommendation().validation().relativeDelta()))
-          .append(", HypoPG planner estimate)\n");
+          .append(" ms total  (")
+          .append(basis(r))
+          .append(")\n");
+      if (r.subsumed()) {
+        sb.append("     kept: the more general ")
+            .append(r.subsumedBy())
+            .append(" did not pass this query's validation\n");
+      }
     }
     if (!covered.isEmpty()) {
       sb.append("  merged (already covered by a recommended index):\n");
@@ -181,14 +196,32 @@ final class ScanReportRenderer {
           sb.append(" — same index already recommended (also wanted by query #")
               .append(r.queryId())
               .append(")\n");
-        } else {
+        } else if (r.coveredBySubsumer()) {
           sb.append(" — served by ")
+              .append(r.subsumedBy())
+              .append(" (HypoPG-validated against query #")
+              .append(r.queryId())
+              .append(": −")
+              .append(pct(r.coverage().relativeDelta()))
+              .append(")\n");
+        } else {
+          sb.append(" — likely served by ")
               .append(r.subsumedBy())
               .append(" (from query #")
               .append(r.queryId())
-              .append(")\n");
+              .append("; not yet validated against it)\n");
         }
       }
+    }
+  }
+
+  private static void appendWriteLoad(StringBuilder sb, List<TableWriteLoad> loads) {
+    if (loads.isEmpty()) {
+      return;
+    }
+    sb.append("\nTable write load (tables with a recommendation; real counters)\n");
+    for (TableWriteLoad w : loads) {
+      sb.append("  • ").append(w.table()).append(": ").append(w.label()).append('\n');
     }
   }
 
@@ -210,6 +243,19 @@ final class ScanReportRenderer {
       case SUPPRESSED -> "[suppressed]";
       case NOT_PLANNER_VALIDATED -> "[not planner-validated]";
     };
+  }
+
+  /** The ranking drop and where it came from (ADR-0038) — never an unlabeled number. */
+  private static String basis(RankedRecommendation r) {
+    ValidationResult v = r.recommendation().validation();
+    if (r.scoreBasis() == ScoreBasis.VALUE_RANGE_FLOOR && v.valueRange() != null) {
+      return "−"
+          + pct(Math.min(v.relativeDelta(), v.valueRange().worstRelativeDrop()))
+          + " worst case over sampled values; generic plan −"
+          + pct(v.relativeDelta())
+          + ", HypoPG planner estimates";
+    }
+    return "−" + pct(v.relativeDelta()) + ", HypoPG generic-plan estimate";
   }
 
   private static String ms(double v) {

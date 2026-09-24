@@ -96,6 +96,7 @@ public class IngestService extends IngestGrpc.IngestImplBase {
       if (batch.hasCatalog()) {
         catalogs.replaceCatalog(db.id(), batch.getCatalog());
         catalogs.recordIndexScans(db.id(), batch.getCatalog(), receiveAt);
+        catalogs.recordTableStats(db.id(), batch.getCatalog(), receiveAt);
       }
 
       for (QueryText text : batch.getNewTextsList()) {

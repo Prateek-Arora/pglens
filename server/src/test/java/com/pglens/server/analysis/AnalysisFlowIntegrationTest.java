@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.pglens.proto.v1.CatalogSnapshot;
 import com.pglens.proto.v1.IndexStat;
 import com.pglens.proto.v1.TableStat;
+import com.pglens.server.advice.AdviceService;
+import com.pglens.server.advice.IndexAdvice;
 import com.pglens.server.grpc.Tokens;
 import com.pglens.server.persistence.CatalogRepository;
 import com.pglens.server.persistence.MonitoredDbRepository;
@@ -55,6 +57,7 @@ class AnalysisFlowIntegrationTest {
   }
 
   private static final long QUERYID = 5150L;
+  private static final long OTHER_QUERYID = 6160L;
   // A real EXPLAIN (GENERIC_PLAN, JSON) plan: a Seq Scan on customers filtering an unindexed
   // column.
   // R1 flags it → a btree candidate on customers(email).
@@ -78,6 +81,7 @@ class AnalysisFlowIntegrationTest {
       """;
 
   @Autowired AnalysisService analysisService;
+  @Autowired AdviceService adviceService;
   @Autowired CatalogRepository catalogs;
   @Autowired MonitoredDbRepository monitoredDbs;
   @Autowired JdbcTemplate jdbc;
@@ -281,6 +285,45 @@ class AnalysisFlowIntegrationTest {
   }
 
   /** Mimics a finished round-trip: mark the PENDING job DONE + persist a fresh recommendation. */
+  @Test
+  void aWiderValidatedIndexIsCheckedAgainstTheNarrowOnesQueryThenMakesItRedundant() {
+    String narrow = "CREATE INDEX idx_customers_email ON customers (email);";
+    String wide = "CREATE INDEX idx_customers_email_created_at ON customers (email, created_at);";
+    seedCapturedQuery();
+    seedCatalog(/* withEmailIndex= */ false);
+    insertValidatedRec(QUERYID, narrow, 300.0); // fresh → the regular candidate stays cooled down
+    insertValidatedRec(OTHER_QUERYID, wide, 500.0);
+
+    // The analysis pass asks: does the wide index also serve QUERYID? (ADR-0038)
+    assertThat(analysisService.run()).isEqualTo(1);
+    Map<String, Object> job = jdbc.queryForMap("SELECT * FROM validation_jobs");
+    assertThat(job.get("queryid")).isEqualTo(QUERYID);
+    assertThat(job.get("candidate_ddl")).isEqualTo(wide);
+    assertThat(adviceService.advice(dbId)).allMatch(IndexAdvice::actionable); // not checked yet
+
+    // The edge says yes → one index instead of two, its estimates summed per validated query.
+    insertValidatedRec(QUERYID, wide, 280.0);
+    List<IndexAdvice> advice = adviceService.advice(dbId);
+    assertThat(advice.get(0).ddl()).isEqualTo(wide);
+    assertThat(advice.get(0).estimatedMsSaved()).isEqualTo(780.0);
+    assertThat(advice.get(1).ddl()).isEqualTo(narrow);
+    assertThat(advice.get(1).redundantWith()).isEqualTo(wide);
+    // …and the check is not re-requested once it has a verdict.
+    jdbc.update("DELETE FROM validation_jobs");
+    assertThat(analysisService.run()).isZero();
+  }
+
+  private void insertValidatedRec(long queryid, String ddl, double estimatedMsSaved) {
+    jdbc.update(
+        "INSERT INTO recommendations (db_id, queryid, ddl, access_method, status, relative_drop, "
+            + "estimated_ms_saved, score_basis) "
+            + "VALUES (?, ?, ?, 'BTREE', 'PLANNER_VALIDATED', 0.5, ?, 'GENERIC_PLAN')",
+        dbId,
+        queryid,
+        ddl,
+        estimatedMsSaved);
+  }
+
   private void completePendingJobWithAFreshRecommendation() {
     jdbc.update(
         "INSERT INTO recommendations (db_id, queryid, ddl, access_method, status) "

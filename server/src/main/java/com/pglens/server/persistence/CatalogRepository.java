@@ -2,6 +2,7 @@ package com.pglens.server.persistence;
 
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.IndexInfo;
+import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TableInfo;
 import com.pglens.proto.v1.IndexStat;
 import com.pglens.proto.v1.TableStat;
@@ -25,7 +26,8 @@ import org.springframework.stereotype.Repository;
  *
  * <p>The structural catalog (table estimates + index_catalog) is <em>replaced</em> each ingest. The
  * cumulative {@code idx_scan} counters are a time-series instead — {@link #recordIndexScans}
- * appends them to {@code index_stats} so hygiene can delta them over a window (ADR-0029).
+ * appends them to {@code index_stats} so hygiene can delta them over a window (ADR-0029), and the
+ * per-table read/write counters go to {@code table_stats} the same way (write load, ADR-0038).
  */
 @Repository
 public class CatalogRepository {
@@ -92,6 +94,74 @@ public class CatalogRepository {
           at,
           ix.getIdxScan());
     }
+  }
+
+  /**
+   * Appends this snapshot's cumulative per-table read/write counters to the {@code table_stats}
+   * time-series at {@code capturedAt} (ADR-0038) — the input to the write-load window. Idempotent
+   * on the natural key. Call inside the ingest transaction.
+   */
+  public void recordTableStats(
+      long dbId, com.pglens.proto.v1.CatalogSnapshot catalog, Instant capturedAt) {
+    Timestamp at = Timestamp.from(capturedAt);
+    for (TableStat t : catalog.getTablesList()) {
+      jdbc.update(
+          "INSERT INTO table_stats (db_id, table_name, captured_at, n_tup_ins, n_tup_upd, "
+              + "n_tup_del, tuples_read) VALUES (?, ?, ?, ?, ?, ?, ?) "
+              + "ON CONFLICT (db_id, table_name, captured_at) DO NOTHING",
+          dbId,
+          lower(t.getTableName()),
+          at,
+          t.getNTupIns(),
+          t.getNTupUpd(),
+          t.getNTupDel(),
+          t.getTuplesRead());
+    }
+  }
+
+  /** A table's read/write activity over the persisted window (first → last snapshot). */
+  public record ActivityWindow(TableActivity activity, int snapshots, Instant from, Instant to) {}
+
+  /**
+   * The read/write activity window per table for {@code dbId}, keyed by lowercased table name: the
+   * last snapshot minus the first. Tables with fewer than two snapshots are absent (one point shows
+   * no activity), and so is a window where any counter went backwards — a stats reset makes it
+   * inconclusive, never "no writes" (same rule as index hygiene, ADR-0029).
+   */
+  public Map<String, ActivityWindow> activityWindows(long dbId) {
+    Map<String, ActivityWindow> windows = new LinkedHashMap<>();
+    jdbc.query(
+        "SELECT table_name, count(*) AS snapshots, min(captured_at) AS from_at, "
+            + "  max(captured_at) AS to_at, "
+            + "  (array_agg(n_tup_ins ORDER BY captured_at DESC))[1] "
+            + "    - (array_agg(n_tup_ins ORDER BY captured_at))[1] AS ins, "
+            + "  (array_agg(n_tup_upd ORDER BY captured_at DESC))[1] "
+            + "    - (array_agg(n_tup_upd ORDER BY captured_at))[1] AS upd, "
+            + "  (array_agg(n_tup_del ORDER BY captured_at DESC))[1] "
+            + "    - (array_agg(n_tup_del ORDER BY captured_at))[1] AS del, "
+            + "  (array_agg(tuples_read ORDER BY captured_at DESC))[1] "
+            + "    - (array_agg(tuples_read ORDER BY captured_at))[1] AS rd "
+            + "FROM table_stats WHERE db_id = ? "
+            + "GROUP BY table_name HAVING count(*) >= 2",
+        (RowCallbackHandler)
+            rs -> {
+              long ins = rs.getLong("ins");
+              long upd = rs.getLong("upd");
+              long del = rs.getLong("del");
+              long read = rs.getLong("rd");
+              if (ins < 0 || upd < 0 || del < 0 || read < 0) {
+                return; // a counter went backwards — stats reset, window inconclusive
+              }
+              windows.put(
+                  rs.getString("table_name"),
+                  new ActivityWindow(
+                      new TableActivity(ins, upd, del, read),
+                      rs.getInt("snapshots"),
+                      rs.getTimestamp("from_at").toInstant(),
+                      rs.getTimestamp("to_at").toInstant()));
+            },
+        dbId);
+    return windows;
   }
 
   /** Rebuilds the engine {@link CatalogSnapshot} for {@code dbId} from persisted rows. */

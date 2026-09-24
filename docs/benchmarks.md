@@ -1,3 +1,109 @@
+# PgLens benchmarks
+
+Two benchmarks, both reproducible, both **measured** (no fabricated numbers — charter #1):
+
+1. [**Recommendation accuracy on an external workload**](#accuracy-benchmark--tpc-h-derived-workload-phase-25) — `make accuracy` (Phase 2.5, ADR-0038/0039).
+2. [**Dogfood: tuning PgLens's own metadata schema**](#pglens-dogfood-benchmark--tuning-our-own-metadata-schema) — `make bench` (Phase 2, ADR-0033).
+
+---
+
+# Accuracy benchmark — TPC-H-derived workload (Phase 2.5)
+
+> **The question:** when PgLens says "create this index", is it right — on a workload **we did not
+> write**? Every earlier accuracy test used `demo/slow_queries.sql`, which was authored to be caught.
+> Here PgLens runs against a public benchmark schema, then **every index it validates is built for
+> real** on a throwaway copy and measured. Run 2026-09-24.
+
+**TPC-H-derived workload — not an official TPC result.** Data and query instances come from
+`dbgen`/`qgen` (`gregrahn/tpch-kit` @ `852ad0a`, built at bench time in a throwaway `gcc:13`
+container, not vendored).
+
+## Setup
+- **Database:** throwaway `pglens/monitored-db:0.0.0` (PostgreSQL **16.15**, hypopg 1.4.x) with
+  `pg_stat_statements`. TPC-H schema with **primary keys only** — every secondary index is something
+  PgLens must find, or correctly not recommend. **SF 0.1**: lineitem 600,572 rows, orders 150,000,
+  partsupp 80,000, part 20,000, customer 15,000, supplier 1,000.
+- **Workload:** the 21 TPC-H queries (Q15 excluded — it's `CREATE VIEW` DDL), **3 qgen instances**
+  each (different substitution parameters), each run **twice** → pg_stat_statements.
+  Two mechanical qgen fix-ups for Postgres (`scripts/accuracy/prepare_queries.py`): the stray
+  `limit N;` line is moved into the statement, and `interval '90' day (3)` loses its precision.
+- **PgLens:** `pglens scan --json --top 60 --min-calls 1`, connected as the read-only **`pglens_ro`**
+  role — exactly how it runs against a real database.
+- **Measurement:** for each planner-validated recommendation, `CREATE INDEX` on the throwaway copy,
+  then `EXPLAIN (ANALYZE, BUFFERS)` each of that query's instances; **median of 3 warm runs**,
+  parallelism + JIT off; drop the index; next. Measured drop = `1 − Σafter / Σbefore` over the
+  query's instances.
+- **Machine:** Apple M3 Pro, Docker Desktop 29.7 (11 CPUs, 7.75 GiB to the VM). The whole dataset fits
+  in memory. Timings on another machine will differ; the before/after *ratio* is the result.
+
+## Method note — why warm **time**, not buffers (a change made after the first run)
+The first run used "buffers touched" (shared hit + read) as the win metric, copying the dogfood
+benchmark. That turned out to be the wrong metric for this workload, and the change was made **after
+seeing results**, so both are published. Buffers counts every *visit* to a page: an index probed
+inside a nested loop re-visits the same cached pages many times while doing far less work than a
+sequential scan. In this run `partsupp(ps_suppkey)` cut Q11's time by **69.9 %** while *doubling*
+buffers (+102.9 %); `orders(o_custkey)` cut Q22 by 65.8 % with +33.9 % buffers. The dogfood benchmark
+compared scan-vs-scan, where buffers is the right, cache-independent metric; here everything is
+cached and the plans change shape, so warm execution time is the honest measure of work. By buffers
+the precision below would be **2 / 14 (14 %)**; by time it is **11 / 14 (79 %)**.
+
+## Results — every planner-validated recommendation, built and measured
+| TPC-H Q | Index | Generic est. | Value-range floor | Measured time | Measured buffers | Win (time ≥ 15 %)? |
+|---|---|---|---|---|---|---|
+| 20 | `lineitem (l_shipdate)` | −73.8 % | −73.8 % | **−76.0 %** (103,915 → 24,949 ms) | −6.2 % | yes |
+| 17 | `lineitem (l_partkey)` | −90.0 % | −90.0 % | **−99.5 %** (35,588 → 172 ms) | −99.5 % | yes |
+| 9 | `lineitem (l_partkey)` | −85.3 % | — | −15.1 % (456 → 387 ms) | +54.5 % | yes (barely) |
+| 21 | `lineitem (l_suppkey)` | −53.9 % | −53.9 % | −55.9 % (253 → 112 ms) | +16.7 % | yes |
+| 19 | `lineitem (l_quantity)` | −47.1 % | −47.1 % | **−0.1 %** (218.7 → 218.5 ms) | −0.0 % | **no** |
+| 14 | `lineitem (l_shipdate)` | −57.1 % | — | −78.3 % (141 → 31 ms) | −61.3 % | yes |
+| 8 | `orders (o_orderdate)` | −34.4 % | −34.4 % | −47.4 % (172 → 90 ms) | +28.5 % | yes |
+| 6 | `lineitem (l_shipdate)` | −66.1 % | — | −56.7 % (143 → 62 ms) | −6.4 % | yes |
+| 6 | `lineitem (l_discount)` | −66.1 % | — | −26.5 % (143 → 105 ms) | +3.8 % | yes |
+| 7 | `lineitem (l_suppkey)` | −48.7 % | −48.7 % | **−0.7 %** (109.1 → 108.3 ms) | −6.9 % | **no** |
+| 22 | `orders (o_custkey)` | −76.8 % | — | −65.8 % (62.7 → 21.5 ms) | +33.9 % | yes |
+| 2 | `part (p_size)` | −24.6 % | −23.8 % | −14.6 % (49.2 → 42.0 ms) | −2.7 % | **no** (just under) |
+| 5 | `orders (o_orderdate)` | −39.7 % | −39.7 % | −17.1 % (68.6 → 56.9 ms) | −0.1 % | yes |
+| 11 | `partsupp (ps_suppkey)` | −82.6 % | −82.6 % | −69.9 % (51.7 → 15.6 ms) | +102.9 % | yes |
+
+(Estimates are HypoPG **planner estimates** of cost; the measured columns are real. A row is one
+(query, index) pair — the same index appears for several queries, e.g. `lineitem(l_shipdate)`.)
+
+## What it shows
+- **Capture coverage was the first real finding.** Before the fix, **6 of 21 statements (29 %) could
+  not be planned at all** from their normalized text, so PgLens never analyzed them — invisible on the
+  self-written demo. Two normalization artifacts caused five of them and are now rewritten
+  (ADR-0039): `extract(year FROM x)` normalizes to `extract($1 FROM x)` (a syntax error →
+  `date_part($1, x)`), and literal arithmetic like `10 + 10` becomes untyped `$8 + $9` ("operator is
+  not unique" → typed as numeric). **Coverage: 20 / 21.** The last one (Q12: an untyped
+  `CASE … THEN $N` inside `sum()`) needs real type inference — backlog B9.
+- **Precision: 11 of 14 validated (query, index) pairs cut warm time by ≥ 15 % (79 %).** PgLens's
+  **#1** ranked recommendation, `lineitem(l_shipdate)` for Q20, was estimated at −73.8 % and measured
+  at −76.0 %; **#2**, `lineitem(l_partkey)` for Q17, −90.0 % vs −99.5 % (35.6 s → 0.17 s).
+- **The three misses share one cause:** the recommendation was validated on the *generic* plan, but
+  with the real literal values the planner keeps the sequential scan. Q19's `l_quantity` is a **range**
+  predicate inside an `OR` of three branches and Q7's is a join key under a date-range filter — neither
+  is an equality parameter, so the value-range check (equality-only by design) can't catch it. `part
+  (p_size)` is a near miss (−14.6 % vs the 15 % gate). This is the known limit of generic-plan
+  validation, now measured: roughly 1 in 5 validated recommendations on this workload doesn't pay off.
+- **Estimate error:** mean |estimated − measured time drop| is **22.7 points** for the generic
+  estimate (14 recs) and **18.5 points** for the value-range floor (the 9 recs that have one — a
+  different subset, so this is *not* a like-for-like improvement claim). TPC-H data is **uniformly
+  distributed by design**, so the floor equals the generic estimate almost everywhere; the value-range
+  feature earns its keep on **skewed** data (the demo: `orders(customer_id)` −98.7 % generic vs −56.7 %
+  for the hot customer), which this benchmark doesn't exercise.
+- **Not measured: recall.** There is no ground-truth list of "the indexes TPC-H needs", so this
+  measures whether PgLens's recommendations are *right*, not whether it *missed* any. It also
+  suppressed 36 candidates; whether any of those would have helped is not measured.
+- **Noise:** two full runs differed by up to ~5 points on the same rec (Q20: −71.8 % vs −76.0 %;
+  `p_size`: −11.8 % vs −14.6 %). Treat single-digit differences as noise.
+
+## Reproduce
+`make accuracy` (≈ 40 min on the machine above; most of it is the unindexed Q17/Q20 baselines).
+`SF`, `SEEDS`, `REPEAT`, `RUNS` are overridable; `KEEP=1` leaves the container up. Output:
+`build/accuracy/results.md` + `results.json` + PgLens's own `pglens.json`.
+
+---
+
 # PgLens dogfood benchmark — tuning our own metadata schema
 
 > **PgLens finding a missing index on itself.** The metadata store (`query_stats`) is a real, growing

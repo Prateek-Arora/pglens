@@ -17,7 +17,13 @@ import org.testcontainers.utility.DockerImageName;
  */
 final class MonitoredDbContainer {
 
-  private static final String IMAGE = "pglens/monitored-db:0.0.0";
+  /**
+   * The monitored image under test. Defaults to the pinned PG16 dev image; the CI compatibility job
+   * overrides it ({@code -PmonitoredImage=pglens/monitored-db:pg17}) to run the same suite against
+   * other Postgres majors (ADR-0036).
+   */
+  static final String IMAGE =
+      System.getProperty("pglens.monitoredImage", "pglens/monitored-db:0.0.0");
 
   private MonitoredDbContainer() {}
 

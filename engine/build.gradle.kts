@@ -49,6 +49,11 @@ val integrationTest by
       // Lets integration tests load the real monitored-db initdb scripts (schema lives in the
       // repo, not baked into the image — compose mounts it as a volume).
       systemProperty("pglens.repoRoot", rootDir.absolutePath)
+      // Monitored image under test: the PG16 default, or another major for the CI compatibility
+      // job (`-PmonitoredImage=pglens/monitored-db:pg17`, ADR-0036).
+      systemProperty(
+          "pglens.monitoredImage",
+          providers.gradleProperty("monitoredImage").getOrElse("pglens/monitored-db:0.0.0"))
     }
 
 tasks.named("check") {
