@@ -1,5 +1,6 @@
 package com.pglens.engine.db;
 
+import com.pglens.engine.candidate.BtreeEntryWidth;
 import com.pglens.engine.estimate.EqualityParameterLocator;
 import com.pglens.engine.estimate.ValueRanges;
 import com.pglens.engine.model.AccessMethod;
@@ -32,10 +33,12 @@ import org.springframework.jdbc.core.ResultSetExtractor;
  * fabricated number), never a failed scan. Every cost is a generic-plan planner estimate.
  *
  * <p>A planner-validated verdict also gets two pieces of evidence (ADR-0038): the index's {@link
- * IndexFootprint} (HypoPG size estimate vs the table's heap) and — when the index's leading column
- * is equality-compared to a {@code $N} — a {@link ValueRangeEstimate}: the query re-planned with
- * real {@code pg_stats} values substituted for that {@code $N}, without and with the index. The
- * values are used only for planning here at the edge and never leave it.
+ * IndexFootprint} (HypoPG size estimate vs the table's heap) and — when the query compares columns
+ * to a {@code $N} by equality — a {@link ValueRangeEstimate}: the query re-planned with real {@code
+ * pg_stats} values substituted for each such {@code $N}, without and with the index. The values are
+ * used only for planning here at the edge and never leave it. A validated B-tree also gets a
+ * catalog-only {@link BtreeEntryWidth} build caution when a key value could be too wide to index
+ * (B17, ADR-0041).
  */
 public class HypoPGValidator {
 
@@ -173,7 +176,74 @@ public class HypoPGValidator {
     }
     // The same variants, planned now that the hypothetical index is gone.
     ValueRangeEstimate range = valueRange(variants, planCosts(variants), costsWithIndex, result);
-    return result.withEvidence(range, footprint);
+    ValidationResult withEvidence = result.withEvidence(range, footprint);
+    return result.isRecommended()
+        ? withEvidence.withBuildCaution(buildCaution(ddl).orElse(null))
+        : withEvidence;
+  }
+
+  // --- build caution (B17, ADR-0041)
+  // --------------------------------------------------------------
+
+  private static final String KEY_COLUMN_SQL =
+      DataSources.introspection(
+          "SELECT bt.typname AS base_type, bt.typcategory AS category, "
+              + "CASE WHEN t.typtype = 'd' THEN t.typtypmod ELSE a.atttypmod END AS typmod, "
+              + "a.attstorage AS storage "
+              + "FROM pg_attribute a "
+              + "JOIN pg_type t ON t.oid = a.atttypid "
+              + "JOIN pg_type bt ON bt.oid = "
+              + "  CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.oid END "
+              + "WHERE a.attrelid = to_regclass(?) AND a.attname = ? "
+              + "  AND a.attnum > 0 AND NOT a.attisdropped");
+
+  private static final String TOAST_SQL =
+      DataSources.introspection(
+          "SELECT CASE WHEN c.reltoastrelid = 0 THEN 0 "
+              + "ELSE pg_relation_size(c.reltoastrelid) END AS toast_bytes "
+              + "FROM pg_class c WHERE c.oid = to_regclass(?)");
+
+  /**
+   * A caution when a validated B-tree's key could hold a value too wide for a B-tree entry — from
+   * the catalog only (column types + the table's TOAST size), never from user data. Empty for other
+   * access methods, bounded columns, or when the catalog can't be read.
+   */
+  private Optional<String> buildCaution(String ddl) {
+    Optional<IndexCandidate> parsed = IndexCandidate.parseDdl(ddl);
+    if (parsed.isEmpty() || parsed.get().accessMethod() != AccessMethod.BTREE) {
+      return Optional.empty();
+    }
+    IndexCandidate index = parsed.get();
+    try {
+      List<BtreeEntryWidth.KeyColumn> columns = new ArrayList<>();
+      for (String column : index.columns()) {
+        jdbc.query(
+            KEY_COLUMN_SQL,
+            (ResultSetExtractor<Void>)
+                rs -> {
+                  if (rs.next()) {
+                    columns.add(
+                        new BtreeEntryWidth.KeyColumn(
+                            column,
+                            rs.getString("base_type"),
+                            firstChar(rs.getString("category")),
+                            rs.getInt("typmod"),
+                            firstChar(rs.getString("storage"))));
+                  }
+                  return null;
+                },
+            index.table(),
+            column);
+      }
+      Long toastBytes = jdbc.queryForObject(TOAST_SQL, Long.class, index.table());
+      return BtreeEntryWidth.caution(index.table(), columns, toastBytes == null ? 0L : toastBytes);
+    } catch (DataAccessException catalogUnavailable) {
+      return Optional.empty(); // no caution is better than a guessed one
+    }
+  }
+
+  private static char firstChar(String s) {
+    return s == null || s.isEmpty() ? ' ' : s.charAt(0);
   }
 
   // --- value-range + footprint evidence (ADR-0038) ---------------------------------------------

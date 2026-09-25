@@ -8,7 +8,8 @@ package com.pglens.engine.model;
  * <p>{@code label} is the honesty sentence shown to the user — every number here is a HypoPG
  * planner estimate, and the label says so. A planner-validated verdict may also carry a {@link
  * ValueRangeEstimate} (how the win varies across real values) and an {@link IndexFootprint} (HypoPG
- * size estimate) — ADR-0038.
+ * size estimate) — ADR-0038 — and a {@code buildCaution} when a B-tree key value could be too wide
+ * for {@code CREATE INDEX} to succeed, which HypoPG can't detect (B17, ADR-0041).
  */
 public record ValidationResult(
     Status status,
@@ -18,7 +19,8 @@ public record ValidationResult(
     boolean indexUsed,
     String label,
     ValueRangeEstimate valueRange,
-    IndexFootprint footprint) {
+    IndexFootprint footprint,
+    String buildCaution) {
 
   /** A verdict without the Phase 2.5 evidence (value range / footprint) — e.g. not validated. */
   public ValidationResult(
@@ -28,13 +30,27 @@ public record ValidationResult(
       Double relativeDelta,
       boolean indexUsed,
       String label) {
-    this(status, costBefore, costAfter, relativeDelta, indexUsed, label, null, null);
+    this(status, costBefore, costAfter, relativeDelta, indexUsed, label, null, null, null);
   }
 
   /** This verdict with the value-range and footprint evidence attached (either may be null). */
   public ValidationResult withEvidence(ValueRangeEstimate range, IndexFootprint size) {
     return new ValidationResult(
-        status, costBefore, costAfter, relativeDelta, indexUsed, label, range, size);
+        status, costBefore, costAfter, relativeDelta, indexUsed, label, range, size, buildCaution);
+  }
+
+  /** This verdict with a build caution attached (null for none). */
+  public ValidationResult withBuildCaution(String caution) {
+    return new ValidationResult(
+        status,
+        costBefore,
+        costAfter,
+        relativeDelta,
+        indexUsed,
+        label,
+        valueRange,
+        footprint,
+        caution);
   }
 
   public enum Status {

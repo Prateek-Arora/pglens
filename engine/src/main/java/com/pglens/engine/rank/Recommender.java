@@ -13,11 +13,11 @@ import java.util.List;
  * Ranks the planner-validated recommendations across all queries and flags near-duplicates, so
  * PgLens never advises two overlapping indexes (ADR-0017). Pure — no I/O.
  *
- * <p><b>Score</b> = the query's real total exec time × a HypoPG relative cost drop — the
- * value-range worst case when one exists, else the generic plan's ({@link RankingScore}, ADR-0038)
- * — a measured weight scaled by an estimated fraction, so a modest win on a hot query outranks a
- * big win on a cold one. Only validated recs are ranked; suppressed/not-validated ones stay
- * per-query.
+ * <p><b>Score</b> = the query's real total exec time × the HypoPG generic-plan relative cost drop
+ * ({@link RankingScore}; ADR-0041) — a measured weight scaled by an estimated fraction, so a modest
+ * win on a hot query outranks a big win on a cold one. A value range, when present, is evidence
+ * shown beside the score, not part of it. Only validated recs are ranked; suppressed/not-validated
+ * ones stay per-query.
  *
  * <p><b>Dedupe:</b> a btree on {@code (a)} is served by a btree on {@code (a, b)}, so a rec whose
  * key columns are a prefix of another's (same table + access method) is flagged {@code subsumedBy}
@@ -43,8 +43,7 @@ public final class Recommender {
     for (Weighted w : input) {
       if (w.recommendation().isRecommended()) {
         ValidationResult v = w.recommendation().validation();
-        Double worstCase = v.valueRange() == null ? null : v.valueRange().worstRelativeDrop();
-        RankingScore.Drop drop = RankingScore.drop(v.relativeDelta(), worstCase);
+        RankingScore.Drop drop = RankingScore.drop(v.relativeDelta());
         scored.add(new Scored(w, w.queryTotalExecTimeMs() * drop.value(), drop.basis()));
       }
     }

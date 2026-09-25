@@ -257,14 +257,14 @@ class AgentToServerFlowIntegrationTest {
     assertThat(after).isLessThan(before); // a real, labeled generic-plan cost drop
 
     // Phase 2.5 (ADR-0038): the edge also sent a value range (the query compares customer_id by
-    // equality) and HypoPG's footprint; the score says which drop it used.
+    // equality) and HypoPG's footprint; the score uses the generic drop (ADR-0041).
     Map<String, Object> evidence =
         metadata.queryForMap(
             "SELECT score_basis, range_worst_drop, range_values_sampled, range_label, "
                 + "est_index_bytes, footprint_label FROM recommendations "
                 + "WHERE queryid = ? AND status = 'PLANNER_VALIDATED' LIMIT 1",
             queryid);
-    assertThat(evidence.get("score_basis")).isEqualTo("VALUE_RANGE_FLOOR");
+    assertThat(evidence.get("score_basis")).isEqualTo("GENERIC_PLAN");
     assertThat(evidence.get("range_worst_drop")).isNotNull();
     assertThat((Integer) evidence.get("range_values_sampled")).isPositive();
     assertThat((Long) evidence.get("est_index_bytes")).isPositive();

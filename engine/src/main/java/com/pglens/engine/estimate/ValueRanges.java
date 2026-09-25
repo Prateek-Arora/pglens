@@ -82,9 +82,9 @@ public final class ValueRanges {
             ? "a typical value of " + worstColumn
             : "a common value of %s (%s of rows)".formatted(worstColumn, pct(worstFrequency));
     String label =
-        ("Across %d sampled values of %s (HypoPG planner estimates): −%s for %s, up to −%s "
-                + "(generic plan: −%s). Ranked by the lower figure.")
-            .formatted(usable, columns, pct(worst), whose, pct(best), pct(generic));
+        ("Across %d sampled values of %s (HypoPG planner estimates): %s for %s, up to %s "
+                + "(generic plan: %s, which is what the ranking uses).")
+            .formatted(usable, columns, drop(worst), whose, drop(best), drop(generic));
     if (worst < gate) {
       label +=
           " Caution: for some common values the planner expects little benefit — the real win"
@@ -95,5 +95,10 @@ public final class ValueRanges {
 
   private static String pct(double frac) {
     return String.format(Locale.US, "%.1f%%", frac * 100);
+  }
+
+  /** A relative cost drop as "−56.7%"; a cost increase (negative drop) as "+4.0%". */
+  private static String drop(double frac) {
+    return (frac < 0 ? "+" : "−") + pct(Math.abs(frac));
   }
 }

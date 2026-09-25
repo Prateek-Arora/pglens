@@ -148,7 +148,7 @@ class ValidationFlowIntegrationTest {
   }
 
   @Test
-  void theValueRangeFloorDrivesTheScoreAndTheEvidenceIsPersisted() throws Exception {
+  void theGenericDropDrivesTheScoreAndTheRangeIsPersistedAsEvidence() throws Exception {
     long jobId = lease(channel, 10).get(0).getJobId();
 
     report(
@@ -170,20 +170,23 @@ class ValidationFlowIntegrationTest {
             .setEstIndexBytes(4_644_864L)
             .setTableBytes(12_058_624L)
             .setFootprintLabel("Estimated index size 4.4 MB …")
+            .setBuildCaution("Build caution: orders stores 12 kB of values …")
             .build());
 
     Map<String, Object> rec =
         jdbc.queryForMap(
             "SELECT * FROM recommendations WHERE db_id = ? AND queryid = ?", dbId, QUERYID);
-    // Ranked by the hot-value floor (0.567 × 5000), not the generic 0.987 — ADR-0038.
-    assertThat((Double) rec.get("estimated_ms_saved")).isCloseTo(2835.0, within(1e-6));
-    assertThat(rec.get("score_basis")).isEqualTo("VALUE_RANGE_FLOOR");
+    // Ranked by the generic drop (0.987 × 5000); the range is evidence, not the score — ADR-0041.
+    assertThat((Double) rec.get("estimated_ms_saved")).isCloseTo(4935.0, within(1e-6));
+    assertThat(rec.get("score_basis")).isEqualTo("GENERIC_PLAN");
     assertThat((Double) rec.get("range_worst_drop")).isCloseTo(0.567, within(1e-9));
     assertThat((Double) rec.get("range_worst_frequency")).isCloseTo(0.018, within(1e-9));
     assertThat(rec.get("range_values_sampled")).isEqualTo(4);
     assertThat(rec.get("range_column")).isEqualTo("orders.customer_id");
     assertThat(rec.get("est_index_bytes")).isEqualTo(4_644_864L);
     assertThat(rec.get("footprint_label")).isEqualTo("Estimated index size 4.4 MB …");
+    assertThat(rec.get("build_caution"))
+        .isEqualTo("Build caution: orders stores 12 kB of values …");
   }
 
   @Test
@@ -209,6 +212,7 @@ class ValidationFlowIntegrationTest {
     assertThat(rec.get("range_values_sampled")).isNull();
     assertThat(rec.get("range_label")).isNull();
     assertThat(rec.get("est_index_bytes")).isNull();
+    assertThat(rec.get("build_caution")).isNull(); // empty on the wire = no caution
   }
 
   @Test

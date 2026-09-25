@@ -115,6 +115,7 @@ ingestion (B6a); PG ≤ 15 support (declined, ADR-0036); any write to the monito
       only when it passes. — CLI in-session; server via `CoverageChecks` jobs + `AdviceService`.
 - [x] `docs/benchmarks.md` has a reproducible external-workload result: coverage 20/21, precision
       11/14 (79 %) by warm time, per-rec estimate vs measured — **measured numbers only**, labeled.
+      *(Superseded 2026-09-25: re-measured under the server's own settings, 6/14 (43 %) — ADR-0041.)*
 - [x] Tests green: PG16 full build **207/0**; PG17 + PG18 integration **71/71** each (CI `compat` job
       added — not yet run on GitHub).
 - [x] Commit + tag `v0.0.4` — branch `phase-2.5/v0.0.4-accuracy` → PR → merged, tagged.

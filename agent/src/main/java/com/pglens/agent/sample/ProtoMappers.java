@@ -152,6 +152,9 @@ public final class ProtoMappers {
           .setTableBytes(size.tableBytes())
           .setFootprintLabel(size.label());
     }
+    if (vr.buildCaution() != null) {
+      builder.setBuildCaution(vr.buildCaution()); // B17 — catalog facts only, no values
+    }
     return builder.build();
   }
 }

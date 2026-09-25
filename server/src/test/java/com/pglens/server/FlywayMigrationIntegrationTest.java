@@ -74,14 +74,25 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(6); // V1 … V6
+    assertThat(applied).isEqualTo(7); // V1 … V7
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("6");
+    assertThat(version).isEqualTo("7");
+  }
+
+  /** V7 (ADR-0041, B17): the build-caution column on recommendations. */
+  @Test
+  void recommendationsHaveABuildCautionColumn() {
+    List<String> columns =
+        jdbc.queryForList(
+            "SELECT column_name FROM information_schema.columns "
+                + "WHERE table_name = 'recommendations'",
+            String.class);
+    assertThat(columns).contains("build_caution");
   }
 
   /**

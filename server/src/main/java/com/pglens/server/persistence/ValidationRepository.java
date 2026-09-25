@@ -79,15 +79,15 @@ public class ValidationRepository {
     Long indexBytes = r.hasEstIndexBytes() ? r.getEstIndexBytes() : null;
     Long tableBytes = r.hasTableBytes() ? r.getTableBytes() : null;
 
-    // Ranking score (ADR-0017, ADR-0038): the query's real total exec time × the ranking drop —
-    // the value-range floor when present, else the generic drop — computed by the SAME engine
-    // function the CLI uses. Only for a validated rec with both numbers. Always a labeled estimate.
+    // Ranking score (ADR-0017, ADR-0041): the query's real total exec time × the generic-plan drop,
+    // computed by the SAME engine function the CLI uses (the value range is stored as evidence, not
+    // ranked by). Only for a validated rec with both numbers. Always a labeled estimate.
     Double estimatedMsSaved = null;
     String scoreBasis = null;
     if (r.getStatus() == ValidationStatus.PLANNER_VALIDATED && relativeDrop != null) {
       Double totalExecTimeMs = queryTotalExecTimeMs(dbId, job.get().queryid());
       if (totalExecTimeMs != null) {
-        RankingScore.Drop drop = RankingScore.drop(relativeDrop, worstDrop);
+        RankingScore.Drop drop = RankingScore.drop(relativeDrop);
         estimatedMsSaved = drop.value() * totalExecTimeMs;
         scoreBasis = drop.basis().name();
       }
@@ -98,8 +98,8 @@ public class ValidationRepository {
             + "after_cost, relative_drop, used, reason, estimated_ms_saved, score_basis, "
             + "range_column, range_values_sampled, range_worst_drop, range_worst_frequency, "
             + "range_best_drop, range_label, est_index_bytes, table_bytes, footprint_label, "
-            + "updated_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+            + "build_caution, updated_at) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
             + "ON CONFLICT (db_id, queryid, ddl) DO UPDATE SET "
             + "  status = excluded.status, before_cost = excluded.before_cost, "
             + "  after_cost = excluded.after_cost, relative_drop = excluded.relative_drop, "
@@ -111,7 +111,8 @@ public class ValidationRepository {
             + "  range_worst_frequency = excluded.range_worst_frequency, "
             + "  range_best_drop = excluded.range_best_drop, range_label = excluded.range_label, "
             + "  est_index_bytes = excluded.est_index_bytes, table_bytes = excluded.table_bytes, "
-            + "  footprint_label = excluded.footprint_label, updated_at = now()",
+            + "  footprint_label = excluded.footprint_label, "
+            + "  build_caution = excluded.build_caution, updated_at = now()",
         dbId,
         job.get().queryid(),
         job.get().candidateDdl(),
@@ -132,7 +133,8 @@ public class ValidationRepository {
         blankToNull(r.getRangeLabel()),
         indexBytes,
         tableBytes,
-        blankToNull(r.getFootprintLabel()));
+        blankToNull(r.getFootprintLabel()),
+        blankToNull(r.getBuildCaution()));
 
     jdbc.update(
         "UPDATE validation_jobs SET state = 'DONE', result_status = ?, before_cost = ?, "

@@ -14,6 +14,11 @@ import java.util.List;
  * coverage}; and {@code tableWriteLoad} lists the write-load of each table that has a validated
  * recommendation.
  *
+ * <p>Contract 1.2 (ADR-0041, additive over 1.1): a validation may carry {@code buildCaution} (a
+ * B-tree whose key could hold a value too wide to index), and {@code target.port} is set (ADR-0042
+ * — {@code pglens confirm} compares it with the copy). Also since 1.2, {@code scoreBasis} is always
+ * {@code GENERIC_PLAN} — the value range is evidence, not the ranking drop.
+ *
  * <p>A validated recommendation appears twice by design: once under its query ({@link
  * QueryReport#recommendations()}, the full per-query story) and once, ranked and scored, in {@link
  * #topRecommendations()} (the cross-query "indexes to create" summary).
@@ -31,7 +36,7 @@ public record ScanReport(
    * The frozen {@code --json} contract version. Bump on any breaking field change (Phase 2 reads
    * it).
    */
-  public static final String SCHEMA_VERSION = "1.1";
+  public static final String SCHEMA_VERSION = "1.2";
 
   public ScanReport {
     queries = queries == null ? List.of() : List.copyOf(queries);

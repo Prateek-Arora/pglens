@@ -4,7 +4,7 @@ paths:
   - "engine/**"
 ---
 - **Pure / I/O split is load-bearing.** Packages `model`, `parse`, `detect`, `candidate`, `rank`,
-  `hygiene` carry **no Spring imports** (Jackson is allowed) so they unit-test with no container and
+  `hygiene`, `confirm` carry **no Spring imports** (Jackson is allowed) so they unit-test with no container and
   Phase 2 reuses them server-side. Only `db` (and the `PgLensEngine` facade that wires it) may use
   spring-jdbc. The pure half must never import `db`.
 - **The hygiene safety invariant lives in the pure analyzer.** `IndexHygieneAnalyzer` must never emit
@@ -28,8 +28,17 @@ paths:
   the plan (`EqualityParameterLocator.all`) is re-planned with `pg_stats` values from `ValueSampler`
   (quoted by the **server** via `quote_literal`, never in Java). The sampled **values never leave the
   validator** — only frequencies/drops go into models, JSON, or the wire. Never vary a range /
-  expression / `ANY` predicate. Rank with `RankingScore.drop` (floor when a range exists) — the
-  server uses the same function; don't duplicate the formula.
+  expression / `ANY` predicate. Rank with `RankingScore.drop` (the **generic** drop, ADR-0041 —
+  the range is evidence, not the rank) — the server uses the same function; don't duplicate it.
+- **Build caution is catalog-only** (B17, ADR-0041): `BtreeEntryWidth` decides from column types +
+  the table's TOAST size; never sample rows of the monitored DB to find wide values.
+- **`confirm` writes only to a marked copy** (Phase 2.6, ADR-0042). `CopyTarget` is the only
+  writable connection in PgLens; every check in `CopyTarget.open` (marker in `pg_db_role_setting`,
+  not the scanned host:port/db, primary, pgss, owned tables) must pass first. Its only writes are
+  `CREATE`/`DROP INDEX pglens_confirm_<n>` with identifier-checked names; replays run in `SET
+  TRANSACTION READ ONLY` transactions that always roll back. Match statements by the copy's
+  **top-level** pg_stat_statements text, never by queryid. Statement text/values never go into a
+  model, JSON or message — failures carry a SQLSTATE only.
 - **Rules are liberal; HypoPG gates.** A `Rule` flags a pattern from plan + `CatalogSnapshot`; it
   never pre-judges cost. Column extraction is regex over EXPLAIN VERBOSE's qualified text
   (`PlanColumns`) — add operators there, longest-first in the alternation.

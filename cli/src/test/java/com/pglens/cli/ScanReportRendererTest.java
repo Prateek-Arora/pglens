@@ -20,6 +20,7 @@ import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TargetInfo;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
+import com.pglens.engine.model.ValueRangeEstimate;
 import com.pglens.engine.rank.Recommender;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +71,7 @@ class ScanReportRendererTest {
     String json = ScanReportRenderer.toJson(sampleReport());
     JsonNode root = new ObjectMapper().readTree(json);
 
-    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.1");
+    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.2");
     assertThat(root.get("tableWriteLoad").get(0).get("level").asText()).isEqualTo("WRITE_DOMINANT");
     // Derived flags are part of the 1.1 contract, so a JSON consumer needn't recompute them.
     assertThat(root.get("topRecommendations").get(0).has("actionable")).isTrue();
@@ -87,12 +88,45 @@ class ScanReportRendererTest {
   }
 
   @Test
+  void topRecommendationsRankByTheGenericPlanAndShowTheValueRangeBesideIt() {
+    // ADR-0041: the score is the generic drop; the sampled-value range is evidence next to it.
+    IndexCandidate idx =
+        IndexCandidate.of("orders", List.of("customer_id"), AccessMethod.BTREE, List.of("R1"), "");
+    ValidationResult v =
+        new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 13.0, 0.987, true, "validated")
+            .withEvidence(
+                new ValueRangeEstimate("orders.customer_id", 4, -0.04, 0.018, 0.99, "range"), null);
+    List<RankedRecommendation> top =
+        new Recommender()
+            .rank(List.of(new Recommender.Weighted(9L, 1000.0, new Recommendation(idx, v))));
+    ScanReport report =
+        new ScanReport(
+            ScanReport.SCHEMA_VERSION,
+            "2026-09-25T00:00:00Z",
+            new TargetInfo("localhost", 5432, "pglens_demo", "16.4", List.of("hypopg")),
+            List.of(),
+            top,
+            List.of(),
+            List.of());
+
+    String out = ScanReportRenderer.toHuman(report, RankBy.TOTAL_TIME);
+
+    assertThat(out)
+        .contains("est. saves ~987 ms")
+        .contains(
+            "(−98.7% generic plan; +4.0% to −99.0% across sampled values, HypoPG planner"
+                + " estimates)")
+        // The worst case is below the gate, so the top list says so right under the score.
+        .contains("⚠ for some common values of orders.customer_id the planner expects little");
+  }
+
+  @Test
   void humanReportHandlesAnEmptyScanGracefully() {
     ScanReport empty =
         new ScanReport(
             ScanReport.SCHEMA_VERSION,
             "2026-08-25T00:00:00Z",
-            new TargetInfo("localhost", "pglens_demo", "16.4", List.of("hypopg")),
+            new TargetInfo("localhost", 5432, "pglens_demo", "16.4", List.of("hypopg")),
             List.of(),
             List.of(),
             List.of(),
@@ -214,7 +248,8 @@ class ScanReportRendererTest {
     return new ScanReport(
         ScanReport.SCHEMA_VERSION,
         "2026-08-25T00:00:00Z",
-        new TargetInfo("localhost", "pglens_demo", "16.4", List.of("hypopg", "pg_stat_statements")),
+        new TargetInfo(
+            "localhost", 5432, "pglens_demo", "16.4", List.of("hypopg", "pg_stat_statements")),
         queries,
         top,
         List.of(

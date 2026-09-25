@@ -184,6 +184,16 @@ class ProtoMappersTest {
             2, new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 400.0, 0.6, true, "v"));
     assertThat(bare.hasRangeWorstDrop()).isFalse();
     assertThat(bare.hasEstIndexBytes()).isFalse();
+    assertThat(bare.getBuildCaution()).isEmpty();
+  }
+
+  @Test
+  void carriesABuildCaution() {
+    ValidationResult cautioned =
+        new ValidationResult(Status.PLANNER_VALIDATED, 1000.0, 400.0, 0.6, true, "v")
+            .withBuildCaution("Build caution: movie_info stores 1.2 GB of values …");
+    assertThat(ProtoMappers.toValidateResult(1, cautioned).getBuildCaution())
+        .startsWith("Build caution");
   }
 
   @Test

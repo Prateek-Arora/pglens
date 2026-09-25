@@ -69,4 +69,24 @@ public record ConnectionTarget(String jdbcUrl, String user, String password, Str
             + (query != null ? "?" + query : "");
     return new ConnectionTarget(jdbcUrl, user, password, database);
   }
+
+  /** The host in {@link #jdbcUrl()} ({@code localhost} when none is given). */
+  public String host() {
+    URI uri = uri();
+    return uri != null && uri.getHost() != null ? uri.getHost() : "localhost";
+  }
+
+  /** The port in {@link #jdbcUrl()} (5432 when none is given). */
+  public int port() {
+    URI uri = uri();
+    return uri != null && uri.getPort() != -1 ? uri.getPort() : 5432;
+  }
+
+  private URI uri() {
+    try {
+      return new URI(jdbcUrl.startsWith("jdbc:") ? jdbcUrl.substring("jdbc:".length()) : jdbcUrl);
+    } catch (URISyntaxException e) {
+      return null;
+    }
+  }
 }

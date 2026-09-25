@@ -141,16 +141,17 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
-    assertThat(report.schemaVersion()).isEqualTo("1.1");
+    assertThat(report.schemaVersion()).isEqualTo("1.2");
     RankedRecommendation top =
         report.topRecommendations().stream()
             .filter(rr -> rr.candidate().columns().equals(List.of("customer_id")))
             .findFirst()
             .orElseThrow();
 
-    // Equality on the leading column → a value range, ranked by its floor (ADR-0038).
+    // Equality on the leading column → a value range as evidence; ranked by the generic drop
+    // (ADR-0038, ranking reverted by ADR-0041).
     assertThat(top.recommendation().validation().valueRange()).isNotNull();
-    assertThat(top.scoreBasis()).isEqualTo(ScoreBasis.VALUE_RANGE_FLOOR);
+    assertThat(top.scoreBasis()).isEqualTo(ScoreBasis.GENERIC_PLAN);
     assertThat(top.recommendation().validation().footprint().estimatedIndexBytes()).isPositive();
     // Every table with a validated rec gets a write-load note (cumulative counters, labeled).
     assertThat(report.tableWriteLoad())
