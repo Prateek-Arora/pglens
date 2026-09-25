@@ -19,6 +19,8 @@ node_modules/
 out/
 dist/
 *.log
+# ...except the real PostgreSQL log fixtures the confirm parser is tested on (Phase 2.6)
+!engine/src/test/resources/confirm/*.log
 
 # --- Env / secrets ---
 .env

@@ -1,0 +1,10 @@
+2026-09-25 16:22:55.762 UTC [169] LOG:  statement: SELECT count(*) FROM t WHERE a = 5;
+2026-09-25 16:22:56.082 UTC [170] LOG:  statement: SET application_name = 'PostgreSQL JDBC Driver'
+2026-09-25 16:22:56.095 UTC [170] LOG:  execute <unnamed>: SELECT b FROM t WHERE a = 7 AND id > 10
+2026-09-25 16:22:56.099 UTC [170] LOG:  execute <unnamed>: SELECT b FROM t
+	  WHERE b = 'it''s'   -- trailing comment
+	  AND a = 3
+2026-09-25 16:22:56.102 UTC [170] LOG:  execute <unnamed>: SELECT b FROM t WHERE a = $1 AND id > 10 LIMIT $2
+2026-09-25 16:22:56.102 UTC [170] DETAIL:  parameters: $1 = '2', $2 = '5'
+2026-09-25 16:22:56.103 UTC [170] LOG:  execute <unnamed>: SELECT id FROM t WHERE b = $1 AND a IN (1, 2, 3)
+2026-09-25 16:22:56.103 UTC [170] DETAIL:  parameters: $1 = 'it''s'
