@@ -60,7 +60,20 @@ class AdviceAssemblerTest {
     assertThat(advice.get(0).writeLoad().level()).isEqualTo(TableWriteLoad.Level.WRITE_DOMINANT);
   }
 
+  @Test
+  void carriesABuildCautionReportedForAnyOfTheIndexsQueries() {
+    List<IndexAdvice> advice =
+        AdviceAssembler.assemble(
+            List.of(
+                row(NARROW, 1, 300),
+                new ValidatedRow(
+                    NARROW, "BTREE", 2, 100.0, "GENERIC_PLAN", 0.5, null, "size", "Build caution")),
+            Map.of());
+
+    assertThat(advice.get(0).buildCaution()).isEqualTo("Build caution");
+  }
+
   private static ValidatedRow row(String ddl, long queryId, double ms) {
-    return new ValidatedRow(ddl, "BTREE", queryId, ms, "GENERIC_PLAN", 0.5, null, "size");
+    return new ValidatedRow(ddl, "BTREE", queryId, ms, "GENERIC_PLAN", 0.5, null, "size", null);
   }
 }

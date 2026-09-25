@@ -112,6 +112,15 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Effort/type:** `needs-design` — touches core safety.
 - **Refs:** ADR-0013 (`--explain-analyze` deferred), ADR-0020 (read-only + statement-tag guard),
   ADR-0015 (R5 inactive).
+- **Update 2026-09-25 (ADR-0040):** on JOB, 18 % of planner-validated recommendations made their
+  query slower (up to 7.8×) because the planner's row estimates were wrong. Only running the query
+  with the index catches that, which makes this item the main answer to "is it safe to apply?".
+- **DELIVERED as Phase 2.6 (2026-09-25, ADR-0042):** `pglens confirm` builds recommended indexes on a
+  user-marked scratch copy and times real statements. Blocker (1) → user-supplied real statements (a
+  `.sql` file or a PostgreSQL log); (2) → it runs on the copy, never the monitored database; (3) →
+  every replay is a `READ ONLY` transaction that rolls back. Still open from this item: the
+  row-misestimation rule R5 (it needs real row counts *during a scan*), measuring regressions an index
+  causes in queries it wasn't recommended for, a server-side confirm worker, and B6a/B7 below.
 
 ### B6a. `auto_explain` ingestion (real plans from real traffic, zero extra execution)
 - **What:** Consume `auto_explain` log output — the **actual** plan of **actual** executions, with
@@ -134,7 +143,9 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Constraints:** Until then, the current behavior is correct and stays: surfaced, labeled *not
   planner-validated*, real `pg_stat_statements` time shown as the measured "before", **no fabricated
   delta**. This is the same posture as peer tools (dexter, POWA/pg_qualstats).
-- **Effort/type:** `needs-design` — rides B6's non-prod-execution machinery.
+- **Effort/type:** `needs-design` — rides B6's non-prod-execution machinery. **Since Phase 2.6 that
+  machinery exists:** `pglens confirm` could build a GIN/GiST candidate on the copy and time it —
+  the remaining work is letting `ConfirmPlan` take not-planner-validated recs (and labeling them).
 - **Refs:** ADR-0005, ADR-0016, ADR-0019 (GIN labeling); charter principle #6.
 
 ### B8. LIKE-trigram GIN recommendation
@@ -271,6 +282,35 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Why deferred:** B13's flag + overlap consolidation captures most of the value at a fraction of the
   complexity; revisit if the B15 benchmark shows sprawl.
 - **Effort/type:** `needs-design`. **Refs:** pganalyze Indexing Engine docs; Postgres MCP Pro.
+
+### B17. Don't recommend an index that can't be built (wide B-tree entries) — ✅ DELIVERED (catalog-only caution, ADR-0041)
+- **What:** Before recommending a B-tree on a variable-length column (`text`, unbounded `varchar`,
+  `bytea`), check whether any value could exceed a B-tree entry's limit (~2.7 kB), and say so — or
+  suggest a hash index or an expression index on `md5(col)` / `left(col, n)` for equality.
+- **Why:** On JOB (ADR-0040) PgLens's **#2** recommendation, `movie_info (info)` (34 of 214 recs), fails
+  on `CREATE INDEX`: 1,182 of 14.8 M values are longer than a B-tree entry allows (up to 19.8 kB).
+  HypoPG never writes an entry, so it can't catch this, and `pg_stats` only has the *average* width.
+- **Options:** (a) label only, from the column type (cheap, may over-warn); (b) a bounded, read-only
+  `max(octet_length(col))` over a `TABLESAMPLE` (can miss rare long values — 0.008 % here); (c) both:
+  label from the type, and upgrade to "will fail" when the sample finds a long value.
+- **Effort/type:** `good-first-issue` for (a); (b)/(c) touch the read-only edge budget.
+- **Refs:** ADR-0040; `docs/benchmarks.md` (JOB results).
+- **Delivered (ADR-0041) as a better (a):** type alone would flag almost every `text` column, so the
+  caution also needs the table to have TOAST data (a value still over ~2 kB after compression is
+  moved there, so an empty TOAST relation means no value is too wide) or the column to be `STORAGE
+  MAIN`. Catalog-only — no rows read. On the JOB re-scan it flagged exactly `movie_info (info)` and
+  nothing else. Left open: (b), an optional sampled check.
+
+### B18. Pick the representative value from `pg_stat_statements` rows per call
+- **What:** For a simple row-returning query (`WHERE customer_id = $1`, no aggregate), `rows / calls`
+  in `pg_stat_statements` is the average result size the workload really got. Compare it with each
+  sampled value's estimated row count to see whether the workload hits the hot values — and show (or
+  rank by) the matching end of the value range.
+- **Why deferred:** ADR-0041 went back to generic ranking because PgLens can't tell whether a
+  workload queries its hot values (the demo does, JOB doesn't). This is a real signal for that — but
+  only for non-aggregating queries (every JOB query returns 1 row of `MIN()`s), so it needs its own
+  design and a pre-registered test.
+- **Effort/type:** `needs-design`. **Refs:** ADR-0038, ADR-0040, ADR-0041.
 
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):

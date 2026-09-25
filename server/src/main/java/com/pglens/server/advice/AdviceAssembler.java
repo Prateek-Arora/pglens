@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -29,7 +30,8 @@ public final class AdviceAssembler {
       String scoreBasis,
       double relativeDrop,
       String rangeLabel,
-      String footprintLabel) {}
+      String footprintLabel,
+      String buildCaution) {}
 
   /**
    * @param rows every validated (query, index) row for one db
@@ -64,11 +66,8 @@ public final class AdviceAssembler {
               e.getValue().get(0).accessMethod(),
               evidence.stream().mapToDouble(QueryEvidence::estimatedMsSaved).sum(),
               evidence,
-              e.getValue().stream()
-                  .map(ValidatedRow::footprintLabel)
-                  .filter(l -> l != null)
-                  .findFirst()
-                  .orElse(null),
+              firstNonNull(e.getValue(), ValidatedRow::footprintLabel),
+              firstNonNull(e.getValue(), ValidatedRow::buildCaution),
               redundantWith(e.getKey(), candidate, byDdl),
               table == null ? null : writeLoadByTable.get(table)));
     }
@@ -109,5 +108,11 @@ public final class AdviceAssembler {
 
   private static Set<Long> queries(List<ValidatedRow> rows) {
     return rows.stream().map(ValidatedRow::queryId).collect(Collectors.toSet());
+  }
+
+  /** The first non-null value of {@code field} across an index's rows (they describe one index). */
+  private static String firstNonNull(
+      List<ValidatedRow> rows, Function<ValidatedRow, String> field) {
+    return rows.stream().map(field).filter(v -> v != null).findFirst().orElse(null);
   }
 }

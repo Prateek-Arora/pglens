@@ -16,7 +16,7 @@ import picocli.CommandLine.Spec;
     mixinStandardHelpOptions = true,
     version = "pglens 0.0.1",
     description = "Postgres slow-query & index advisor (HypoPG-validated).",
-    subcommands = {ScanCommand.class, ExplainCommand.class})
+    subcommands = {ScanCommand.class, ExplainCommand.class, ConfirmCommand.class})
 class PglensCommand implements Callable<Integer> {
 
   @Spec CommandSpec spec;

@@ -159,6 +159,10 @@ message ValidateResult {
   optional int64 est_index_bytes = 14;
   optional int64 table_bytes = 15;
   string footprint_label = 16;
+  // Build caution (B17, ADR-0041): set when a validated B-tree's key could hold a value too wide for
+  // a B-tree entry, so CREATE INDEX may fail — HypoPG can't detect that. From the catalog only
+  // (column types + the table's TOAST size); empty = no caution.
+  string build_caution = 17;
 }
 
 // Mirrors com.pglens.engine.model.ValidationResult.Status exactly (name-for-name).

@@ -24,7 +24,6 @@ import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.engine.model.TargetInfo;
 import com.pglens.engine.parse.PlanParser;
 import com.pglens.engine.rank.Recommender;
-import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -207,7 +206,8 @@ public final class PgLensEngine implements AutoCloseable {
    */
   public TargetInfo targetInfo() {
     return new TargetInfo(
-        hostOf(target.jdbcUrl()),
+        target.host(),
+        target.port(),
         target.database(),
         safeString("SHOW server_version"),
         installedExtensions());
@@ -234,10 +234,15 @@ public final class PgLensEngine implements AutoCloseable {
             + "skewed columns; the real measured signal beside each is the query's "
             + "pg_stat_statements mean/total time.");
     notes.add(
-        "Where an index's leading column is compared by equality, PgLens also re-plans the query "
-            + "with real common and typical values from pg_stats and ranks by the lowest estimate, "
-            + "so a hot value can't inflate the ranking. Sampled values never leave this "
-            + "session; only their frequencies are reported.");
+        "Where a query compares a column by equality, PgLens also re-plans it with real common "
+            + "and typical values from pg_stats and shows the range beside the generic estimate "
+            + "(ranking uses the generic estimate). Sampled values never leave this session; only "
+            + "their frequencies are reported.");
+    notes.add(
+        "Planner-validated means the planner estimates the query gets cheaper, not that it will "
+            + "run faster: when the planner misjudges row counts, a new index can make a query "
+            + "slower (18% of recommendations on the JOB/IMDB benchmark, 4 of 14 on TPC-H). Try "
+            + "each index on a copy of the database and compare real timings before relying on it.");
     notes.add(
         "GIN/GiST recommendations (jsonb, full-text, LIKE '%…%') are surfaced but not "
             + "planner-validated — HypoPG cannot simulate those access methods.");
@@ -254,16 +259,6 @@ public final class PgLensEngine implements AutoCloseable {
       return jdbc.queryForObject(sql, String.class);
     } catch (DataAccessException e) {
       return null;
-    }
-  }
-
-  private static String hostOf(String jdbcUrl) {
-    try {
-      String u = jdbcUrl.startsWith("jdbc:") ? jdbcUrl.substring("jdbc:".length()) : jdbcUrl;
-      URI uri = new URI(u);
-      return uri.getHost() != null ? uri.getHost() : "localhost";
-    } catch (Exception e) {
-      return "unknown";
     }
   }
 

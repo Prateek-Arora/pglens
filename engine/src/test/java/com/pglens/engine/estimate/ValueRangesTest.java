@@ -79,6 +79,22 @@ class ValueRangesTest {
   }
 
   @Test
+  void saysTheGenericFigureIsWhatRanksAndSignsACostIncrease() {
+    // A sampled value whose plan gets costlier with the index is a negative drop: shown as "+".
+    ValueRangeEstimate r =
+        ValueRanges.of(
+                List.of(new Sample("t.c", 0.3, 100.0, 104.0), new Sample("t.c", null, 100.0, 10.0)),
+                0.8,
+                0.15)
+            .orElseThrow();
+    assertThat(r.label())
+        .contains("+4.0% for a common value of t.c")
+        .contains("up to −90.0%")
+        .contains("(generic plan: −80.0%, which is what the ranking uses)")
+        .doesNotContain("−-");
+  }
+
+  @Test
   void skipsUnplannableSamplesAndIsEmptyWhenNoneAreUsable() {
     assertThat(
             ValueRanges.of(

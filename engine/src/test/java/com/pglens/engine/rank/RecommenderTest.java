@@ -110,20 +110,22 @@ class RecommenderTest {
   // --- fixtures ---------------------------------------------------------------
 
   @Test
-  void ranksByTheValueRangeFloorWhenOneExists() {
-    // Same query weight; the generic plan says 99 % for both, but one index's worst common value
-    // gains only 20 % — it must rank below the index whose floor is 60 % (ADR-0038).
+  void ranksByTheGenericDropAndKeepsTheRangeAsEvidence() {
+    // ADR-0041: a low worst case (20 % for a common value) no longer pulls a rec down — on
+    // JOB/IMDB that floor was further from the measured result than the generic figure (ADR-0040).
     Recommendation hotKey = withRange(validated(btree("orders", "customer_id"), 0.99), 0.20, 0.018);
     Recommendation evenKey =
-        withRange(validated(btree("events", "customer_id"), 0.99), 0.60, 0.001);
+        withRange(validated(btree("events", "customer_id"), 0.70), 0.60, 0.001);
 
     List<RankedRecommendation> ranked =
         recommender.rank(List.of(w(1, 1000, hotKey), w(2, 1000, evenKey)));
 
-    assertThat(ranked.get(0).candidate().table()).isEqualTo("events");
-    assertThat(ranked.get(0).estimatedMsSaved()).isEqualTo(600.0);
-    assertThat(ranked.get(0).scoreBasis()).isEqualTo(ScoreBasis.VALUE_RANGE_FLOOR);
-    assertThat(ranked.get(1).estimatedMsSaved()).isCloseTo(200.0, within(1e-9));
+    assertThat(ranked.get(0).candidate().table()).isEqualTo("orders");
+    assertThat(ranked.get(0).estimatedMsSaved()).isCloseTo(990.0, within(1e-9));
+    assertThat(ranked.get(0).scoreBasis()).isEqualTo(ScoreBasis.GENERIC_PLAN);
+    assertThat(ranked.get(0).recommendation().validation().valueRange().worstRelativeDrop())
+        .isEqualTo(0.20);
+    assertThat(ranked.get(1).estimatedMsSaved()).isCloseTo(700.0, within(1e-9));
   }
 
   @Test

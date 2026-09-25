@@ -32,7 +32,7 @@ public class AdviceService {
     List<AdviceAssembler.ValidatedRow> rows =
         jdbc.query(
             "SELECT ddl, access_method, queryid, estimated_ms_saved, score_basis, relative_drop, "
-                + "range_label, footprint_label FROM recommendations "
+                + "range_label, footprint_label, build_caution FROM recommendations "
                 + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED'",
             (rs, n) ->
                 new AdviceAssembler.ValidatedRow(
@@ -43,7 +43,8 @@ public class AdviceService {
                     rs.getString("score_basis"),
                     rs.getDouble("relative_drop"),
                     rs.getString("range_label"),
-                    rs.getString("footprint_label")),
+                    rs.getString("footprint_label"),
+                    rs.getString("build_caution")),
             dbId);
     return AdviceAssembler.assemble(rows, writeLoad(dbId));
   }

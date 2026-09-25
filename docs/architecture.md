@@ -44,27 +44,67 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
 4. **Local LLM (Ollama) for privacy** (ADR-0006). Query text never leaves the user's infra — the sharpest differentiator vs hosted AI-EXPLAIN tools.
 5. **gRPC for ingest + edge-pull validation** (ADR-0001 stack; topology ADR-0023, lib ADR-0025). Stats flow agent → server as short-lived **client-streaming** calls; validation work is **server-streamed** to the agent and results **client-streamed** back — three of gRPC's four modes, chosen over live-bidi so calls stay short-lived and load-balanceable. A real, justified gRPC use case (not bolted on).
 
-## Recommendation accuracy (implemented — Phase 2.5, ADR-0038)
+## Recommendation accuracy (implemented — Phase 2.5, ADR-0038; amended by ADR-0041)
 The engine's *whether* (HypoPG used + ≥ 15 % gate) was already trustworthy; Phase 2.5 fixes the *how
 much* and the *which set*, reusing the same edge-validation path:
 - **Value range.** For a validated index, the validator finds every equality predicate on a bound
   `$N` in the query's plan and re-plans the query with real `pg_stats` values (top-3 MCVs + a typical
   histogram value) substituted for that `$N`, without and with the hypothetical index. It reports the
-  worst and best drop beside the generic one, and ranking uses the **worst case as a floor**
-  (`RankingScore`, shared by CLI + server). Sampled values stay at the edge; only frequencies and drops
-  travel. On the demo this moved `orders(customer_id)` from −98.7 % to its hot-customer −56.7 % and
-  dropped a join index the planner ignores for the hot customer from #1 to last.
+  worst and best drop beside the generic one, with a caution when the worst case is below the gate.
+  Sampled values stay at the edge; only frequencies and drops travel. **Ranking uses the generic drop**
+  (`RankingScore`, shared by CLI + server): v0.0.4 ranked by the worst case, but the pre-registered
+  JOB/IMDB benchmark found that floor further from reality on 6 of the 8 recs where it differed —
+  it comes from a column's hottest value, and `pg_stat_statements` can't say whether the workload
+  queries it (ADR-0040/0041). The range is evidence beside the score, not the score.
+- **Build caution (B17).** HypoPG never writes an index entry, so it can't see that a B-tree key value
+  is too wide (> ~2.7 kB) to index. For a validated B-tree the validator reads the catalog only — key
+  column types and the table's TOAST size — and cautions when an unbounded column sits on a table that
+  stores long values out of line (`BtreeEntryWidth`), with a one-line check query.
 - **Footprint + write load.** HypoPG's size estimate vs the table heap (a per-write cost proxy), and a
   tuple-level write-load note from `pg_stat_user_tables` (server: a persisted `table_stats` window; CLI:
   cumulative since the database's stats reset). A note, never a suppression.
 - **Overlap.** When a validated index is a btree prefix of another, the wider one is HypoPG-validated
   against the narrower one's query (`CoverageChecks`); only a pass makes the narrower redundant.
   `AdviceService` groups recs per index for the Phase-4 API.
-- **External benchmark.** `make accuracy` builds a TPC-H-derived workload (pinned `tpch-kit`), runs
-  PgLens as `pglens_ro`, then builds every recommended index on the throwaway copy and measures it
-  (`docs/benchmarks.md`).
-- Contracts: `--json` **1.1** (additive), proto `ValidateResult`/`TableStat` optional fields, Flyway
-  **V6**.
+- **External benchmarks.** `make accuracy` (TPC-H-derived, pinned `tpch-kit`) and `make
+  accuracy-job` (the Join Order Benchmark on the real IMDB snapshot, pre-registered) run PgLens as
+  `pglens_ro`, then build every recommended index on a throwaway copy and time the workload's own
+  statements under the server's settings (`docs/benchmarks.md`). JOB showed the limit of any
+  estimate: 18 % of validated recs made their query slower, which is why every report says
+  "planner-validated ≠ safe" and why Phase 2.6 confirms indexes on a user's copy (below).
+- Contracts: `--json` **1.2** (1.1 + `buildCaution`, both additive), proto `ValidateResult` /
+  `TableStat` optional fields, Flyway **V6** + **V7**.
+
+## Confirm on a copy (implemented — Phase 2.6, ADR-0042)
+`pglens confirm` turns the accuracy benchmark's method into a user command: **build each recommended
+index for real on a scratch copy and time the workload's own statements before and after.** It is a
+CLI-only path; it never connects to the scanned database, and the agent/server are unchanged.
+
+```
+scan.json ──► ConfirmPlan (top N distinct indexes + their queries' normalizedText, estimates)
+.sql / PG log ──► StatementSource (reads only; $N + logged literal values)
+                         │
+copy DB ◄── CopyTarget.open: marker in pg_db_role_setting · not the scanned host:port/db ·
+                             primary · PG16+ · pg_stat_statements · tables owned
+        ◄── CopyMeasurer:  match   EXPLAIN (VERBOSE) → copy queryid → run one per shape (READ ONLY,
+                                   rolled back) → copy pgss text (top-level) == report text
+                           baseline EXPLAIN (ANALYZE, TIMING OFF), warm-up + median of 3
+                           per index CREATE INDEX pglens_confirm_<n> → re-time → DROP (finally)
+                         │
+                   Outcome/Verdict (pure) ──► ConfirmReport (confirm JSON 1.0) ──► CLI
+```
+
+- **Pure half** (`engine/confirm`): statement parsing (`.sql` splitting that respects quotes,
+  dollar-quotes and comments; PostgreSQL stderr logs in both logging modes), text matching,
+  plan-from-report, verdict arithmetic, the report model. **I/O half** (`engine/db`): `CopyTarget`
+  (the guard; the only writable connection in PgLens) and `CopyMeasurer`.
+- **Why text, not queryid:** queryid hashes relation OIDs and jumbles literals and bound parameters
+  differently, so the same statement has another queryid on a restored copy. The copy's own
+  pg_stat_statements normalizes the replayed statement exactly as production's did, so the texts
+  match. `$N` statements are replayed via `PREPARE`/`EXECUTE` (substituting the values renumbers the
+  constants).
+- **Privacy:** statement values stay in memory; the report carries queryids, counts and times, and a
+  failure only its SQLSTATE.
 
 ## Collector agent, server & history — gRPC (implemented — Phase 2)
 Phase 1's one-shot CLI became a running two-process system, topology **`a-pull`** (ADR-0023). Two new
@@ -155,6 +195,6 @@ from Phase 1 on.
 ## Known architectural risks (see charter §9 + `docs/decisions.md`)
 - Server horizontal scaling: streaming ingest + singleton `@Scheduled` analysis don't scale trivially → make analysis a leader-elected singleton / separate non-scaled component; Phase 5 HPA is a *learning* demo, not real horizontal scaling of stateful work.
 - Index-rec false positives → HypoPG validation gate with a minimum cost-win threshold.
-- Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value-range floors, footprint/write-load notes and prefix-overlap cross-validation; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
+- Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value ranges (shown as evidence; ranking stays generic per ADR-0041), footprint/write-load notes and prefix-overlap cross-validation; JOB/IMDB (ADR-0040) showed estimates can't rule out slowdowns — Phase 2.6 (proposed) measures on a copy; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
 - Postgres-version drift → PG16+ gate + CI `compat` on 17/18 (ADR-0036). PG18 already changed pgss behaviour (leading comments stripped), so new majors get tested, not assumed.
 - LLM hallucination → deterministic core owns all facts; validate suggested DDL parses and matches the analyzer's rec.

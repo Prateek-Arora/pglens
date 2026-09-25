@@ -12,7 +12,7 @@ AGENT_DB_NAME ?= demo
 AGENT_TOKEN   ?= devtoken
 
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup register test smoke bench accuracy down clean logs ps psql-monitored psql-metadata lint
+.PHONY: help up seed reseed warmup register test smoke bench accuracy accuracy-job down clean logs ps psql-monitored psql-metadata lint
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -51,6 +51,9 @@ bench: ## Dogfood benchmark — measure PgLens's own trend query, before/after t
 
 accuracy: ## Accuracy benchmark — PgLens's recs vs measured reality on a TPC-H-derived workload (SF=0.1; KEEP=1 keeps the container)
 	bash scripts/accuracy_benchmark.sh
+
+accuracy-job: ## Accuracy benchmark on real skewed data — JOB queries on the IMDB snapshot (1.3 GB download; hours)
+	WORKLOAD=job bash scripts/accuracy_benchmark.sh
 
 lint: ## Lint shell, Dockerfile, and SQL (skips linters that aren't installed)
 	bash scripts/lint.sh

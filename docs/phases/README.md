@@ -9,7 +9,8 @@
 | 1 | [`phase_1.md`](phase_1.md) | Core Advisor Engine (CLI) — MVP | ✅ done (`v0.0.1`) |
 | 2 | [`phase_2.md`](phase_2.md) | Collector Agent + Server + History | ✅ done (`v0.0.2`; hardening `v0.0.3`) |
 | 2.5 | [`phase_2_5.md`](phase_2_5.md) | Recommendation Accuracy Sprint | ✅ done (`v0.0.4`; ADR-0038/0039) |
-| 3 | `phase_3.md` _(pending)_ | RAG + LLM Explanation Layer | ⬜ · `v0.0.5` |
+| 2.6 | [`phase_2_6.md`](phase_2_6.md) | Confirm on a Copy (measured index checks, B6) | ✅ approved + built + verified 2026-09-25/26 (ADR-0042), not yet committed · `v0.0.5` |
+| 3 | `phase_3.md` _(pending)_ | RAG + LLM Explanation Layer | ⬜ · `v0.0.6` |
 | 4 | `phase_4.md` _(pending)_ | Dashboard (Next.js) — **ship checkpoint** (now incl. TLS, dashboard login, registration API — ADR-0037) | ⬜ · `v0.1.0-rc` |
 | 5 | `phase_5.md` _(pending)_ | Containerize + Kubernetes + Helm (v0.2) | ⬜ |
 | 6 | `phase_6.md` _(pending)_ | IaC + Cloud Deploy + Hardening (v0.2) | ⬜ |

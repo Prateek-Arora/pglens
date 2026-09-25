@@ -4,17 +4,18 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.pglens.engine.db.HypoPGValidator;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.QueryReport;
 import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.RankedRecommendation;
 import com.pglens.engine.model.Recommendation;
 import com.pglens.engine.model.ScanReport;
-import com.pglens.engine.model.ScoreBasis;
 import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.engine.model.TargetInfo;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
+import com.pglens.engine.model.ValueRangeEstimate;
 import java.util.List;
 import java.util.Locale;
 
@@ -150,6 +151,9 @@ final class ScanReportRenderer {
         if (r.validation().footprint() != null) {
           sb.append("          ").append(r.validation().footprint().label()).append('\n');
         }
+        if (r.validation().buildCaution() != null) {
+          sb.append("          ⚠ ").append(r.validation().buildCaution()).append('\n');
+        }
       }
     }
   }
@@ -181,6 +185,17 @@ final class ScanReportRenderer {
           .append(" ms total  (")
           .append(basis(r))
           .append(")\n");
+      ValueRangeEstimate range = r.recommendation().validation().valueRange();
+      if (range != null
+          && range.worstRelativeDrop() < HypoPGValidator.DEFAULT_MIN_RELATIVE_IMPROVEMENT) {
+        sb.append("     ⚠ for some common values of ")
+            .append(range.column())
+            .append(" the planner expects little or no gain — the real win depends on which values")
+            .append(" your queries use\n");
+      }
+      if (r.recommendation().validation().buildCaution() != null) {
+        sb.append("     ⚠ ").append(r.recommendation().validation().buildCaution()).append('\n');
+      }
       if (r.subsumed()) {
         sb.append("     kept: the more general ")
             .append(r.subsumedBy())
@@ -245,17 +260,29 @@ final class ScanReportRenderer {
     };
   }
 
-  /** The ranking drop and where it came from (ADR-0038) — never an unlabeled number. */
+  /**
+   * The ranking drop and where it came from — never an unlabeled number. Ranking uses the generic
+   * plan (ADR-0041); a value range, when present, is shown beside it as evidence.
+   */
   private static String basis(RankedRecommendation r) {
     ValidationResult v = r.recommendation().validation();
-    if (r.scoreBasis() == ScoreBasis.VALUE_RANGE_FLOOR && v.valueRange() != null) {
-      return "−"
-          + pct(Math.min(v.relativeDelta(), v.valueRange().worstRelativeDrop()))
-          + " worst case over sampled values; generic plan −"
-          + pct(v.relativeDelta())
-          + ", HypoPG planner estimates";
+    String basis = drop(v.relativeDelta()) + " generic plan";
+    ValueRangeEstimate range = v.valueRange();
+    if (range != null) {
+      basis +=
+          "; "
+              + drop(range.worstRelativeDrop())
+              + " to "
+              + drop(range.bestRelativeDrop())
+              + " across sampled values";
     }
-    return "−" + pct(v.relativeDelta()) + ", HypoPG generic-plan estimate";
+    return basis + ", HypoPG planner estimates";
+  }
+
+  /** A relative cost drop as "−56.7%"; a cost increase (negative drop) as "+4.0%". */
+  private static String drop(Double frac) {
+    double f = frac == null ? 0.0 : frac;
+    return (f < 0 ? "+" : "−") + pct(Math.abs(f));
   }
 
   private static String ms(double v) {
