@@ -18,6 +18,7 @@ java {
 
 dependencies {
   implementation(project(":engine"))
+  implementation(project(":explain")) // --plain (Phase 3, ADR-0043)
   implementation(libs.spring.boot.starter)
   implementation(libs.jackson.databind) // plain spring-boot-starter omits Jackson; --json needs it
   implementation(libs.picocli)

@@ -141,7 +141,7 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
-    assertThat(report.schemaVersion()).isEqualTo("1.2");
+    assertThat(report.schemaVersion()).isEqualTo("1.3");
     RankedRecommendation top =
         report.topRecommendations().stream()
             .filter(rr -> rr.candidate().columns().equals(List.of("customer_id")))

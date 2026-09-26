@@ -1,0 +1,256 @@
+{
+ "id": "23-job-movie_keyword-keyword_id",
+ "split": "heldout",
+ "source": "job",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.1",
+  "generatedAt": "2026-09-25T13:02:42.066425Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -6798671784913132129,
+   "normalizedText": "SELECT MIN(cn.name) AS from_company,\n       MIN(mc.note) AS production_note,\n       MIN(t.title) AS movie_based_on_book\nFROM company_name AS cn,\n     company_type AS ct,\n     keyword AS k,\n     link_type AS lt,\n     movie_companies AS mc,\n     movie_keyword AS mk,\n     movie_link AS ml,\n     title AS t\nWHERE cn.country_code !=$1\n  AND (cn.name LIKE $2\n       OR cn.name LIKE $3)\n  AND ct.kind != $4\n  AND ct.kind IS NOT NULL\n  AND k.keyword IN ($5,\n                    $6,\n                    $7)\n  AND mc.note IS NOT NULL\n  AND t.production_year > $8\n  AND lt.id = ml.link_type_id\n  AND ml.movie_id = t.id\n  AND t.id = mk.movie_id\n  AND mk.keyword_id = k.id\n  AND t.id = mc.movie_id\n  AND mc.company_type_id = ct.id\n  AND mc.company_id = cn.id\n  AND ml.movie_id = mk.movie_id\n  AND ml.movie_id = mc.movie_id\n  AND mk.movie_id = mc.movie_id",
+   "truncated": false,
+   "calls": 1,
+   "totalExecMs": 3155.23921,
+   "meanExecMs": 3155.23921,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "keyword",
+     "columns": [
+      "keyword"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on keyword filters keyword (est. 3 of ~134170 rows, total cost 2852.84)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "movie_companies",
+     "columns": [
+      "company_type_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on movie_companies.company_type_id has no index, so the movie_companies side is scanned (~2609129 rows)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "movie_companies",
+     "columns": [
+      "movie_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on movie_companies.movie_id has no index, so the movie_companies side is scanned (~2609129 rows)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "movie_keyword",
+     "columns": [
+      "keyword_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on movie_keyword.keyword_id has no index, so the movie_keyword side is scanned (~4523930 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "keyword",
+      "columns": [
+       "keyword"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on keyword"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 84788.21,
+      "costAfter": 81959.08,
+      "relativeDelta": 0.03336702119315887,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 3.3% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "movie_companies",
+      "columns": [
+       "company_type_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key company_type_id"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 84788.21,
+      "costAfter": 84788.21,
+      "relativeDelta": 0.0,
+      "indexUsed": false,
+      "label": "Suppressed: the planner did not use the hypothetical index \u2014 no benefit (a legitimate full scan).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "movie_companies",
+      "columns": [
+       "movie_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key movie_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 84788.21,
+      "costAfter": 53005.31,
+      "relativeDelta": 0.374850465648467,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 84788 \u2192 53005 (\u221237.5%). Estimate from the planner, not a runtime measurement.",
+      "footprint": {
+       "estimatedIndexBytes": 60588032,
+       "tableBytes": 154206208,
+       "label": "Estimated index size 57.8 MB (HypoPG estimate), \u224839% of the table's 147.1 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.3929026774330642
+      },
+      "recommended": true
+     },
+     "recommended": true
+    },
+    {
+     "candidate": {
+      "table": "movie_keyword",
+      "columns": [
+       "keyword_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key keyword_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 84788.21,
+      "costAfter": 39622.42,
+      "relativeDelta": 0.5326895095438388,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 84788 \u2192 39622 (\u221253.3%). Estimate from the planner, not a runtime measurement.",
+      "footprint": {
+       "estimatedIndexBytes": 105062400,
+       "tableBytes": 200540160,
+       "label": "Estimated index size 100.2 MB (HypoPG estimate), \u224852% of the table's 191.3 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.5238970588235294
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "movie_keyword",
+    "columns": [
+     "keyword_id"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R3"
+    ],
+    "rationale": "Unindexed join key keyword_id"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 84788.21,
+    "costAfter": 39622.42,
+    "relativeDelta": 0.5326895095438388,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 84788 \u2192 39622 (\u221253.3%). Estimate from the planner, not a runtime measurement.",
+    "footprint": {
+     "estimatedIndexBytes": 105062400,
+     "tableBytes": 200540160,
+     "label": "Estimated index size 100.2 MB (HypoPG estimate), \u224852% of the table's 191.3 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.5238970588235294
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -6798671784913132129,
+   "queryTotalExecTimeMs": 3155.23921,
+   "recommendation": {
+    "candidate": {
+     "table": "movie_keyword",
+     "columns": [
+      "keyword_id"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R3"
+     ],
+     "rationale": "Unindexed join key keyword_id"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 84788.21,
+     "costAfter": 39622.42,
+     "relativeDelta": 0.5326895095438388,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 84788 \u2192 39622 (\u221253.3%). Estimate from the planner, not a runtime measurement.",
+     "footprint": {
+      "estimatedIndexBytes": 105062400,
+      "tableBytes": 200540160,
+      "label": "Estimated index size 100.2 MB (HypoPG estimate), \u224852% of the table's 191.3 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.5238970588235294
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 1680.7628272683894,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "movie_keyword",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 4523930,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 339294750
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 4,523,930 rows written (4,523,930 ins / 0 upd / 0 del) vs 339,294,750 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 5
+ }
+}

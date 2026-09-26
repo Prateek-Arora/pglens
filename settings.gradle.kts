@@ -23,4 +23,7 @@ dependencyResolutionManagement {
 //   :proto  — the .proto contract + generated stubs (the spine; depended on by agent + server).
 //   :agent  — the collector (reuses :engine db half): scheduled sampler + gRPC ingest client.
 //   :server — the central server (reuses :engine pure half): gRPC ingest, persistence, trends.
-include("engine", "cli", "proto", "server", "agent")
+// Phase 3 adds plain-language explanations:
+//   :explain — facts → prompt → OpenAI-compatible LLM → guard → explanation (template fallback).
+//              Depends on :engine's model only; :engine itself stays LLM-free (ADR-0043).
+include("engine", "cli", "proto", "server", "agent", "explain")

@@ -1,0 +1,188 @@
+{
+ "id": "04-demo-events-customer_id-occurred_at",
+ "split": "dev",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -6244697840341065805,
+   "normalizedText": "SELECT event_type, occurred_at\nFROM events\nWHERE customer_id = $1\nORDER BY occurred_at DESC\nLIMIT $2",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 155.14749899999998,
+   "meanExecMs": 5.171583300000001,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "events",
+     "columns": [
+      "customer_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on events filters customer_id (est. 7 of ~300000 rows, total cost 5442.50)."
+    },
+    {
+     "ruleId": "R4",
+     "title": "Sort feeding a Limit (top-N could use an ordered index)",
+     "table": "events",
+     "columns": [
+      "occurred_at"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Top-N sorts events by occurred_at (sort node cost 5442.62); an index in that order avoids the sort."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "events",
+      "columns": [
+       "customer_id",
+       "occurred_at"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1",
+       "R4"
+      ],
+      "rationale": "Equality on customer_id then order by occurred_at"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 6442.74,
+      "costAfter": 8.58,
+      "relativeDelta": 0.9986682684696263,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 6443 \u2192 9 (\u221299.9%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "events.customer_id",
+       "valuesSampled": 4,
+       "worstRelativeDrop": 0.9750229733478172,
+       "worstValueFrequency": 0.00139999995008111,
+       "bestRelativeDrop": 0.9986682684696263,
+       "label": "Across 4 sampled values of events.customer_id (HypoPG planner estimates): \u221297.5% for a common value of events.customer_id (0.1% of rows), up to \u221299.9% (generic plan: \u221299.9%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 10444800,
+       "tableBytes": 31784960,
+       "label": "Estimated index size 10.0 MB (HypoPG estimate), \u224833% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.3286082474226804
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "events",
+    "columns": [
+     "customer_id",
+     "occurred_at"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1",
+     "R4"
+    ],
+    "rationale": "Equality on customer_id then order by occurred_at"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 6442.74,
+    "costAfter": 8.58,
+    "relativeDelta": 0.9986682684696263,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 6443 \u2192 9 (\u221299.9%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "events.customer_id",
+     "valuesSampled": 4,
+     "worstRelativeDrop": 0.9750229733478172,
+     "worstValueFrequency": 0.00139999995008111,
+     "bestRelativeDrop": 0.9986682684696263,
+     "label": "Across 4 sampled values of events.customer_id (HypoPG planner estimates): \u221297.5% for a common value of events.customer_id (0.1% of rows), up to \u221299.9% (generic plan: \u221299.9%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 10444800,
+     "tableBytes": 31784960,
+     "label": "Estimated index size 10.0 MB (HypoPG estimate), \u224833% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.3286082474226804
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -6244697840341065805,
+   "queryTotalExecTimeMs": 155.14749899999998,
+   "recommendation": {
+    "candidate": {
+     "table": "events",
+     "columns": [
+      "customer_id",
+      "occurred_at"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1",
+      "R4"
+     ],
+     "rationale": "Equality on customer_id then order by occurred_at"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 6442.74,
+     "costAfter": 8.58,
+     "relativeDelta": 0.9986682684696263,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 6443 \u2192 9 (\u221299.9%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "events.customer_id",
+      "valuesSampled": 4,
+      "worstRelativeDrop": 0.9750229733478172,
+      "worstValueFrequency": 0.00139999995008111,
+      "bestRelativeDrop": 0.9986682684696263,
+      "label": "Across 4 sampled values of events.customer_id (HypoPG planner estimates): \u221297.5% for a common value of events.customer_id (0.1% of rows), up to \u221299.9% (generic plan: \u221299.9%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 10444800,
+      "tableBytes": 31784960,
+      "label": "Estimated index size 10.0 MB (HypoPG estimate), \u224833% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.3286082474226804
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 154.94088418372306,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "events",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 300000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 79500000
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 300,000 rows written (300,000 ins / 0 upd / 0 del) vs 79,500,000 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

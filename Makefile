@@ -12,7 +12,7 @@ AGENT_DB_NAME ?= demo
 AGENT_TOKEN   ?= devtoken
 
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup register test smoke bench accuracy accuracy-job down clean logs ps psql-monitored psql-metadata lint
+.PHONY: help up seed reseed warmup register test smoke bench accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -54,6 +54,23 @@ accuracy: ## Accuracy benchmark — PgLens's recs vs measured reality on a TPC-H
 
 accuracy-job: ## Accuracy benchmark on real skewed data — JOB queries on the IMDB snapshot (1.3 GB download; hours)
 	WORKLOAD=job bash scripts/accuracy_benchmark.sh
+
+llm-up: ## Start the optional local LLM (Ollama, CPU in Docker) and pull its models (~3.7 GB, once)
+	$(COMPOSE) --profile llm up -d --wait llm
+	$(COMPOSE) --profile llm run --rm llm-pull
+
+llm-down: ## Stop the local LLM (keeps the downloaded models)
+	$(COMPOSE) --profile llm stop llm
+
+llm-eval: ## Run the Phase 3 explanation eval against a running LLM (SPLIT=dev|heldout|all, MODEL=…, DOCS=true)
+	./gradlew :explain:llmEval -Psplit=$(or $(SPLIT),dev) $(if $(MODEL),-Pmodel=$(MODEL)) $(if $(DOCS),-Pdocs=$(DOCS))
+
+secrets: ## Scan the whole git history for secrets (gitleaks; uses Docker if it isn't installed)
+	bash scripts/secret_scan.sh
+
+hooks: ## Enable the repo's git hooks (pre-commit: secret scan of staged changes + AGENTS.md guard)
+	git config core.hooksPath scripts/git-hooks
+	@echo "git hooks enabled: scripts/git-hooks"
 
 lint: ## Lint shell, Dockerfile, and SQL (skips linters that aren't installed)
 	bash scripts/lint.sh

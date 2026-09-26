@@ -1,0 +1,240 @@
+{
+ "id": "03-demo-orders-created_at",
+ "split": "heldout",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -6455741865989565885,
+   "normalizedText": "SELECT *\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nWHERE c.country = $1\nORDER BY o.created_at DESC\nLIMIT $2",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 259.05850000000004,
+   "meanExecMs": 8.635283333333334,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "customers",
+     "columns": [
+      "country"
+     ],
+     "confidence": "LOW",
+     "evidence": "Seq Scan on customers filters country (est. 2857 of ~20000 rows, total cost 473.00)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "orders",
+     "columns": [
+      "customer_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on orders.customer_id has no index, so the orders side is scanned (~200000 rows)."
+    },
+    {
+     "ruleId": "R4",
+     "title": "Sort feeding a Limit (top-N could use an ordered index)",
+     "table": "orders",
+     "columns": [
+      "created_at"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Top-N sorts orders by created_at (sort node cost 4686.59); an index in that order avoids the sort."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "customers",
+      "columns": [
+       "country"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on country"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 5837.9,
+      "costAfter": 5677.79,
+      "relativeDelta": 0.027425957964336438,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 2.7% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "customer_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key customer_id"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 5837.9,
+      "costAfter": 5837.9,
+      "relativeDelta": 0.0,
+      "indexUsed": false,
+      "label": "Suppressed: the planner did not use the hypothetical index \u2014 no benefit (a legitimate full scan).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "created_at"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R4"
+      ],
+      "rationale": "Order by created_at"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 5837.9,
+      "costAfter": 2161.42,
+      "relativeDelta": 0.6297607016221586,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 5838 \u2192 2161 (\u221263.0%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "customers.country",
+       "valuesSampled": 3,
+       "worstRelativeDrop": 0.6008723335106069,
+       "worstValueFrequency": 0.10289999842643738,
+       "bestRelativeDrop": 0.8015808027026035,
+       "label": "Across 3 sampled values of customers.country (HypoPG planner estimates): \u221260.1% for a common value of customers.country (10.3% of rows), up to \u221280.2% (generic plan: \u221263.0%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 5799936,
+       "tableBytes": 12050432,
+       "label": "Estimated index size 5.5 MB (HypoPG estimate), \u224848% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.4813052345343304
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "orders",
+    "columns": [
+     "created_at"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R4"
+    ],
+    "rationale": "Order by created_at"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 5837.9,
+    "costAfter": 2161.42,
+    "relativeDelta": 0.6297607016221586,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 5838 \u2192 2161 (\u221263.0%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "customers.country",
+     "valuesSampled": 3,
+     "worstRelativeDrop": 0.6008723335106069,
+     "worstValueFrequency": 0.10289999842643738,
+     "bestRelativeDrop": 0.8015808027026035,
+     "label": "Across 3 sampled values of customers.country (HypoPG planner estimates): \u221260.1% for a common value of customers.country (10.3% of rows), up to \u221280.2% (generic plan: \u221263.0%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 5799936,
+     "tableBytes": 12050432,
+     "label": "Estimated index size 5.5 MB (HypoPG estimate), \u224848% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.4813052345343304
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -6455741865989565885,
+   "queryTotalExecTimeMs": 259.05850000000004,
+   "recommendation": {
+    "candidate": {
+     "table": "orders",
+     "columns": [
+      "created_at"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R4"
+     ],
+     "rationale": "Order by created_at"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 5837.9,
+     "costAfter": 2161.42,
+     "relativeDelta": 0.6297607016221586,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 5838 \u2192 2161 (\u221263.0%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "customers.country",
+      "valuesSampled": 3,
+      "worstRelativeDrop": 0.6008723335106069,
+      "worstValueFrequency": 0.10289999842643738,
+      "bestRelativeDrop": 0.8015808027026035,
+      "label": "Across 3 sampled values of customers.country (HypoPG planner estimates): \u221260.1% for a common value of customers.country (10.3% of rows), up to \u221280.2% (generic plan: \u221263.0%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 5799936,
+      "tableBytes": 12050432,
+      "label": "Estimated index size 5.5 MB (HypoPG estimate), \u224848% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.4813052345343304
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 163.14486272118398,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "orders",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 200000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 107300052
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 200,000 rows written (200,000 ins / 0 upd / 0 del) vs 107,300,052 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 1
+ }
+}

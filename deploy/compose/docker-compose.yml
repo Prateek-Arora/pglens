@@ -77,6 +77,17 @@ services:
       PGLENS_METADATA_USER: ${POSTGRES_USER:-pglens}
       PGLENS_METADATA_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
       PGLENS_GRPC_PORT: "9090"
+      # Plain-language explanations (Phase 3, ADR-0043) — off unless PGLENS_EXPLAIN_ENABLED=true.
+      # Default endpoint: the `llm` profile below. Native Ollama on the host instead:
+      # PGLENS_LLM_URL=http://host.docker.internal:11434/v1
+      PGLENS_EXPLAIN_ENABLED: ${PGLENS_EXPLAIN_ENABLED:-false}
+      PGLENS_LLM_URL: ${PGLENS_LLM_URL:-http://llm:11434/v1}
+      PGLENS_LLM_MODEL: ${PGLENS_LLM_MODEL:-qwen3.5:4b}
+      # A hosted OpenAI-compatible API instead of a local model: set all three in your shell or a
+      # git-ignored .env (never in this file). Remote hosts are refused unless ALLOW_REMOTE=true.
+      PGLENS_LLM_API_KEY: ${PGLENS_LLM_API_KEY:-}
+      PGLENS_LLM_ALLOW_REMOTE: ${PGLENS_LLM_ALLOW_REMOTE:-false}
+      PGLENS_LLM_EMBEDDING_MODEL: ${PGLENS_LLM_EMBEDDING_MODEL:-nomic-embed-text}
     ports:
       - "${PGLENS_GRPC_PORT:-9090}:9090"
     healthcheck:
@@ -112,6 +123,35 @@ services:
       # A livelier cadence than the 60s default so the demo accumulates trend points quickly.
       PGLENS_SAMPLE_INTERVAL_MS: ${PGLENS_SAMPLE_INTERVAL_MS:-15000}
 
+  # Optional local LLM for plain-language explanations (Phase 3, ADR-0043): `make llm-up`.
+  # Needs ~5 GB of free RAM. Docker on macOS has no GPU access, so this runs on the CPU (~15–30 s
+  # per explanation); on a Mac, native Ollama (https://ollama.com) uses the GPU and is faster.
+  llm:
+    profiles: ["llm"]
+    image: ollama/ollama:0.34.4
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - llm-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  # One-shot: downloads the chat model (~3.4 GB) and the embedding model (~0.3 GB) into the volume.
+  llm-pull:
+    profiles: ["llm"]
+    image: ollama/ollama:0.34.4
+    depends_on:
+      llm:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: llm:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull ${PGLENS_LLM_MODEL:-qwen3.5:4b} && ollama pull nomic-embed-text"]
+    restart: "no"
+
 volumes:
   monitored-pgdata:
   metadata-pgdata:
+  llm-models:

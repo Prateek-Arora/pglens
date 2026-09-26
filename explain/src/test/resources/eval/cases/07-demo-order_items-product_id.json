@@ -1,0 +1,206 @@
+{
+ "id": "07-demo-order_items-product_id",
+ "split": "heldout",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -1716042913730750955,
+   "normalizedText": "SELECT p.category, count(*) AS n\nFROM order_items oi\nJOIN products p ON p.id = oi.product_id\nWHERE p.category = $1\nGROUP BY p.category",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 287.57637600000004,
+   "meanExecMs": 9.5858792,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "products",
+     "columns": [
+      "category"
+     ],
+     "confidence": "LOW",
+     "evidence": "Seq Scan on products filters category (est. 500 of ~3000 rows, total cost 63.50)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "order_items",
+     "columns": [
+      "product_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on order_items.product_id has no index, so the order_items side is scanned (~500000 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "products",
+      "columns": [
+       "category"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on category"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 6972.76,
+      "costAfter": 6953.41,
+      "relativeDelta": 0.0027750847584027505,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 0.3% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "order_items",
+      "columns": [
+       "product_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key product_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 6972.76,
+      "costAfter": 4295.84,
+      "relativeDelta": 0.383911105501982,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 6973 \u2192 4296 (\u221238.4%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "products.category",
+       "valuesSampled": 3,
+       "worstRelativeDrop": 0.3460785662293597,
+       "worstValueFrequency": 0.17800000309944153,
+       "bestRelativeDrop": 0.3753736960963544,
+       "label": "Across 3 sampled values of products.category (HypoPG planner estimates): \u221234.6% for a common value of products.category (17.8% of rows), up to \u221237.5% (generic plan: \u221238.4%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 11608064,
+       "tableBytes": 26091520,
+       "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.4448979591836735
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "order_items",
+    "columns": [
+     "product_id"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R3"
+    ],
+    "rationale": "Unindexed join key product_id"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 6972.76,
+    "costAfter": 4295.84,
+    "relativeDelta": 0.383911105501982,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 6973 \u2192 4296 (\u221238.4%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "products.category",
+     "valuesSampled": 3,
+     "worstRelativeDrop": 0.3460785662293597,
+     "worstValueFrequency": 0.17800000309944153,
+     "bestRelativeDrop": 0.3753736960963544,
+     "label": "Across 3 sampled values of products.category (HypoPG planner estimates): \u221234.6% for a common value of products.category (17.8% of rows), up to \u221237.5% (generic plan: \u221238.4%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 11608064,
+     "tableBytes": 26091520,
+     "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.4448979591836735
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -1716042913730750955,
+   "queryTotalExecTimeMs": 287.57637600000004,
+   "recommendation": {
+    "candidate": {
+     "table": "order_items",
+     "columns": [
+      "product_id"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R3"
+     ],
+     "rationale": "Unindexed join key product_id"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 6972.76,
+     "costAfter": 4295.84,
+     "relativeDelta": 0.383911105501982,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 6973 \u2192 4296 (\u221238.4%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "products.category",
+      "valuesSampled": 3,
+      "worstRelativeDrop": 0.3460785662293597,
+      "worstValueFrequency": 0.17800000309944153,
+      "bestRelativeDrop": 0.3753736960963544,
+      "label": "Across 3 sampled values of products.category (HypoPG planner estimates): \u221234.6% for a common value of products.category (17.8% of rows), up to \u221237.5% (generic plan: \u221238.4%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 11608064,
+      "tableBytes": 26091520,
+      "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.4448979591836735
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 110.40376442641366,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "order_items",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 500000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 88500000
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 500,000 rows written (500,000 ins / 0 upd / 0 del) vs 88,500,000 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

@@ -1,6 +1,6 @@
 # PgLens · Phase 2.6 — Confirm on a Copy (measured index checks)
 
-> **Status: APPROVED 2026-09-25 (user) — BUILT + VERIFIED 2026-09-26 (ADR-0042), not yet committed.**
+> **Status: APPROVED 2026-09-25 (user) — BUILT + VERIFIED 2026-09-26 (ADR-0042); shipped in `v0.0.5` (PR #8).**
 > Step 0 ran first; its results changed Steps 1–3 (see §3a). Written after the JOB/IMDB benchmark (ADR-0040) showed that 18 % of
 > planner-validated recommendations made their query slower; it turns backlog **B6** into a phase.
 >

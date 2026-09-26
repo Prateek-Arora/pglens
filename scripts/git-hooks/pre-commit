@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# PgLens pre-commit hook (enable once with `make hooks`).
+#  1. Refuse to commit AGENTS.md — a local-only file that must never reach the repo.
+#  2. Scan the staged changes for secrets (gitleaks).
+set -euo pipefail
+
+if git diff --cached --name-only | grep -qx 'AGENTS.md'; then
+  echo "pre-commit: AGENTS.md is local-only and must not be committed (git restore --staged AGENTS.md)." >&2
+  exit 1
+fi
+
+bash "$(git rev-parse --show-toplevel)/scripts/secret_scan.sh" --staged

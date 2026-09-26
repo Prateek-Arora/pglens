@@ -5,9 +5,13 @@ import com.pglens.engine.PgLensException;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.ScanReport;
+import com.pglens.explain.Explanation;
+import com.pglens.explain.ExplanationTarget;
+import java.util.List;
 import java.util.concurrent.Callable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
@@ -44,6 +48,8 @@ class ScanCommand implements Callable<Integer> {
   @Option(names = "--json", description = "Emit the report as JSON.")
   boolean json;
 
+  @Mixin LlmOptions llm = new LlmOptions();
+
   @Override
   public Integer call() {
     final ConnectionTarget target;
@@ -51,6 +57,10 @@ class ScanCommand implements Callable<Integer> {
     try {
       target = ConnectionTarget.parse(conn);
       rankBy = RankBy.fromCli(orderBy);
+      if (llm.enabled()) {
+        llm.templateOnly(); // validates the mode before connecting
+        llm.settings(); // and the LLM URL
+      }
     } catch (IllegalArgumentException badInput) {
       System.err.println("pglens: " + badInput.getMessage());
       return 2; // usage error
@@ -58,10 +68,19 @@ class ScanCommand implements Callable<Integer> {
 
     try (PgLensEngine engine = PgLensEngine.connect(target)) {
       ScanReport report = engine.scan(rankBy, top, minCalls);
+      List<ExplanationTarget> targets =
+          llm.enabled() ? ExplanationTarget.select(report, llm.plainTop) : List.of();
+      List<Explanation> explanations = PlainExplanations.run(targets, llm, System.err);
       if (json) {
-        System.out.println(ScanReportRenderer.toJson(report));
+        String out = ScanReportRenderer.toJson(report);
+        System.out.println(
+            llm.enabled() ? ExplanationRenderer.withExplanations(out, explanations) : out);
       } else {
         System.out.print(ScanReportRenderer.toHuman(report, rankBy));
+        if (llm.enabled()) {
+          System.out.print(
+              ExplanationRenderer.toHuman(targets, explanations, report.tableWriteLoad()));
+        }
       }
       return 0;
     } catch (PgLensException failure) {

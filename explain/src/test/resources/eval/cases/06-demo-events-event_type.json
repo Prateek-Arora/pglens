@@ -1,0 +1,172 @@
+{
+ "id": "06-demo-events-event_type",
+ "split": "dev",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 6326106138855645409,
+   "normalizedText": "SELECT count(*) FROM events WHERE event_type = $1",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 165.43675100000004,
+   "meanExecMs": 5.514558366666666,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "events",
+     "columns": [
+      "event_type"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Seq Scan on events filters event_type (est. 20833 of ~300000 rows, total cost 5442.50)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "events",
+      "columns": [
+       "event_type"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on event_type"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 6494.81,
+      "costAfter": 1712.06,
+      "relativeDelta": 0.7363956759320134,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 6495 \u2192 1712 (\u221273.6%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "events.event_type",
+       "valuesSampled": 3,
+       "worstRelativeDrop": 0.41343686976086924,
+       "worstValueFrequency": 0.37529999017715454,
+       "bestRelativeDrop": 0.7979424953838038,
+       "label": "Across 3 sampled values of events.event_type (HypoPG planner estimates): \u221241.3% for a common value of events.event_type (37.5% of rows), up to \u221279.8% (generic plan: \u221273.6%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 8708096,
+       "tableBytes": 31784960,
+       "label": "Estimated index size 8.3 MB (HypoPG estimate), \u224827% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.2739690721649485
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "events",
+    "columns": [
+     "event_type"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1"
+    ],
+    "rationale": "Selective filter on event_type"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 6494.81,
+    "costAfter": 1712.06,
+    "relativeDelta": 0.7363956759320134,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 6495 \u2192 1712 (\u221273.6%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "events.event_type",
+     "valuesSampled": 3,
+     "worstRelativeDrop": 0.41343686976086924,
+     "worstValueFrequency": 0.37529999017715454,
+     "bestRelativeDrop": 0.7979424953838038,
+     "label": "Across 3 sampled values of events.event_type (HypoPG planner estimates): \u221241.3% for a common value of events.event_type (37.5% of rows), up to \u221279.8% (generic plan: \u221273.6%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 8708096,
+     "tableBytes": 31784960,
+     "label": "Estimated index size 8.3 MB (HypoPG estimate), \u224827% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.2739690721649485
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 6326106138855645409,
+   "queryTotalExecTimeMs": 165.43675100000004,
+   "recommendation": {
+    "candidate": {
+     "table": "events",
+     "columns": [
+      "event_type"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1"
+     ],
+     "rationale": "Selective filter on event_type"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 6494.81,
+     "costAfter": 1712.06,
+     "relativeDelta": 0.7363956759320134,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 6495 \u2192 1712 (\u221273.6%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "events.event_type",
+      "valuesSampled": 3,
+      "worstRelativeDrop": 0.41343686976086924,
+      "worstValueFrequency": 0.37529999017715454,
+      "bestRelativeDrop": 0.7979424953838038,
+      "label": "Across 3 sampled values of events.event_type (HypoPG planner estimates): \u221241.3% for a common value of events.event_type (37.5% of rows), up to \u221279.8% (generic plan: \u221273.6%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 8708096,
+      "tableBytes": 31784960,
+      "label": "Estimated index size 8.3 MB (HypoPG estimate), \u224827% of the table's 30.3 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.2739690721649485
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 121.82690807664122,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "events",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 300000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 79500000
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 300,000 rows written (300,000 ins / 0 upd / 0 del) vs 79,500,000 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

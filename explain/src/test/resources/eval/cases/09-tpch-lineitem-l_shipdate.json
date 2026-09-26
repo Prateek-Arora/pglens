@@ -1,0 +1,169 @@
+{
+ "id": "09-tpch-lineitem-l_shipdate",
+ "split": "dev",
+ "source": "tpch",
+ "spikeSeen": true,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-25T15:53:47.709649Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 1811352665468614583,
+   "normalizedText": "select\n\ts_name,\n\ts_address\nfrom\n\tsupplier,\n\tnation\nwhere\n\ts_suppkey in (\n\t\tselect\n\t\t\tps_suppkey\n\t\tfrom\n\t\t\tpartsupp\n\t\twhere\n\t\t\tps_partkey in (\n\t\t\t\tselect\n\t\t\t\t\tp_partkey\n\t\t\t\tfrom\n\t\t\t\t\tpart\n\t\t\t\twhere\n\t\t\t\t\tp_name like $1\n\t\t\t)\n\t\t\tand ps_availqty > (\n\t\t\t\tselect\n\t\t\t\t\t$2 * sum(l_quantity)\n\t\t\t\tfrom\n\t\t\t\t\tlineitem\n\t\t\t\twhere\n\t\t\t\t\tl_partkey = ps_partkey\n\t\t\t\t\tand l_suppkey = ps_suppkey\n\t\t\t\t\tand l_shipdate >= date $3\n\t\t\t\t\tand l_shipdate < date $4 + interval $5 year\n\t\t\t)\n\t)\n\tand s_nationkey = n_nationkey\n\tand n_name = $6\norder by\n\ts_name",
+   "truncated": false,
+   "calls": 6,
+   "totalExecMs": 98468.637669,
+   "meanExecMs": 16411.439611499998,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "lineitem",
+     "columns": [
+      "l_shipdate"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on lineitem filters l_shipdate (est. 1 of ~600572 rows, total cost 26302.30)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "lineitem",
+      "columns": [
+       "l_shipdate"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on l_shipdate"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 10524843.15,
+      "costAfter": 2760331.75,
+      "relativeDelta": 0.737731792231032,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 10524843 \u2192 2760332 (\u221273.8%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "nation.n_name",
+       "valuesSampled": 1,
+       "worstRelativeDrop": 0.737731792231032,
+       "bestRelativeDrop": 0.737731792231032,
+       "label": "Across 1 sampled values of nation.n_name (HypoPG planner estimates): \u221273.8% for a typical value of nation.n_name, up to \u221273.8% (generic plan: \u221273.8%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 13942784,
+       "tableBytes": 92471296,
+       "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.15077958894401133
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "lineitem",
+    "columns": [
+     "l_shipdate"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1"
+    ],
+    "rationale": "Selective filter on l_shipdate"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 10524843.15,
+    "costAfter": 2760331.75,
+    "relativeDelta": 0.737731792231032,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 10524843 \u2192 2760332 (\u221273.8%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "nation.n_name",
+     "valuesSampled": 1,
+     "worstRelativeDrop": 0.737731792231032,
+     "bestRelativeDrop": 0.737731792231032,
+     "label": "Across 1 sampled values of nation.n_name (HypoPG planner estimates): \u221273.8% for a typical value of nation.n_name, up to \u221273.8% (generic plan: \u221273.8%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 13942784,
+     "tableBytes": 92471296,
+     "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.15077958894401133
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 1811352665468614583,
+   "queryTotalExecTimeMs": 98468.637669,
+   "recommendation": {
+    "candidate": {
+     "table": "lineitem",
+     "columns": [
+      "l_shipdate"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1"
+     ],
+     "rationale": "Selective filter on l_shipdate"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 10524843.15,
+     "costAfter": 2760331.75,
+     "relativeDelta": 0.737731792231032,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 10524843 \u2192 2760332 (\u221273.8%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "nation.n_name",
+      "valuesSampled": 1,
+      "worstRelativeDrop": 0.737731792231032,
+      "bestRelativeDrop": 0.737731792231032,
+      "label": "Across 1 sampled values of nation.n_name (HypoPG planner estimates): \u221273.8% for a typical value of nation.n_name, up to \u221273.8% (generic plan: \u221273.8%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 13942784,
+      "tableBytes": 92471296,
+      "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.15077958894401133
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 72643.44454609949,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "lineitem",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 600572,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 5521605608
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 600,572 rows written (600,572 ins / 0 upd / 0 del) vs 5,521,605,608 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 2
+ }
+}

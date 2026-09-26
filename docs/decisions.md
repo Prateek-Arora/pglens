@@ -360,3 +360,48 @@
 - **Alternatives:** match by queryid (rejected — OIDs, Const vs Param) · substitute values into the text (rejected — renumbered constants) · strip the `EXPLAIN (...)` prefix from nested pg_stat_statements rows instead of running once (rejected — only exists with `track = all`) · read the marker from `pg_settings.source` (impossible — placeholders aren't listed) · synthesize values from `pg_stats` for a real run (rejected — fabricates a workload, charter #1) · build on the monitored DB inside a rolled-back transaction (rejected — `CREATE INDEX` locks writes and does all the I/O on production) · a server-side confirm worker with its own credentials (later) · create the copy through cloud APIs (later) · also measure every other matched statement for regressions an index causes elsewhere (later — noted in every report).
 - **Consequences:** On the bundled demo (a `pg_dump` copy, its own logged workload): 6 faster, 1 no real effect — PgLens's #1, `order_items (order_id)`, did nothing because the log queries the hottest customer, the exact case its value-range caution names. **JOB dogfood** (the Phase 2.6 DoD; `docs/benchmarks.md`): on an IMDB copy (`CREATE DATABASE … TEMPLATE`) with the 113 JOB files as statements, confirm matched 95 of 98 query shapes and ran 79 min; the self-check passed (10c under `cast_info (movie_id)`, estimated −90.7 %, reported **slower, 928.6 ms → 9,209.6 ms**; the harness had 931 → 7,277 ms); **8 of 10** per-index verdicts match the ADR-0040 harness. The two that differ (`cast_info (movie_id)` and `(role_id)`, both slowing many of their queries) sit near the 15 % line: a second confirm run gave −37.8 %/−37.6 % where the first gave −18.0 %/−17.7 % and the harness −10.5 %/−4.4 %, because a few heavy unindexed JOB plans vary between runs on this machine (30a 1.3 s vs 34.1 s) while the with-index times don't. So a verdict near a threshold needs a second run; large effects are stable. That is why confirm reports per-query verdicts and "faster overall, but slower for N of its queries". Tests: pure units for sources (real PG16 log fixtures, both logging modes), splitting, matching, verdicts, plan-from-report, guard rules; a Testcontainers IT with two databases whose OIDs differ covering all five verdicts (FASTER, UNBUILDABLE via a 16 kB text key, SLOWER via the classic `ORDER BY … LIMIT` misestimate, NOT_MEASURED for a writer and an unmatched query), every refusal, leftover cleanup and the no-values rule — green on PG16, PG17 and PG18.
 
+
+## ADR-0043
+**Phase 3 — plain-language explanations: a runtime-agnostic local LLM that only phrases PgLens's facts, checked by a guard, with a deterministic template fallback** · 2026-09-26 · Accepted
+- **Context:** PgLens's findings are correct but terse. The Desktop draft planned a Python `explain-svc` calling Ollama with RAG over the PostgreSQL docs. The user asked for "the one that would actually work on other's systems and that is cheap/free", and for the plan to be critiqued hard, not just checked. Plan verification (`docs/phases/phase_3.md` §3) plus a Step 0 spike ran 4 small models on real TPC-H/JOB findings (§3a). The user approved the verified plan on 2026-09-26.
+- **Decision:**
+  1. **Any OpenAI-compatible endpoint.** PgLens calls `/v1/chat/completions` and `/v1/embeddings` with plain `java.net.http` + Jackson. Ollama is the documented default runtime, not a dependency; Docker Model Runner, llama.cpp, LM Studio, vLLM and hosted APIs speak the same API.
+  2. **Default model `qwen3.5:4b`** (Apache-2.0, 3.4 GB). It was the only one of 4 with no invented fact in the spike. It must still pass the pre-registered eval (`docs/llm-eval.md`).
+  3. **Thinking off** (`reasoning_effort: none`): with it on, the spike took 211 s and returned no answer. Prompt budget is about 2k tokens, because Ollama's OpenAI-compatible context is 4,096.
+  4. **An in-JVM `:explain` module** used by both the CLI and the server. `:engine` stays LLM-free, so "deterministic core" is enforced by the build graph.
+  5. **The LLM writes only 3 prose fields.** PgLens renders the DDL, estimate labels and every caveat (value range, size, write load, build caution, "planner-validated ≠ safe"). Caveats are kept out of the prompt entirely: fewer numbers to repeat wrongly.
+  6. **`OutputGuard`** checks shape, no SQL, unit- and magnitude-aware numbers, identifiers and index mentions, and honesty phrasing. On failure: one retry, then the template.
+  7. **Rule cards chosen by rule id** are the primary grounding. pgvector docs retrieval stays in the prompt only if the pre-registered A/B says so.
+  8. **CLI `--plain` plus a server-side cache** (keyed by facts hash + model + prompt version).
+  9. **Remote endpoints are refused** unless explicitly allowed.
+- **Alternatives:**
+  - Spring AI: rejected. 2.x needs Spring Boot 4, and the API is one POST.
+  - A Python `explain-svc`: rejected. It adds a 4th deployable and a 2nd language, and the CLI couldn't use it.
+  - Server-only delivery: rejected. It would be invisible until Phase 4.
+  - Letting the LLM write DDL and numbers and then policing them: rejected. Removing that surface is stronger than checking it.
+  - "Flag, don't fail" on unsupported numbers: rejected under charter #1.
+  - granite4:3b, qwen3.5:2b, phi4-mini: each invented facts in the spike.
+  - Hosted free tiers as the default: rejected on privacy (Gemini's free tier trains on content).
+  - TypeSafe's Jev: evaluated 2026-09-26 and rejected. It is hosted and proprietary, can't generate text, and a text-only model can't see the data behind misestimates.
+- **Consequences:**
+  - Explanations work with the LLM off (template), unreachable (template plus reason) or failing checks (template plus violations).
+  - The eval is pre-registered before any LLM code: 24 real cases, 12 dev / 12 held-out.
+  - **Step 8 results (`docs/llm-eval.md` Part 2):**
+    - `qwen3.5:4b` on the held-out 12, cards only, CPU-only Docker: guard passed first try 12/12, template fallback 0/12, root cause right 10/12, no unsupported claim 12/12, p50 15.7 s.
+    - **Default model kept.**
+    - Docs in the prompt scored 2 cases *worse* on M3 + M4 (20 vs 22) and ran ~6 s slower. **Docs stay links-only** (`pglens.explain.docs-in-prompt=false`).
+    - pgvector HNSW returned the same top 3 as an exact scan on 5/5 queries; recall@3 was 0.60 either way.
+    - **LLM vs template (rule 3):** the template won 10–0 on the user's criterion ("easy to understand while keeping all the metrics and impact"). Claude judged at the user's request, not blind. The model's prose never carried the measured runtime or the "also helps N queries" count.
+    - **So `--plain` defaults to the template, and `--plain=llm` opts in to the model.** The server's explanation job stays opt-in (`pglens.explain.enabled`), and when enabled it uses the model.
+  - **Built:**
+    - `:explain`: facts, cards, template, guard, client, endpoint policy, explainer.
+    - CLI `--plain` and `--json` 1.3.
+    - Server: V8 (`knowledge_chunks` HNSW, `explanations`), `ExplanationService` plus cache, pgvector knowledge store.
+    - Compose `llm` profile, `make llm-up` / `llm-eval`.
+    - Tests run against a stub LLM (no model in CI).
+  - **Refinements made while building:**
+    - Caveats are kept out of the prompt entirely.
+    - Covered recs are not explained.
+    - An outage is cached with `retry_after`, while a guard rejection is cached permanently (temperature 0 repeats).
+    - A down endpoint short-circuits the rest of a run.
+    - 100.64/10 (CGNAT, Tailscale) counts as private.

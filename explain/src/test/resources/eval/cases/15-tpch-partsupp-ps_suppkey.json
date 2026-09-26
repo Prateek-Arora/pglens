@@ -1,0 +1,203 @@
+{
+ "id": "15-tpch-partsupp-ps_suppkey",
+ "split": "heldout",
+ "source": "tpch",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-25T15:53:47.709649Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 1693780014544338080,
+   "normalizedText": "select\n\tps_partkey,\n\tsum(ps_supplycost * ps_availqty) as value\nfrom\n\tpartsupp,\n\tsupplier,\n\tnation\nwhere\n\tps_suppkey = s_suppkey\n\tand s_nationkey = n_nationkey\n\tand n_name = $1\ngroup by\n\tps_partkey having\n\t\tsum(ps_supplycost * ps_availqty) > (\n\t\t\tselect\n\t\t\t\tsum(ps_supplycost * ps_availqty) * $2\n\t\t\tfrom\n\t\t\t\tpartsupp,\n\t\t\t\tsupplier,\n\t\t\t\tnation\n\t\t\twhere\n\t\t\t\tps_suppkey = s_suppkey\n\t\t\t\tand s_nationkey = n_nationkey\n\t\t\t\tand n_name = $3\n\t\t)\norder by\n\tvalue desc",
+   "truncated": false,
+   "calls": 6,
+   "totalExecMs": 51.723625,
+   "meanExecMs": 8.620604166666666,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "partsupp",
+     "columns": [
+      "ps_suppkey"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Join on partsupp.ps_suppkey has no index, so the partsupp side is scanned (~80000 rows)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "supplier",
+     "columns": [
+      "s_nationkey"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Join on supplier.s_nationkey has no index, so the supplier side is scanned (~1000 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "partsupp",
+      "columns": [
+       "ps_suppkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key ps_suppkey"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 6004.14,
+      "costAfter": 1047.5,
+      "relativeDelta": 0.8255370461048543,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 6004 \u2192 1048 (\u221282.6%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "nation.n_name",
+       "valuesSampled": 2,
+       "worstRelativeDrop": 0.8255370461048543,
+       "bestRelativeDrop": 0.8255370461048543,
+       "label": "Across 2 sampled values of nation.n_name (HypoPG planner estimates): \u221282.6% for a typical value of nation.n_name, up to \u221282.6% (generic plan: \u221282.6%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 1851392,
+       "tableBytes": 14352384,
+       "label": "Estimated index size 1.8 MB (HypoPG estimate), \u224813% of the table's 13.7 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.12899543378995434
+      },
+      "recommended": true
+     },
+     "recommended": true
+    },
+    {
+     "candidate": {
+      "table": "supplier",
+      "columns": [
+       "s_nationkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key s_nationkey"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 6004.14,
+      "costAfter": 5989.35,
+      "relativeDelta": 0.0024633003227772774,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 0.2% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "partsupp",
+    "columns": [
+     "ps_suppkey"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R3"
+    ],
+    "rationale": "Unindexed join key ps_suppkey"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 6004.14,
+    "costAfter": 1047.5,
+    "relativeDelta": 0.8255370461048543,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 6004 \u2192 1048 (\u221282.6%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "nation.n_name",
+     "valuesSampled": 2,
+     "worstRelativeDrop": 0.8255370461048543,
+     "bestRelativeDrop": 0.8255370461048543,
+     "label": "Across 2 sampled values of nation.n_name (HypoPG planner estimates): \u221282.6% for a typical value of nation.n_name, up to \u221282.6% (generic plan: \u221282.6%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 1851392,
+     "tableBytes": 14352384,
+     "label": "Estimated index size 1.8 MB (HypoPG estimate), \u224813% of the table's 13.7 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.12899543378995434
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 1693780014544338080,
+   "queryTotalExecTimeMs": 51.723625,
+   "recommendation": {
+    "candidate": {
+     "table": "partsupp",
+     "columns": [
+      "ps_suppkey"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R3"
+     ],
+     "rationale": "Unindexed join key ps_suppkey"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 6004.14,
+     "costAfter": 1047.5,
+     "relativeDelta": 0.8255370461048543,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 6004 \u2192 1048 (\u221282.6%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "nation.n_name",
+      "valuesSampled": 2,
+      "worstRelativeDrop": 0.8255370461048543,
+      "bestRelativeDrop": 0.8255370461048543,
+      "label": "Across 2 sampled values of nation.n_name (HypoPG planner estimates): \u221282.6% for a typical value of nation.n_name, up to \u221282.6% (generic plan: \u221282.6%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 1851392,
+      "tableBytes": 14352384,
+      "label": "Estimated index size 1.8 MB (HypoPG estimate), \u224813% of the table's 13.7 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.12899543378995434
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 42.6997685963352,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "partsupp",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 80000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 1928632
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 80,000 rows written (80,000 ins / 0 upd / 0 del) vs 1,928,632 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

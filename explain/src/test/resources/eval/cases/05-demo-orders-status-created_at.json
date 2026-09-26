@@ -1,0 +1,188 @@
+{
+ "id": "05-demo-orders-status-created_at",
+ "split": "heldout",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 2128563256256964775,
+   "normalizedText": "SELECT id, customer_id, total_cents, created_at\nFROM orders\nWHERE status = $1\nORDER BY created_at DESC\nLIMIT $2",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 162.65749599999998,
+   "meanExecMs": 5.421916533333332,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "orders",
+     "columns": [
+      "status"
+     ],
+     "confidence": "LOW",
+     "evidence": "Seq Scan on orders filters status (est. 23529 of ~200000 rows, total cost 2941.59)."
+    },
+    {
+     "ruleId": "R4",
+     "title": "Sort feeding a Limit (top-N could use an ordered index)",
+     "table": "orders",
+     "columns": [
+      "created_at"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Top-N sorts orders by created_at (sort node cost 4708.87); an index in that order avoids the sort."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "status",
+       "created_at"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1",
+       "R4"
+      ],
+      "rationale": "Equality on status then order by created_at"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 5920.65,
+      "costAfter": 709.32,
+      "relativeDelta": 0.8801955866332244,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 5921 \u2192 709 (\u221288.0%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "orders.status",
+       "valuesSampled": 3,
+       "worstRelativeDrop": 0.8731489959815935,
+       "worstValueFrequency": 0.12646666169166565,
+       "bestRelativeDrop": 0.8985172428732346,
+       "label": "Across 3 sampled values of orders.status (HypoPG planner estimates): \u221287.3% for a common value of orders.status (12.6% of rows), up to \u221289.9% (generic plan: \u221288.0%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 8413184,
+       "tableBytes": 12050432,
+       "label": "Estimated index size 8.0 MB (HypoPG estimate), \u224870% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.6981645139360979
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "orders",
+    "columns": [
+     "status",
+     "created_at"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1",
+     "R4"
+    ],
+    "rationale": "Equality on status then order by created_at"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 5920.65,
+    "costAfter": 709.32,
+    "relativeDelta": 0.8801955866332244,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 5921 \u2192 709 (\u221288.0%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "orders.status",
+     "valuesSampled": 3,
+     "worstRelativeDrop": 0.8731489959815935,
+     "worstValueFrequency": 0.12646666169166565,
+     "bestRelativeDrop": 0.8985172428732346,
+     "label": "Across 3 sampled values of orders.status (HypoPG planner estimates): \u221287.3% for a common value of orders.status (12.6% of rows), up to \u221289.9% (generic plan: \u221288.0%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 8413184,
+     "tableBytes": 12050432,
+     "label": "Estimated index size 8.0 MB (HypoPG estimate), \u224870% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.6981645139360979
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 2128563256256964775,
+   "queryTotalExecTimeMs": 162.65749599999998,
+   "recommendation": {
+    "candidate": {
+     "table": "orders",
+     "columns": [
+      "status",
+      "created_at"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1",
+      "R4"
+     ],
+     "rationale": "Equality on status then order by created_at"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 5920.65,
+     "costAfter": 709.32,
+     "relativeDelta": 0.8801955866332244,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 5921 \u2192 709 (\u221288.0%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "orders.status",
+      "valuesSampled": 3,
+      "worstRelativeDrop": 0.8731489959815935,
+      "worstValueFrequency": 0.12646666169166565,
+      "bestRelativeDrop": 0.8985172428732346,
+      "label": "Across 3 sampled values of orders.status (HypoPG planner estimates): \u221287.3% for a common value of orders.status (12.6% of rows), up to \u221289.9% (generic plan: \u221288.0%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 8413184,
+      "tableBytes": 12050432,
+      "label": "Estimated index size 8.0 MB (HypoPG estimate), \u224870% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.6981645139360979
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 143.17041011201133,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "orders",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 200000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 107300052
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 200,000 rows written (200,000 ins / 0 upd / 0 del) vs 107,300,052 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

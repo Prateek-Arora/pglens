@@ -1,0 +1,220 @@
+{
+ "id": "01-demo-order_items-order_id",
+ "split": "heldout",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 6827925264069742854,
+   "normalizedText": "SELECT o.id, o.total_cents, count(oi.id) AS items\nFROM orders o\nJOIN order_items oi ON oi.order_id = o.id\nWHERE o.customer_id = $1\nGROUP BY o.id, o.total_cents",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 396.8432909999998,
+   "meanExecMs": 13.228109700000003,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "orders",
+     "columns": [
+      "customer_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on orders filters customer_id (est. 8 of ~200000 rows, total cost 2941.59)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "order_items",
+     "columns": [
+      "order_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on order_items.order_id has no index, so the order_items side is scanned (~500000 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "customer_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on customer_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 9760.66,
+      "costAfter": 6871.78,
+      "relativeDelta": 0.295971788792971,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 9761 \u2192 6872 (\u221229.6%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "orders.customer_id",
+       "valuesSampled": 4,
+       "worstRelativeDrop": 0.1283580774731177,
+       "worstValueFrequency": 0.018833333626389503,
+       "bestRelativeDrop": 0.2967301497528708,
+       "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u221212.8% for a common value of orders.customer_id (1.9% of rows), up to \u221229.7% (generic plan: \u221229.6%, which is what the ranking uses). Caution: for some common values the planner expects little benefit \u2014 the real win depends on which values your queries use."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 4644864,
+       "tableBytes": 12050432,
+       "label": "Estimated index size 4.4 MB (HypoPG estimate), \u224839% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.38545207341944254
+      },
+      "recommended": true
+     },
+     "recommended": true
+    },
+    {
+     "candidate": {
+      "table": "order_items",
+      "columns": [
+       "order_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key order_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 9760.66,
+      "costAfter": 4070.83,
+      "relativeDelta": 0.5829349654634011,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 9761 \u2192 4071 (\u221258.3%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "orders.customer_id",
+       "valuesSampled": 4,
+       "worstRelativeDrop": 0.0,
+       "worstValueFrequency": 0.018833333626389503,
+       "bestRelativeDrop": 0.586200113113827,
+       "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u22120.0% for a common value of orders.customer_id (1.9% of rows), up to \u221258.6% (generic plan: \u221258.3%, which is what the ranking uses). Caution: for some common values the planner expects little benefit \u2014 the real win depends on which values your queries use."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 11608064,
+       "tableBytes": 26091520,
+       "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.4448979591836735
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "order_items",
+    "columns": [
+     "order_id"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R3"
+    ],
+    "rationale": "Unindexed join key order_id"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 9760.66,
+    "costAfter": 4070.83,
+    "relativeDelta": 0.5829349654634011,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 9761 \u2192 4071 (\u221258.3%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "orders.customer_id",
+     "valuesSampled": 4,
+     "worstRelativeDrop": 0.0,
+     "worstValueFrequency": 0.018833333626389503,
+     "bestRelativeDrop": 0.586200113113827,
+     "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u22120.0% for a common value of orders.customer_id (1.9% of rows), up to \u221258.6% (generic plan: \u221258.3%, which is what the ranking uses). Caution: for some common values the planner expects little benefit \u2014 the real win depends on which values your queries use."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 11608064,
+     "tableBytes": 26091520,
+     "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.4448979591836735
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 6827925264069742854,
+   "queryTotalExecTimeMs": 396.8432909999998,
+   "recommendation": {
+    "candidate": {
+     "table": "order_items",
+     "columns": [
+      "order_id"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R3"
+     ],
+     "rationale": "Unindexed join key order_id"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 9760.66,
+     "costAfter": 4070.83,
+     "relativeDelta": 0.5829349654634011,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 9761 \u2192 4071 (\u221258.3%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "orders.customer_id",
+      "valuesSampled": 4,
+      "worstRelativeDrop": 0.0,
+      "worstValueFrequency": 0.018833333626389503,
+      "bestRelativeDrop": 0.586200113113827,
+      "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u22120.0% for a common value of orders.customer_id (1.9% of rows), up to \u221258.6% (generic plan: \u221258.3%, which is what the ranking uses). Caution: for some common values the planner expects little benefit \u2014 the real win depends on which values your queries use."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 11608064,
+      "tableBytes": 26091520,
+      "label": "Estimated index size 11.1 MB (HypoPG estimate), \u224844% of the table's 24.9 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.4448979591836735
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 231.3338301334673,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "order_items",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 500000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 88500000
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 500,000 rows written (500,000 ins / 0 upd / 0 del) vs 88,500,000 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}
