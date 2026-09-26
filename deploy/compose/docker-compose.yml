@@ -61,6 +61,20 @@ services:
       retries: 24
       start_period: 15s
 
+  # One-shot: dev TLS material for the agent <-> server gRPC channel (ADR-0044) into `grpc-certs`.
+  # Reuses the metadata-db image (already pulled; ships openssl). Idempotent. Real deployments give the
+  # server their own certificate instead (PGLENS_GRPC_TLS_CERT / PGLENS_GRPC_TLS_KEY).
+  certs:
+    image: pgvector/pgvector:0.8.6-pg16
+    entrypoint: ["/bin/sh", "/gen-dev-certs.sh"]
+    environment:
+      # Extra names for the server certificate, e.g. an agent on another host: DNS:pglens.internal
+      PGLENS_TLS_EXTRA_SANS: ${PGLENS_TLS_EXTRA_SANS:-}
+    volumes:
+      - grpc-certs:/certs
+      - ./certs/gen-dev-certs.sh:/gen-dev-certs.sh:ro
+    restart: "no"
+
   # The PgLens server: gRPC ingest/validation + Flyway migrations + scheduled analysis. Talks to the
   # metadata-db by its service name on the INTERNAL port 5432 (not the host-mapped 5434). The jar is
   # built on the host by `make up`; the build context is the repo root so the Dockerfile can copy it.
@@ -72,11 +86,29 @@ services:
     depends_on:
       metadata-db:
         condition: service_healthy
+      certs:
+        condition: service_completed_successfully
+    volumes:
+      # Only the server's own certificate + key (never the agent's view of the volume).
+      - type: volume
+        source: grpc-certs
+        target: /certs
+        read_only: true
+        volume:
+          subpath: server
     environment:
       PGLENS_METADATA_URL: jdbc:postgresql://metadata-db:5432/${METADATA_DB:-pglens_meta}
       PGLENS_METADATA_USER: ${POSTGRES_USER:-pglens}
       PGLENS_METADATA_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
       PGLENS_GRPC_PORT: "9090"
+      # gRPC TLS (ADR-0044): on by default with the dev certificate from the `certs` service.
+      PGLENS_GRPC_TLS_CERT: /certs/server.pem
+      PGLENS_GRPC_TLS_KEY: /certs/server.key
+      # HTTP API login (ADR-0044). `make up` generates the password into deploy/compose/.env; unset
+      # (plain `docker compose up`) → a generated one is logged once on first start
+      # (`docker compose logs server`). AUTH_MODE=none: one person on their own machine only.
+      PGLENS_ADMIN_PASSWORD: ${PGLENS_ADMIN_PASSWORD:-}
+      PGLENS_AUTH_MODE: ${PGLENS_AUTH_MODE:-required}
       # Plain-language explanations (Phase 3, ADR-0043) — off unless PGLENS_EXPLAIN_ENABLED=true.
       # Default endpoint: the `llm` profile below. Native Ollama on the host instead:
       # PGLENS_LLM_URL=http://host.docker.internal:11434/v1
@@ -90,19 +122,22 @@ services:
       PGLENS_LLM_EMBEDDING_MODEL: ${PGLENS_LLM_EMBEDDING_MODEL:-nomic-embed-text}
     ports:
       - "${PGLENS_GRPC_PORT:-9090}:9090"
+      # The HTTP API, on this machine only by default: the dashboard reaches it on the compose
+      # network. Publish it wider only behind TLS (see the README's HTTPS recipe).
+      - "127.0.0.1:${PGLENS_HTTP_PORT:-8080}:8080"
     healthcheck:
-      # gRPC only (no HTTP server) — a TCP connect to the gRPC port is the liveness signal. The JRE
-      # base image (Ubuntu) ships bash, so /dev/tcp works.
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/9090' || exit 1"]
+      # TCP connects to both listeners (gRPC is TLS, so no plain probe). The JRE base image (Ubuntu)
+      # ships bash, so /dev/tcp works.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/9090' && timeout 1 bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 24
       start_period: 20s
 
   # The collector agent: reads the monitored-db as the read-only pglens_ro role (ADR-0030) and
-  # streams samples to the server. Headless daemon (no port). Its db-name + token must match a
-  # monitored_dbs row — run `make register` after `make up` to create it (until then the agent
-  # retries, logging UNAUTHENTICATED each cycle — non-fatal).
+  # streams samples to the server. Headless daemon (no port). Its token comes from registering the
+  # database through the API: `make register` after `make up` does that and writes the token into
+  # deploy/compose/.env (until then the agent retries, logging UNAUTHENTICATED each cycle — non-fatal).
   agent:
     build:
       context: ../..
@@ -113,13 +148,22 @@ services:
         condition: service_healthy
       server:
         condition: service_healthy
+    volumes:
+      # Only the dev CA certificate — the agent never sees the server's private key.
+      - type: volume
+        source: grpc-certs
+        target: /certs
+        read_only: true
+        volume:
+          subpath: ca
     environment:
       PGLENS_MONITORED_DB_URL: postgresql://pglens_ro:pglens_ro@monitored-db:5432/${MONITORED_DB:-pglens_demo}
       PGLENS_DB_NAME: ${PGLENS_DB_NAME:-demo}
       PGLENS_DB_HOST: monitored-db
       PGLENS_SERVER_HOST: server
       PGLENS_SERVER_PORT: "9090"
-      PGLENS_AGENT_TOKEN: ${PGLENS_AGENT_TOKEN:-devtoken}
+      PGLENS_SERVER_CA_CERT: /certs/ca.pem
+      PGLENS_AGENT_TOKEN: ${PGLENS_AGENT_TOKEN:-}
       # A livelier cadence than the 60s default so the demo accumulates trend points quickly.
       PGLENS_SAMPLE_INTERVAL_MS: ${PGLENS_SAMPLE_INTERVAL_MS:-15000}
 
@@ -152,6 +196,7 @@ services:
     restart: "no"
 
 volumes:
+  grpc-certs:
   monitored-pgdata:
   metadata-pgdata:
   llm-models:

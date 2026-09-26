@@ -28,9 +28,9 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * {@code pglens confirm} end to end on a real server (Phase 2.6, ADR-0042). Two databases: {@code
@@ -44,7 +44,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class CopyConfirmerIntegrationTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   private static final String SECRET = "zq-secret-value";
   private static final Duration TIMEOUT = Duration.ofSeconds(60);

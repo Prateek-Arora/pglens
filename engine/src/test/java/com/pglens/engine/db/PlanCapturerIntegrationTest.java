@@ -10,9 +10,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Integration test for the DB I/O half against the real monitored image (demo schema loaded via the
@@ -24,7 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class PlanCapturerIntegrationTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   @BeforeAll
   static void loadSchema() {

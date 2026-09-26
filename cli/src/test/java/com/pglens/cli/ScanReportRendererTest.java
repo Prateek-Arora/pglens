@@ -71,7 +71,7 @@ class ScanReportRendererTest {
     String json = ScanReportRenderer.toJson(sampleReport());
     JsonNode root = new ObjectMapper().readTree(json);
 
-    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.3");
+    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.4");
     assertThat(root.get("tableWriteLoad").get(0).get("level").asText()).isEqualTo("WRITE_DOMINANT");
     // Derived flags are part of the 1.1 contract, so a JSON consumer needn't recompute them.
     assertThat(root.get("topRecommendations").get(0).has("actionable")).isTrue();

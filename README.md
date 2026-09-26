@@ -4,7 +4,7 @@
 
 PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **checks each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is the planner's own cost estimate for that index — not a guess, and always labeled as an estimate rather than a measured runtime. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is sent to a third-party service; the optional LLM explanations use a local model unless you explicitly allow a remote one).
 
-**Status:** 🟢 **`v0.0.6` — Phases 0–3 shipped: the CLI engine, the collector agent + server + time-series history, and a recommendation-accuracy pass measured on two public benchmarks** ([how accurate is it?](#how-accurate-is-it--check-before-you-apply)). A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot, **`pglens confirm`** (Phase 2.6, `v0.0.5`) measures its recommendations on a copy of your database before you apply them, and **`--plain`** (Phase 3, `v0.0.6`) explains each recommended index in plain language, with an optional local LLM whose wording is checked against PgLens's facts. Next: a Next.js dashboard (Phase 4, the ship target) — see the [roadmap](docs/project.md).
+**Status:** 🟢 **`v0.0.7` — Phases 0–3 and 4A shipped: the CLI engine, the collector agent + server + time-series history, a recommendation-accuracy pass measured on two public benchmarks, and a secured HTTP API** ([how accurate is it?](#how-accurate-is-it--check-before-you-apply)). A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot, **`pglens confirm`** (Phase 2.6, `v0.0.5`) measures its recommendations on a copy of your database before you apply them, **`--plain`** (Phase 3, `v0.0.6`) explains each recommended index in plain language, with an optional local LLM whose wording is checked against PgLens's facts, and the server's **[HTTP API](#the-http-api)** (Phase 4A, `v0.0.7`) serves all of it to scripts, behind logins and TLS. Next: the Next.js dashboard (Phase 4B, `v0.1.0-rc`) — see the [roadmap](docs/project.md).
 
 ## Design principles
 
@@ -173,11 +173,13 @@ confirm --report scan.json --copy <conn> --statements <file.sql|postgresql.log> 
 The `pglens scan` CLI is a one-shot snapshot. Phase 2 (`v0.0.2`) adds the real product shape: a lightweight **agent** that streams stats to a central **server**, which remembers them over time.
 
 ```bash
-make up         # build jars + images and start the whole stack (dbs + server + agent), waiting for health
-make register   # register the demo agent (its db-name + token) so the server accepts its samples
+make up         # build jars + images and start the whole stack; writes a generated admin password to deploy/compose/.env
+make register   # register the demo db through the HTTP API; its agent token goes to deploy/compose/.env
 make seed       # load the skewed demo data
 make warmup     # replay the slow-query pack so pg_stat_statements accumulates
 ```
+
+**Upgrading from `v0.0.6`:** your history carries over (the server migrates it on start). Run `make register` once after `make up`: the demo agent's old fixed token (`devtoken`) is no longer the default, so until then the agent is refused. `make register` gives it a fresh token.
 
 Now the loop runs on its own. Every interval the agent — logged in as a read-only **`pglens_ro`** role — streams `pg_stat_statements` to the server, which stores a **delta time-series**, runs the engine on a schedule, hands HypoPG-validation work **back to the agent to run next to the database**, and records **validated recommendations**, **index-hygiene** findings, and **trends** in the metadata DB.
 
@@ -192,7 +194,54 @@ make psql-metadata   # open a shell on PgLens's own store, then e.g.:
 
 **Plain-language explanations on the server (optional).** With `PGLENS_EXPLAIN_ENABLED=true` (and `make llm-up`, or `PGLENS_LLM_URL=http://host.docker.internal:11434/v1` for native Ollama), the server explains each database's top indexes in the background. It uses the same checks and template fallback as `--plain`, and caches the results in the `explanations` table for the Phase 4 dashboard. It explains an index again only when its facts, the model or the prompt change. It also embeds a bundled set of PostgreSQL-docs passages in **pgvector** (HNSW index) for "further reading" links.
 
-**Topology (`a-pull`).** The agent only ever dials **out** — it pushes samples up and *pulls* validation work down (short, retryable, load-balanceable gRPC calls; the server never connects into the agent). Deltas are computed **server-side**, anchored to the last persisted sample, so a lost send can't lose or double-count a window. The full REST/GraphQL API and dashboard are Phase 4; today the trends/recs are reached via SQL (above) and the integration tests. Details in [`docs/architecture.md`](docs/architecture.md); the *why* in [`docs/decisions.md`](docs/decisions.md) (ADR-0023…0034).
+**Topology (`a-pull`).** The agent only ever dials **out** — it pushes samples up and *pulls* validation work down (short, retryable, load-balanceable gRPC calls; the server never connects into the agent). Deltas are computed **server-side**, anchored to the last persisted sample, so a lost send can't lose or double-count a window. A query's first sample only sets that anchor, so its activity shows up from its *next* run. Details in [`docs/architecture.md`](docs/architecture.md); the *why* in [`docs/decisions.md`](docs/decisions.md) (ADR-0023…0034, 0044).
+
+### The HTTP API
+
+Everything the server knows is served as JSON under `http://127.0.0.1:8080/api/v1` (Phase 4A, ADR-0044) — the leaderboard, one query's plan and findings, trends, recommendations, index hygiene, explanations. The OpenAPI description is at [`/api/v1/openapi.json`](http://127.0.0.1:8080/api/v1/openapi.json) (public; everything else needs a token).
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /databases` | registered databases, each with its agent's status (`CONNECTED` / `STALE` / `NEVER_CONNECTED`) |
+| `GET /databases/{db}/queries?window=24h\|7d\|30d&sort=total\|mean\|calls&limit&offset` | the slowest queries in the window, with each one's best recommendation verdict |
+| `GET /databases/{db}/queries/{queryid}` | the SQL, the **estimated** plan tree, findings pointing at plan nodes, recommendations, measured totals |
+| `GET …/queries/{queryid}/trend?from&to&resolution=raw\|hour\|auto` | one point per interval (or per hour for long ranges); a missing interval is a gap, not a zero |
+| `GET …/queries/{queryid}/explanation` | a plain-language explanation per recommended index — works with no LLM |
+| `GET /databases/{db}/recommendations` · `/hygiene` · `/top-movers` · `/new-slow` | indexes to add (and ones HypoPG couldn't check), indexes to review for removal, what changed |
+| `GET /recommendations` | the best indexes across every database |
+
+Numbers are named for what they are: `measured…` values are summed `pg_stat_statements` deltas; `estimated…` and `plannerCost…` values are planner estimates. `queryid` is always a **string** (it's a signed 64-bit number — JavaScript would round it). Every recommendation comes with *planner-validated ≠ safe* and the `pglens confirm` command to measure it on a copy first. Windows start on a UTC hour (the response's `from` says exactly where); errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem documents.
+
+**Use it from a script** with a read-only API token (the admin password is in `deploy/compose/.env` after `make up`):
+
+```bash
+API=http://127.0.0.1:8080/api/v1
+PGLENS_ADMIN_PASSWORD=$(grep '^PGLENS_ADMIN_PASSWORD=' deploy/compose/.env | cut -d= -f2-)
+# log in (a session lasts 8 h idle, 7 days at most), then mint a named, read-only token for the script
+SESSION=$(curl -s $API/auth/login -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"$PGLENS_ADMIN_PASSWORD\"}" | jq -r .token)
+TOKEN=$(curl -s $API/api-tokens -H "Authorization: Bearer $SESSION" \
+  -H 'Content-Type: application/json' -d '{"name":"nightly-report"}' | jq -r .token)   # shown once
+
+# the 10 queries that cost the most time this week
+curl -s "$API/databases/demo/queries?window=7d&limit=10" -H "Authorization: Bearer $TOKEN" \
+  | jq -r '.items[] | [.queryid, .calls, .measuredTotalMs, .recommendation] | @tsv'
+```
+
+API tokens can read everything and change nothing; list or revoke them at `/api/v1/api-tokens`. Admins manage users at `/api/v1/users` (roles `ADMIN` / `VIEWER`) and databases at `/api/v1/databases` (`POST {"name": …}` returns the agent token **once**; `POST /databases/{db}/token` rotates it; `DELETE /databases/{db}?confirm={db}` deletes PgLens's history for it — never the database itself). Speed on a 30-day, 500-query history: every endpoint under 50 ms p95 (`make bench-api`, [`docs/benchmarks.md`](docs/benchmarks.md)).
+
+### Security defaults
+
+- **Agent ↔ server gRPC is TLS.** `make up` runs a one-shot `certs` service that creates a dev CA and a server certificate (for `server`, `localhost`, `127.0.0.1`) in the `grpc-certs` volume and throws the CA's key away; the agent trusts only that CA. For a real deployment give the server your own certificate (`PGLENS_GRPC_TLS_CERT`, `PGLENS_GRPC_TLS_KEY`) and the agent its CA (`PGLENS_SERVER_CA_CERT`). Plaintext needs `PGLENS_GRPC_PLAINTEXT=true` on the server *and* `PGLENS_SERVER_PLAINTEXT=true` on the agent, and is logged as a warning.
+- **The HTTP API needs a login.** The first admin's password comes from `PGLENS_ADMIN_PASSWORD` (12+ characters), otherwise a random one is logged once on first start (`docker compose logs server`). Passwords are stored as bcrypt hashes and tokens as SHA-256 hashes; 5 failed logins lock a username out of new logins for 15 minutes. `PGLENS_AUTH_MODE=none` turns logins off — only for one person on their own machine; every response then carries `X-PgLens-Auth: none`.
+- **The API listens on `127.0.0.1` only** in compose. To reach it from elsewhere, put HTTPS in front — e.g. [Caddy](https://caddyserver.com), which gets a certificate automatically:
+  ```
+  pglens.example.com {
+      reverse_proxy 127.0.0.1:8080
+  }
+  ```
+
+**An agent on another machine.** Run the agent image next to your database with `PGLENS_MONITORED_DB_URL` (a read-only role, like the demo's [`20_pglens_ro.sql`](deploy/compose/monitored/initdb/20_pglens_ro.sql); the database needs what [step 3](#3-point-it-at-your-own-database) lists), `PGLENS_DB_NAME` and `PGLENS_AGENT_TOKEN` (from `POST /api/v1/databases`), `PGLENS_SERVER_HOST` / `PGLENS_SERVER_PORT`, and `PGLENS_SERVER_CA_CERT` pointing at the CA certificate (from the dev setup: `docker compose -f deploy/compose/docker-compose.yml exec agent cat /certs/ca.pem > ca.pem`). The server's certificate must name the host the agent dials: set `PGLENS_TLS_EXTRA_SANS=DNS:pglens.internal` (or `IP:10.0.0.5`) before the certificates are first made — they are kept while valid, so to add a name later remove the `grpc-certs` volume and `make up` again.
 
 ## The demo environment
 
@@ -202,10 +251,11 @@ make psql-metadata   # open a shell on PgLens's own store, then e.g.:
 |---|---|---|
 | `monitored-db` | The database PgLens observes (demo data: `pglens_demo`) | `5433` |
 | `metadata-db`  | PgLens's own store, pgvector (`pglens_meta`) | `5434` |
-| `server` | The central brain: gRPC ingest/validation + scheduled analysis | `9090` |
+| `server` | The central brain: gRPC ingest/validation (TLS), scheduled analysis, the HTTP API | `9090` (gRPC), `127.0.0.1:8080` (HTTP) |
 | `agent` | The collector next to `monitored-db` (headless — no port) | — |
+| `certs` | One-shot: creates the dev TLS certificates for gRPC, then exits | — |
 
-Default local-dev credentials are `pglens` / `pglens` (override via `.env`; see `.env.example`). `make test` runs the end-to-end reproducibility gate (also run in CI); `make bench` runs the dogfood index benchmark; `make psql-monitored` / `make psql-metadata` open a shell on either database.
+Default local-dev credentials are `pglens` / `pglens` (override via `deploy/compose/.env`; see `deploy/compose/.env.example`). `make test` runs the end-to-end reproducibility gate (also run in CI); `make bench` runs the dogfood index benchmark; `make bench-api` the API latency benchmark; `make psql-monitored` / `make psql-metadata` open a shell on either database.
 
 `demo/slow_queries.sql` is a documented pack of known anti-patterns — the **ground-truth oracle** the engine is tested against.
 
@@ -215,7 +265,7 @@ A pure **analysis engine** (`:engine`, no framework dependencies in its core) do
 
 `pg_stat_statements` (ranked, hygiene-filtered) → `EXPLAIN (GENERIC_PLAN)` capture → anti-pattern rules → candidate `CREATE INDEX` → **HypoPG validation gate** (kept only if the planner *uses* the hypothetical index and cost drops past a threshold) → cross-query ranking.
 
-The engine is split into a **pure half** (parse / detect / rank — no database) and an **I/O half** (reads Postgres, runs HypoPG). Phase 1's `:cli` runs both over one connection. **Phase 2 recomposes the same halves across two processes — no rewrite:** the I/O half runs on the **agent** (next to the monitored DB, read-only); the pure half runs on the **server** (over the persisted time-series). They talk over gRPC via a shared `:proto` contract, and the server owns the metadata schema (Flyway migrations), the scheduled singleton analysis job, the validation work-queue, index hygiene, and trends. PgLens even **dogfoods its own tuning** — it found a missing index on its own metadata schema and added a BRIN index on measured evidence (see [`docs/benchmarks.md`](docs/benchmarks.md)).
+The engine is split into a **pure half** (parse / detect / rank — no database) and an **I/O half** (reads Postgres, runs HypoPG). Phase 1's `:cli` runs both over one connection. **Phase 2 recomposes the same halves across two processes — no rewrite:** the I/O half runs on the **agent** (next to the monitored DB, read-only); the pure half runs on the **server** (over the persisted time-series). They talk over gRPC via a shared `:proto` contract, and the server owns the metadata schema (Flyway migrations), the scheduled singleton analysis job, the validation work-queue, index hygiene, trends and the HTTP API. PgLens even **dogfoods its own tuning** — it found a missing index on its own metadata schema and added a BRIN index on measured evidence, and when its own API was too slow on a 30-day history (741 ms), an hourly rollup brought it to 44 ms (see [`docs/benchmarks.md`](docs/benchmarks.md)).
 
 ## Roadmap
 

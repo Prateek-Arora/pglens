@@ -13,6 +13,6 @@ COPY server/build/libs/app.jar app.jar
 RUN useradd --system --no-create-home --uid 10001 pglens
 USER 10001
 
-# gRPC ingest/validation listener (matches pglens.grpc.port).
-EXPOSE 9090
+# gRPC ingest/validation (pglens.grpc.port) and the HTTP API (server.port, ADR-0044).
+EXPOSE 9090 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

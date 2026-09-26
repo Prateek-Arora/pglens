@@ -15,9 +15,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Capture-robustness harness for the fragile surface of the pipeline: plan capture. A statement
@@ -38,7 +38,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class PlanCaptureRobustnessTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   /**
    * Normalized-text fragments of shapes we knowingly accept as un-capturable. Add an entry only

@@ -11,7 +11,8 @@ import com.pglens.explain.llm.StubLlmServer;
 import com.pglens.proto.v1.CatalogSnapshot;
 import com.pglens.proto.v1.IndexStat;
 import com.pglens.proto.v1.TableStat;
-import com.pglens.server.grpc.Tokens;
+import com.pglens.server.auth.Tokens;
+import com.pglens.server.grpc.GrpcTestTls;
 import com.pglens.server.persistence.CatalogRepository;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import java.io.IOException;
@@ -27,9 +28,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -52,8 +53,8 @@ import org.testcontainers.utility.DockerImageName;
 class ExplanationFlowIntegrationTest {
 
   @Container
-  static final PostgreSQLContainer<?> METADATA =
-      new PostgreSQLContainer<>(
+  static final PostgreSQLContainer METADATA =
+      new PostgreSQLContainer(
           DockerImageName.parse("pgvector/pgvector:0.8.6-pg16")
               .asCompatibleSubstituteFor("postgres"));
 
@@ -64,6 +65,7 @@ class ExplanationFlowIntegrationTest {
     registry.add("spring.datasource.url", METADATA::getJdbcUrl);
     registry.add("spring.datasource.username", METADATA::getUsername);
     registry.add("spring.datasource.password", METADATA::getPassword);
+    GrpcTestTls.register(registry);
     registry.add("pglens.llm.base-url", LLM::baseUrl);
   }
 

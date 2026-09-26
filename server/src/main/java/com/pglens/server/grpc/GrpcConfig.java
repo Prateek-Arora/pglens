@@ -10,8 +10,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Wires the gRPC server: which services carry the {@link AuthInterceptor} and which don't. Ingest
- * (and, from Step 5, Validation) require a valid agent token; Health is unauthenticated.
+ * Wires the gRPC server: TLS unless {@code pglens.grpc.plaintext=true} (ADR-0044), and which
+ * services carry the {@link AuthInterceptor}. Ingest and Validation require a valid agent token;
+ * Health is unauthenticated.
  */
 @Configuration
 public class GrpcConfig {
@@ -19,6 +20,9 @@ public class GrpcConfig {
   @Bean
   GrpcServerLifecycle grpcServerLifecycle(
       @Value("${pglens.grpc.port}") int port,
+      @Value("${pglens.grpc.plaintext:false}") boolean plaintext,
+      @Value("${pglens.grpc.tls.cert:}") String certChain,
+      @Value("${pglens.grpc.tls.key:}") String privateKey,
       IngestService ingestService,
       ValidationService validationService,
       HealthService healthService,
@@ -28,7 +32,8 @@ public class GrpcConfig {
             ServerInterceptors.intercept(ingestService, authInterceptor),
             ServerInterceptors.intercept(validationService, authInterceptor),
             healthService.bindService());
-    return new GrpcServerLifecycle(port, services);
+    return new GrpcServerLifecycle(
+        port, GrpcServerSecurity.credentials(plaintext, certChain, privateKey), services);
   }
 
   @Bean

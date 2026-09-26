@@ -1,5 +1,9 @@
 package com.pglens.server.trend;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 /**
  * The pure derived-number math behind the trend queries, split out so its honesty boundaries are
  * unit-tested with no database (charter principle #1: never fabricate a number). Everything here is
@@ -28,5 +32,13 @@ public final class TrendMath {
    */
   public static Double mean(double totalMs, long calls) {
     return calls <= 0 ? null : totalMs / calls;
+  }
+
+  /**
+   * Where a window ending at {@code now} starts: windows sum the hourly rollup (ADR-0045), so they
+   * start on the UTC hour at or before {@code now − length}. APIs report this real start.
+   */
+  public static Instant windowStart(Instant now, Duration length) {
+    return now.minus(length).truncatedTo(ChronoUnit.HOURS);
   }
 }

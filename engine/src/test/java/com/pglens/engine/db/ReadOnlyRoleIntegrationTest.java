@@ -16,9 +16,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * The DB-level read-only role {@code pglens_ro} (ADR-0030 — closes the item ADR-0020 deferred to
@@ -42,7 +42,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class ReadOnlyRoleIntegrationTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   private static final String DB_NAME = "pglens_demo";
 

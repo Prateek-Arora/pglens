@@ -2,17 +2,18 @@
 
 > End-state architecture and the **deliberate design choices** behind it. Read on demand. Update this file whenever structure changes. The *why* behind each choice also lives in `docs/decisions.md` (linked by ADR id).
 
-_Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are implemented (see the "implemented" sections). Supported Postgres: 16+ (ADR-0036)._
+_Last updated: 2026-09-26 — end-state target below; Phases 0–3 and 4A are implemented (see the "implemented" sections). Supported Postgres: 16+ (ADR-0036)._
 
 ## System diagram (end state)
 
 ```
-   ┌──────────────────────┐        gRPC (server-streaming)      ┌───────────────────────────────┐
+   ┌──────────────────────┐     gRPC over TLS (client/server    ┌───────────────────────────────┐
    │  Monitored Postgres  │  ◀── read-only ── pglens-agent  ──▶ │  pglens-server (Spring Boot)  │
+   │                      │         streaming, bearer token)    │                               │
    │  (customer's DB)     │     pg_stat_statements, EXPLAIN     │  - rank + plan capture        │
    │  + pg_stat_statements│                                     │  - anti-pattern detector      │
    │  + hypopg (optional) │                                     │  - HypoPG index validator     │
-   └──────────────────────┘                                     │  - REST + (opt) GraphQL API   │
+   └──────────────────────┘                                     │  - REST API (login, OpenAPI)  │
                                                                  └───────┬───────────────┬───────┘
                                                                          │ calls          │ SQL
                                                                          ▼                ▼
@@ -24,7 +25,8 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
                                                             ▲ :explain module    │  explanations, trends  │
                                                             │ (in CLI + server)  └────────────────────────┘
                                                                          ▲
-   Next.js dashboard (App Router) ── REST/GraphQL ─────────────────────┘
+   Scripts (API token) ── REST ──────────────────────────────────────────┤
+   Browser ── Next.js (BFF, calls the API server-side) ── REST ──────────┘
    Deploy: Docker Compose (dev) → Helm on kind/k3d → Terraform to free-tier cloud + Neon
    Observability: PgLens instruments itself (Prometheus/OTel, health checks)
 ```
@@ -33,7 +35,7 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
 | Component | Tech | Responsibility |
 |---|---|---|
 | `pglens-agent` (collector) | Java 21 / Spring Boot | Read `pg_stat_statements` + run safe `EXPLAIN` on the monitored DB (read-only); stream over gRPC. |
-| `pglens-server` | Spring Boot | Rank slow queries, capture plans, detect anti-patterns, run HypoPG validation, expose REST/GraphQL. |
+| `pglens-server` | Spring Boot 4.1 | Persist the history, detect anti-patterns, queue HypoPG validation for the agent, serve the authenticated REST API (OpenAPI). |
 | `:explain` (LLM layer, in-JVM) | `java.net.http` → any OpenAI-compatible LLM (default: local Ollama + `qwen3.5:4b`); pgvector docs retrieval on the server | Turn PgLens's facts into a checked plain-language explanation. Optional; falls back to a deterministic template (ADR-0043). |
 | Metadata Postgres | Postgres + pgvector | PgLens's own store: snapshots, recommendations, embeddings, trends. |
 | Dashboard | Next.js (App Router) | Leaderboard, plan viewer, recommendations, trends over time. |
@@ -44,6 +46,35 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
 3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; checking it helps without building it (minutes on a big table) is the valuable part. HypoPG gives the real planner's cost *estimate* with the index — the honest "expected improvement", always labeled an estimate. Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*. **Not a differentiator on its own** — Dexter, PoWA, Supabase `index_advisor` and Postgres MCP Pro use HypoPG too (ADR-0037); PgLens's edge is the integrated, history-aware loop on pgss + hypopg only.
 4. **Local LLM for privacy** (ADR-0006, refined by ADR-0043). Query text never leaves the user's infra by default: any OpenAI-compatible runtime works (Ollama is the documented default), and non-local endpoints are refused unless explicitly allowed.
 5. **gRPC for ingest + edge-pull validation** (ADR-0001 stack; topology ADR-0023, lib ADR-0025). Stats flow agent → server as short-lived **client-streaming** calls; validation work is **server-streamed** to the agent and results **client-streamed** back — three of gRPC's four modes, chosen over live-bidi so calls stay short-lived and load-balanceable. A real, justified gRPC use case (not bolted on).
+
+## Web API & security (implemented — Phase 4A, ADR-0044, ADR-0045)
+Phase 4A made the server usable without SQL, and safe to expose. **Spring Boot 4.1** first (3.5 left
+OSS support on 2026-06-30).
+
+- **gRPC over TLS by default.** A compose one-shot `certs` service makes a dev CA + server
+  certificate (CA key discarded; the agent's mount holds only `ca.pem`). Real deployments bring their
+  own certificate; plaintext is an explicit, logged opt-in on both sides.
+- **HTTP API, one auth choke point** (like the gRPC `AuthInterceptor`, ADR-0027): a stateless
+  `BearerTokenFilter` resolves opaque tokens — sessions (`pglens_s_`, 8 h idle / 7 d max) and named
+  read-only API tokens (`pglens_a_`) — to a user; `SecurityConfig` holds every rule (ADMIN / VIEWER;
+  API tokens never write). Only SHA-256 token hashes and bcrypt password hashes are stored (V9
+  `users`, `sessions`, `api_tokens`). Login throttling is in-memory per username (single server
+  instance). `pglens.auth.mode=none` is for one person on localhost. Errors are RFC 9457.
+- **Registration is an API** (B10): `POST /api/v1/databases` returns the agent token once; rotate
+  and delete (name confirmation; deletes only PgLens's history). `make register` wraps it.
+- **Read API** (`/api/v1`, OpenAPI via springdoc): leaderboard, query detail (estimated plan tree
+  whose node ids match each finding's `planNode`, `--json` 1.4), trend, explanations (template on
+  read — no LLM needed — or a cached LLM answer for the same facts hash), recommendations with the
+  confirm caveat, hygiene, top movers, new slow queries, cross-database recommendations. `queryid` is
+  a string everywhere; field names say measured vs estimated.
+- **Hourly rollup** (V10, ADR-0045): `query_stats_hourly`, kept exact by a statement-level trigger on
+  the append-only `query_stats`, serves every windowed read; windows start on a UTC hour. Measured
+  on a 30-day, 500-query history: 30-day leaderboard 741 → 44 ms p95 (`make bench-api`).
+- **Backend-for-frontend (4B):** the browser will only talk to Next.js, whose server code calls this
+  API on the private network — no CORS, and the API authorizes every request itself.
+
+Metadata schema is now Flyway **V1–V10** (V6 evidence + `table_stats`, V7 build caution, V8
+explanations + pgvector knowledge, V9 users/sessions/API tokens + `last_ingest_at`, V10 rollup).
 
 ## Plain-language explanations (implemented — Phase 3, ADR-0043)
 
@@ -232,6 +263,7 @@ from Phase 1 on.
 ## Known architectural risks (see charter §9 + `docs/decisions.md`)
 - Server horizontal scaling: streaming ingest + singleton `@Scheduled` analysis don't scale trivially → make analysis a leader-elected singleton / separate non-scaled component; Phase 5 HPA is a *learning* demo, not real horizontal scaling of stateful work.
 - Index-rec false positives → HypoPG validation gate with a minimum cost-win threshold.
-- Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value ranges (shown as evidence; ranking stays generic per ADR-0041), footprint/write-load notes and prefix-overlap cross-validation; JOB/IMDB (ADR-0040) showed estimates can't rule out slowdowns — Phase 2.6 (proposed) measures on a copy; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
+- Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value ranges (shown as evidence; ranking stays generic per ADR-0041), footprint/write-load notes and prefix-overlap cross-validation; JOB/IMDB (ADR-0040) showed estimates can't rule out slowdowns — Phase 2.6 `pglens confirm` measures on a copy (ADR-0042), and every API recommendation carries that command; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
 - Postgres-version drift → PG16+ gate + CI `compat` on 17/18 (ADR-0036). PG18 already changed pgss behaviour (leading comments stripped), so new majors get tested, not assumed.
 - LLM hallucination → the model never writes DDL, numbers-with-meaning or caveats of its own: PgLens renders those, and `OutputGuard` checks every number, name and cost/runtime phrasing in the model's three sentences (retry once, then template). What it can't check — a wrong number-free sentence — is measured in `docs/llm-eval.md` (M4) and disclosed in every explanation's provenance line.
+- API exposure → login required by default, API tokens read-only, compose binds the HTTP port to loopback, HTTPS via a reverse proxy (README). The login throttle and session touch are per server instance (in-memory throttle) — fine for one server; several replicas would need a shared throttle.

@@ -12,7 +12,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 if have shellcheck; then
     echo "== shellcheck =="
-    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh scripts/dogfood_benchmark.sh scripts/accuracy_benchmark.sh scripts/secret_scan.sh scripts/git-hooks/pre-commit || status=1
+    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh scripts/dogfood_benchmark.sh scripts/api_benchmark.sh scripts/accuracy_benchmark.sh scripts/secret_scan.sh scripts/dev_env.sh scripts/register.sh scripts/git-hooks/pre-commit deploy/compose/certs/gen-dev-certs.sh || status=1
 else
     echo "(shellcheck not installed -- skipping)"
 fi

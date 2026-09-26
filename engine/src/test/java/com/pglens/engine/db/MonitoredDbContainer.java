@@ -6,7 +6,7 @@ import java.sql.SQLException;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -27,8 +27,8 @@ final class MonitoredDbContainer {
 
   private MonitoredDbContainer() {}
 
-  static PostgreSQLContainer<?> create() {
-    return new PostgreSQLContainer<>(
+  static PostgreSQLContainer create() {
+    return new PostgreSQLContainer(
             DockerImageName.parse(IMAGE).asCompatibleSubstituteFor("postgres"))
         .withDatabaseName("pglens_demo")
         .withCommand(
@@ -36,7 +36,7 @@ final class MonitoredDbContainer {
   }
 
   /** Runs the real 00_extensions.sql + 10_schema.sql against the started container. */
-  static void initSchema(PostgreSQLContainer<?> db) {
+  static void initSchema(PostgreSQLContainer db) {
     runInitScript(db, "00_extensions.sql");
     runInitScript(db, "10_schema.sql");
   }
@@ -47,11 +47,11 @@ final class MonitoredDbContainer {
    * TABLES} covers the demo tables. The image doesn't bake the init scripts in (compose mounts them
    * as a volume), so tests apply them over JDBC the same way.
    */
-  static void initReadOnlyRole(PostgreSQLContainer<?> db) {
+  static void initReadOnlyRole(PostgreSQLContainer db) {
     runInitScript(db, "20_pglens_ro.sql");
   }
 
-  private static void runInitScript(PostgreSQLContainer<?> db, String scriptName) {
+  private static void runInitScript(PostgreSQLContainer db, String scriptName) {
     String initdb = System.getProperty("pglens.repoRoot", ".") + "/deploy/compose/monitored/initdb";
     if (!new File(initdb).isDirectory()) {
       throw new IllegalStateException(

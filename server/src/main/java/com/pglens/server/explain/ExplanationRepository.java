@@ -77,6 +77,42 @@ public class ExplanationRepository {
         });
   }
 
+  /** A cached LLM explanation and what produced it. */
+  public record CachedLlm(Explanation explanation, String promptVersion, Instant createdAt) {}
+
+  /**
+   * The newest LLM-written explanation for exactly these facts — the read API shows it instead of
+   * the template (ADR-0044). Facts that changed since (new stats, a new plan) never match, so a
+   * stale explanation is never shown.
+   */
+  public Optional<CachedLlm> cachedLlm(long dbId, long queryId, String ddl, String factsHash) {
+    return jdbc
+        .query(
+            "SELECT ddl, summary, why_it_is_slow, what_changes, model, docs, prompt_version, "
+                + "created_at FROM explanations WHERE db_id = ? AND queryid = ? AND ddl = ? "
+                + "AND facts_hash = ? AND source = 'LLM' ORDER BY created_at DESC LIMIT 1",
+            (rs, n) ->
+                new CachedLlm(
+                    new Explanation(
+                        rs.getString(1),
+                        Source.LLM,
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getString(4),
+                        rs.getString(5),
+                        null,
+                        List.of(),
+                        strings(rs.getArray(6))),
+                    rs.getString(7),
+                    rs.getTimestamp(8).toInstant()),
+            dbId,
+            queryId,
+            ddl,
+            factsHash)
+        .stream()
+        .findFirst();
+  }
+
   /** The newest explanation for an index — what the Phase 4 dashboard will show. */
   public Optional<Explanation> latest(long dbId, String ddl) {
     return jdbc

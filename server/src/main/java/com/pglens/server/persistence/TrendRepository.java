@@ -22,6 +22,11 @@ import org.springframework.stereotype.Repository;
  * it is now served by {@code BRIN(captured_at)} (migration {@code V4}, ADR-0033 — see {@code
  * docs/benchmarks.md} for the measured ~73× buffer reduction). The per-query {@link #series} scan
  * rides the PK.
+ *
+ * <p><b>Phase 4 (ADR-0045).</b> At API scale (30 days × 500 queries = 4.3 M rows) even the BRIN
+ * path summed too many raw rows (top movers ~0.95 s p95), so the cross-query windows now sum the
+ * hourly rollup {@code query_stats_hourly} (V10, trigger-maintained) — window bounds must be on UTC
+ * hours. {@link #hourlySeries} serves long trend ranges at one point per hour.
  */
 @Repository
 public class TrendRepository {
@@ -53,6 +58,30 @@ public class TrendRepository {
         utc(to));
   }
 
+  /**
+   * One point per UTC hour in {@code [from, to)} from the rollup — for long ranges, where raw
+   * 5-minute points would be thousands. An hour with no row stays absent (a gap, not a zero).
+   */
+  public List<TrendPoint> hourlySeries(long dbId, long queryid, Instant from, Instant to) {
+    return jdbc.query(
+        """
+        SELECT hour, total_exec_time_ms / NULLIF(calls, 0) AS mean_ms, calls, total_exec_time_ms
+        FROM query_stats_hourly
+        WHERE db_id = ? AND queryid = ? AND hour >= ? AND hour < ?
+        ORDER BY hour
+        """,
+        (rs, n) ->
+            new TrendPoint(
+                rs.getTimestamp("hour").toInstant(),
+                rs.getObject("mean_ms", Double.class),
+                rs.getLong("calls"),
+                rs.getDouble("total_exec_time_ms")),
+        dbId,
+        queryid,
+        utc(from),
+        utc(to));
+  }
+
   /** The normalized text registered for a query, if any (a PK lookup on {@code query_texts}). */
   public Optional<String> normalizedText(long dbId, long queryid) {
     return jdbc
@@ -75,10 +104,10 @@ public class TrendRepository {
       long priorCalls) {}
 
   /**
-   * Sums each query's {@code total_exec_time_delta} and {@code calls_delta} over two adjacent
-   * windows in one scan: the recent window {@code [recentFrom, recentTo)} and the prior window
-   * {@code [priorFrom, recentFrom)}. Only queries with at least one row in the combined span are
-   * returned. Cross-query {@code captured_at}-range scan — served by the {@code V4} BRIN index.
+   * Sums each query's time and calls over two adjacent windows in one scan of the hourly rollup:
+   * the recent window {@code [recentFrom, recentTo)} and the prior window {@code [priorFrom,
+   * recentFrom)} (bounds on UTC hours). Only queries with at least one row in the combined span are
+   * returned. Cross-query hour-range scan — served by the rollup's BRIN index (V10, ADR-0045).
    */
   public List<QueryWindowTotals> windowTotals(
       long dbId, Instant priorFrom, Instant recentFrom, Instant recentTo) {
@@ -87,17 +116,17 @@ public class TrendRepository {
         """
         SELECT s.queryid,
                t.normalized_text,
-               COALESCE(sum(s.total_exec_time_delta_ms) FILTER (WHERE s.captured_at >= ?), 0)
+               COALESCE(sum(s.total_exec_time_ms) FILTER (WHERE s.hour >= ?), 0)
                    AS recent_total,
-               COALESCE(sum(s.calls_delta)              FILTER (WHERE s.captured_at >= ?), 0)
+               COALESCE(sum(s.calls)              FILTER (WHERE s.hour >= ?), 0)
                    AS recent_calls,
-               COALESCE(sum(s.total_exec_time_delta_ms) FILTER (WHERE s.captured_at <  ?), 0)
+               COALESCE(sum(s.total_exec_time_ms) FILTER (WHERE s.hour <  ?), 0)
                    AS prior_total,
-               COALESCE(sum(s.calls_delta)              FILTER (WHERE s.captured_at <  ?), 0)
+               COALESCE(sum(s.calls)              FILTER (WHERE s.hour <  ?), 0)
                    AS prior_calls
-        FROM query_stats s
+        FROM query_stats_hourly s
         JOIN query_texts t ON t.db_id = s.db_id AND t.queryid = s.queryid
-        WHERE s.db_id = ? AND s.captured_at >= ? AND s.captured_at < ?
+        WHERE s.db_id = ? AND s.hour >= ? AND s.hour < ?
         GROUP BY s.queryid, t.normalized_text
         """,
         (rs, n) ->
@@ -139,18 +168,19 @@ public class TrendRepository {
         """
         SELECT s.queryid,
                t.normalized_text,
-               min(s.captured_at)              AS first_seen,
-               sum(s.total_exec_time_delta_ms) AS recent_total,
-               sum(s.calls_delta)              AS recent_calls
-        FROM query_stats s
+               (SELECT min(f.captured_at) FROM query_stats f     -- the real first sample time
+                WHERE f.db_id = s.db_id AND f.queryid = s.queryid) AS first_seen,
+               sum(s.total_exec_time_ms)       AS recent_total,
+               sum(s.calls)                    AS recent_calls
+        FROM query_stats_hourly s
         JOIN query_texts t ON t.db_id = s.db_id AND t.queryid = s.queryid
-        WHERE s.db_id = ? AND s.captured_at >= ? AND s.captured_at < ?
+        WHERE s.db_id = ? AND s.hour >= ? AND s.hour < ?
           AND NOT EXISTS (
-            SELECT 1 FROM query_stats p
-            WHERE p.db_id = s.db_id AND p.queryid = s.queryid AND p.captured_at < ?
+            SELECT 1 FROM query_stats_hourly p
+            WHERE p.db_id = s.db_id AND p.queryid = s.queryid AND p.hour < ?
           )
-        GROUP BY s.queryid, t.normalized_text
-        HAVING sum(s.total_exec_time_delta_ms) >= ?
+        GROUP BY s.db_id, s.queryid, t.normalized_text
+        HAVING sum(s.total_exec_time_ms) >= ?
         ORDER BY recent_total DESC
         """,
         (rs, n) ->

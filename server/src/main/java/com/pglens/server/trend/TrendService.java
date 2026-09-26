@@ -33,6 +33,11 @@ public class TrendService {
     return new QueryTrend(queryid, text, points);
   }
 
+  /** One point per UTC hour in {@code [from, to)}, from the hourly rollup (ADR-0045). */
+  public List<TrendPoint> hourlySeries(long dbId, long queryid, Instant from, Instant to) {
+    return repo.hourlySeries(dbId, queryid, from, to);
+  }
+
   /**
    * Top movers by total-time change over the last {@code window}, compared to the equal-length
    * window before it. Sorted by absolute {@code deltaMs} descending (worst regression first) and
@@ -40,7 +45,7 @@ public class TrendService {
    * but still ranks on its absolute delta.
    */
   public List<TopMover> topMovers(long dbId, Instant now, Duration window, int limit) {
-    Instant recentFrom = now.minus(window);
+    Instant recentFrom = TrendMath.windowStart(now, window);
     Instant priorFrom = recentFrom.minus(window);
     return repo.windowTotals(dbId, priorFrom, recentFrom, now).stream()
         .map(
@@ -64,7 +69,7 @@ public class TrendService {
    */
   public List<NewSlowQuery> newSlowQueries(
       long dbId, Instant now, Duration window, double minTotalMs) {
-    Instant recentFrom = now.minus(window);
+    Instant recentFrom = TrendMath.windowStart(now, window);
     return repo.newQueries(dbId, recentFrom, now, minTotalMs).stream()
         .map(
             q ->

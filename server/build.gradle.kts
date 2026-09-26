@@ -23,8 +23,13 @@ dependencies {
   implementation(project(":proto")) // brings grpc-protobuf/grpc-stub/protobuf-java (api on :proto)
   implementation(libs.spring.boot.starter)
   implementation(libs.spring.boot.starter.jdbc)
+  // The HTTP API (Phase 4, ADR-0044): REST under /api/v1, stateless bearer-token security.
+  implementation(libs.spring.boot.starter.webmvc)
+  implementation(libs.spring.boot.starter.security)
+  implementation(libs.spring.boot.starter.validation)
+  implementation(libs.springdoc.openapi.webmvc.api)
   implementation(libs.jackson.databind) // plan_json handling reuses engine's Jackson-based PlanParser
-  implementation(libs.flyway.core)
+  implementation(libs.spring.boot.starter.flyway) // Boot 4: Flyway auto-config lives in its own module
   runtimeOnly(libs.flyway.database.postgresql) // Flyway 10+ splits Postgres support into this artifact
   runtimeOnly(libs.postgresql)
 
@@ -33,6 +38,9 @@ dependencies {
   implementation(libs.grpc.netty.shaded)
 
   testImplementation(libs.spring.boot.starter.test)
+  testImplementation(libs.spring.boot.starter.webmvc.test) // MockMvc
+  testImplementation(libs.spring.boot.starter.security.test)
+  testImplementation(libs.grpc.testing) // TlsTesting: grpc-java's bundled test CA + server cert
   testImplementation(platform(libs.testcontainers.bom))
   testImplementation(libs.testcontainers.junit)
   testImplementation(libs.testcontainers.postgresql)

@@ -30,6 +30,7 @@ dependencies {
   implementation(libs.grpc.netty.shaded)
 
   testImplementation(libs.spring.boot.starter.test)
+  testImplementation(libs.grpc.testing) // TlsTesting: grpc-java's bundled test CA + server cert
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

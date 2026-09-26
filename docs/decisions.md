@@ -47,6 +47,9 @@
 | [ADR-0040](#adr-0040) | 2026-09-25 | Second, pre-registered accuracy benchmark on real skewed data (JOB/IMDB): 72 % precision, 18 % of recs slower, 1 unbuildable index; the value-range floor did **not** help; measure under the server's own settings | Accepted (ranking follow-up proposed) |
 | [ADR-0041](#adr-0041) | 2026-09-25 | After JOB: rank by the generic estimate again (value range = evidence); catalog-only B-tree build caution (B17, TOAST-based); benchmarks measure under server settings; "planner-validated ≠ safe" in every report; Phase 2.6 "confirm on a copy" proposed | Accepted (Phase 2.6 approved → ADR-0042) |
 | [ADR-0042](#adr-0042) | 2026-09-25 | Phase 2.6 `pglens confirm`: build recommended indexes on a user-marked scratch copy and time real statements; marker in `pg_db_role_setting`; match by the copy's pg_stat_statements text (top-level rows); `$N` replay via PREPARE/EXECUTE; confirm JSON 1.0; tag `v0.0.5` | Accepted |
+| [ADR-0043](#adr-0043) | 2026-09-26 | Phase 3 plain-language explanations: any OpenAI-compatible endpoint, LLM phrases 3 fields only, guard + template fallback; eval → `--plain` = template, `=llm` opt-in | Accepted |
+| [ADR-0044](#adr-0044) | 2026-09-26 | Phase 4: Spring Boot 3.5 (EOL) → 4.1 first; 4A `v0.0.7` headless (TLS, auth, registration, REST) + 4B `v0.1.0-rc` dashboard; BFF, string queryids, confirm command on every rec | Accepted |
+| [ADR-0045](#adr-0045) | 2026-09-26 | Hourly rollup of `query_stats` (V10, trigger-maintained) for the API's windowed reads; windows start on UTC hours; long trends hourly | Accepted |
 
 ---
 
@@ -405,3 +408,117 @@
     - An outage is cached with `retry_after`, while a guard rejection is cached permanently (temperature 0 repeats).
     - A down endpoint short-circuits the rest of a run.
     - 100.64/10 (CGNAT, Tailscale) counts as private.
+
+## ADR-0044
+**Phase 4 — web API, security, dashboard: upgrade to Spring Boot 4.1 first, split into a headless 4A (`v0.0.7`) and the dashboard 4B (`v0.1.0-rc`)** · 2026-09-26 · Accepted
+- **Context:** Plan verification of the user's Phase-4 draft (`docs/phases/phase_4.md` §2) found:
+  (a) **Spring Boot 3.5 left OSS support on 2026-06-30** (3.5.16, which we pinned on 2026-08-25, was the
+  last free release), and Phase 4 gives the server its first internet-facing surface (HTTP + a login);
+  (b) Next.js had a heavy advisory year (RSC RCE Dec 2025, a middleware auth bypass, 13 advisories in
+  May 2026, a critical release due 2026-09-30); (c) `queryid` is a signed 64-bit value, which a
+  JavaScript number corrupts past 2⁵³; (d) the stored plans are GENERIC_PLAN estimates and `Finding`
+  has no plan-node link; (e) the draft's recommendations screen would rank planner estimates only,
+  although ADR-0041/0042 measured planner-validated indexes that make queries slower; (f) index hygiene
+  and the no-LLM requirement were missing; (g) the phase is the largest so far.
+- **Decision:**
+  1. **Step 0: Spring Boot 3.5.16 → 4.1.1** (OSS support to 2027-07-31) before any new code. Pure
+     modules keep Jackson 2 (still dependency-managed by Boot 4); only the new web layer uses
+     Jackson 3. Plain grpc-java stays (ADR-0025).
+  2. **Two releases:** 4A `v0.0.7` = gRPC TLS (plaintext refused by default), stateless bearer-token
+     auth (users/sessions/API tokens, hashed), the registration API (B10), the `/api/v1` read API and
+     a measured API latency budget; 4B `v0.1.0-rc` = the Next.js dashboard.
+  3. **Backend-for-frontend:** the browser talks only to Next.js; Next.js server code calls the API on
+     the private network (no CORS). The Spring API authorizes every request; Next.js `proxy.ts` is never
+     the only check. Per-user data is never cached across users.
+  4. **`queryid` is a string** in every API payload and URL. Plan numbers are labeled *estimated*;
+     `Finding` gains a plan-node reference (`--json` 1.4, additive).
+  5. **Every recommendation carries "planner-validated ≠ safe" + a pre-filled `pglens confirm`
+     command**; importing confirm results is backlog B24. Hygiene gets a panel. Explanations are the
+     template on read; a cached LLM row is used only when its facts hash matches.
+  6. **Flexibility:** the REST API is a product surface (named read-only API tokens for scripts);
+     the dashboard is an optional compose service; `pglens.auth.mode=none` exists for one user on
+     localhost, bannered. Login is required by default.
+- **Alternatives:** stay on 3.5 and override Tomcat/Security versions by hand (rejected: an unsupported
+  BOM for a web-facing release) · Spring gRPC now that Boot 4 allows it (rejected: churn, no user
+  benefit) · auth in Next.js (Auth.js/Better Auth) (rejected: a second auth authority and a second
+  writer to the metadata DB; the API must be protected for scripts anyway) · one big release
+  (rejected: 4A is useful alone and ships sooner) · GraphQL in the core path (kept optional, last).
+- **Consequences / Step 0 results:** Boot 4 split auto-configuration into per-technology modules —
+  Flyway now needs `spring-boot-starter-flyway` (without it migrations silently don't run; every
+  server IT failed on missing tables), and `DataSourceAutoConfiguration` moved to
+  `org.springframework.boot.jdbc.autoconfigure`. Boot 4 manages **Testcontainers 2**, whose artifacts
+  are renamed (`testcontainers-postgresql`, `testcontainers-junit-jupiter`) and whose
+  `PostgreSQLContainer` moved to `org.testcontainers.postgresql` (no type parameter). After the
+  fixes: **384 tests green** (unchanged count), compose smoke 8/8, agent → server ingest and
+  validation round-trip verified live, CLI `scan --plain` / `--json` 1.3 unchanged.
+- **Steps 1–3 results (2026-09-26):** gRPC is TLS by default — a compose one-shot `certs` service
+  writes a dev CA + server certificate (the CA key is discarded; the agent's volume mount holds only
+  `ca.pem`); plaintext needs `PGLENS_GRPC_PLAINTEXT=true` and logs a warning. Session timestamps come
+  from the server's clock, not the database's `now()` (a test clock exposed the drift). Tokens are
+  **opaque random values, not JWTs**: every request looks up the token's SHA-256 hash (one indexed
+  read the single server makes anyway), so logout, a password change or revoking an API token takes
+  effect on the next request. A JWT would need a deny-list or short expiry plus refresh tokens to be
+  revocable, and a signing key to guard — complexity with no benefit for one server that owns its
+  database. Usernames
+  are unique ignoring case (index on `lower(username)`). Boot's in-memory default user is excluded
+  (it logged a second, meaningless "generated password"). **Deviation from the plan:** the login
+  throttle is keyed per *username*, not username + IP — behind the BFF every dashboard login arrives
+  from the Next.js server's address, and trusting `X-Forwarded-For` would let any client pick its
+  own IP. Trade-off: someone guessing can lock a known username out of *new* logins for 15 minutes
+  (existing sessions and API tokens keep working). `make register` now calls the API
+  (`scripts/register.sh`): `make up` writes a generated admin password into the git-ignored
+  `deploy/compose/.env`, registration (or token rotation) writes the agent token there, and secrets
+  go to `curl` on stdin, never in `argv`. Found on the way: Compose reads `.env` from the compose
+  file's directory, so the old root `.env.example` ("copy to `.env`") never took effect — moved to
+  `deploy/compose/.env.example`. The demo agent token is no longer the fixed `devtoken`.
+- **Step 4 results (2026-09-26) — the read API.** `GET /api/v1/databases/{db}/queries` (windowed
+  leaderboard), `…/queries/{queryid}` (SQL, the estimated plan tree, findings, recommendations,
+  measured totals), `…/trend`, `…/explanation`, `…/recommendations`, `…/hygiene`, `…/top-movers`,
+  `…/new-slow`, `GET /api/v1/recommendations` (across databases); OpenAPI at `/api/v1/openapi.json`
+  (springdoc 3.1.1, spec only, public like health — no Swagger UI to secure). Choices made while
+  building: (a) a finding's plan node is its **pre-order position** (`PlanNode.flatten()`), the same
+  numbering the API's plan tree uses — cheap, stable for a stored plan, no ids in the engine model;
+  `--json` 1.4. (b) Explanations are **per recommended index** of the query (an explanation is about
+  an index, ADR-0043), the template computed on read; a cached LLM row is used only when its facts
+  hash matches (a stale answer never shows). (c) The leaderboard carries the **best verdict**
+  (`PLANNER_VALIDATED` / `NOT_PLANNER_VALIDATED` / null), not a boolean: a GIN suggestion HypoPG
+  can't check must still be visible (charter #6) — found by reading live output. (d) The
+  `pglens confirm` command keeps **placeholders** (scan the database, then confirm on a copy): the
+  server holds no connection strings. (e) Numbers are named for what they are (`measured…`,
+  `estimated…`, `plannerCost…`, `plannerCostDropFraction`). Found live: right after setup the
+  leaderboard is empty although recommendations exist, because a query's first sighting only anchors
+  its counters (ADR-0024) — honest, but the 4B dashboard needs an empty state that says so.
+  Step 5 (API latency) missed the budget and led to ADR-0045.
+
+## ADR-0045
+**Hourly rollup of `query_stats` for the API's windowed reads (migration V10)** · 2026-09-26 · Accepted
+- **Context:** Phase 4 Step 5 measured the read API on a 30-day, 500-query history (4.3 M
+  `query_stats` rows, 749 MB; `make bench-api`, `docs/benchmarks.md`). Every windowed read summed raw
+  5-minute deltas: the 30-day leaderboard took **741 ms p95** over HTTP against a 300 ms budget; week-
+  over-week top movers **968 ms**; new slow queries 268 ms. The SQL itself was a parallel scan of the
+  whole table (57,615 buffers); the V4 BRIN (ADR-0033) can't help when the window *is* most of the
+  table.
+- **Decision:** add `query_stats_hourly` (one row per database, query and UTC hour: summed calls,
+  time, rows, buffers), backfilled by V10 and kept exact by a **statement-level `AFTER INSERT`
+  trigger with a transition table** on `query_stats`. The leaderboard, a query's window totals, top
+  movers and new-slow read the rollup; **windows start on a UTC hour** (`TrendMath.windowStart`) and
+  every response reports that real start. Trends choose raw points up to 48 h and hourly beyond
+  (`resolution=raw|hour|auto`). One query's raw series and detail still read `query_stats` by its
+  primary key.
+- **Why a trigger, not application code:** every insert path (ingest, tests, backfills) keeps the
+  rollup exact with no second write to remember; the transition table holds only rows actually
+  inserted, so a within-batch duplicate skipped by `ON CONFLICT DO NOTHING` isn't counted (tested);
+  the upsert takes bucket locks in a fixed order. It relies on `query_stats` being append-only (no
+  updates; deletes only via the `monitored_dbs` cascade, which also clears the rollup).
+- **Alternatives:** a materialized view refreshed on a schedule (rejected: stale windows, and a
+  refresh re-scans everything) · a periodic "leaderboard cache" (rejected: stale, one more job) ·
+  TimescaleDB continuous aggregates (rejected: a new extension for one table — gratuitous tech) ·
+  a composite btree `(db_id, captured_at)` (rejected: still sums every raw row in the window) ·
+  daily buckets (rejected: a 24 h window would be a day off at its start).
+- **Consequences (measured):** 30-day leaderboard **741 → 44 ms p95**; top movers **968 → 45 ms**;
+  new slow **268 → 35 ms**; the 30-day trend **1.09 MB → 87 kB** (720 hourly points); 11× fewer
+  buffers; the rollup is ~44 MB next to 749 MB of raw rows. Cost: the trigger adds **7.6 ms to an
+  11.3 ms insert** of a 500-row interval, once a minute per database. Windows can be up to 59 min
+  longer than their name (a "24h" window starts on the hour before); the response's `from` says so.
+  Raw-row retention becomes possible later (backlog B26).
+

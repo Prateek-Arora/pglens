@@ -57,7 +57,8 @@ final class SortLimitRule implements Rule {
                       columns,
                       Confidence.MEDIUM,
                       "Top-N sorts %s by %s (sort node cost %.2f); an index in that order avoids the sort."
-                          .formatted(table, String.join(", ", columns), sort.totalCost())));
+                          .formatted(table, String.join(", ", columns), sort.totalCost()),
+                      ctx.nodeId(sort)));
             }
           });
     }

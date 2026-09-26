@@ -3,6 +3,7 @@ package com.pglens.engine.detect;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.PlanNode;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -17,11 +18,13 @@ final class PlanContext {
   final PlanNode plan;
   final CatalogSnapshot catalog;
   private final Map<String, String> qualifierToTable = new HashMap<>();
+  private final Map<PlanNode, Integer> nodeIds = new IdentityHashMap<>();
 
   PlanContext(PlanNode plan, CatalogSnapshot catalog) {
     this.plan = plan;
     this.catalog = catalog;
     for (PlanNode node : plan.flatten()) {
+      nodeIds.put(node, nodeIds.size());
       String table = node.relationName();
       if (table != null) {
         qualifierToTable.put(table.toLowerCase(Locale.ROOT), table);
@@ -30,6 +33,11 @@ final class PlanContext {
         }
       }
     }
+  }
+
+  /** A node's position in {@code plan.flatten()} — the id a {@code Finding} points at. */
+  Integer nodeId(PlanNode node) {
+    return nodeIds.get(node);
   }
 
   /** Resolve a qualifier (table name or alias) to its real table name, or null if unknown. */

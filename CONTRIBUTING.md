@@ -21,7 +21,7 @@ make down      # stop (make clean also removes data volumes)
 - Run `make hooks` once after cloning. Every commit then scans its staged changes for secrets
   (gitleaks) and refuses local-only files. CI also scans the full history (`make secrets` runs the
   same scan locally). Never commit real credentials; `.env` is git-ignored, and only
-  `.env.example` with dev defaults is tracked.
+  `deploy/compose/.env.example` with dev defaults is tracked.
 
 - Run `make lint` (shell, Dockerfile, SQL) and `make test`. Both run in CI on
   every push and pull request.
