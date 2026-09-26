@@ -3,7 +3,8 @@ package com.pglens.server.trend;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.pglens.server.grpc.Tokens;
+import com.pglens.server.auth.Tokens;
+import com.pglens.server.grpc.GrpcTestTls;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -18,9 +19,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -44,8 +45,8 @@ import org.testcontainers.utility.DockerImageName;
 class TrendQueryIntegrationTest {
 
   @Container
-  static final PostgreSQLContainer<?> METADATA =
-      new PostgreSQLContainer<>(
+  static final PostgreSQLContainer METADATA =
+      new PostgreSQLContainer(
           DockerImageName.parse("pgvector/pgvector:0.8.6-pg16")
               .asCompatibleSubstituteFor("postgres"));
 
@@ -54,6 +55,7 @@ class TrendQueryIntegrationTest {
     registry.add("spring.datasource.url", METADATA::getJdbcUrl);
     registry.add("spring.datasource.username", METADATA::getUsername);
     registry.add("spring.datasource.password", METADATA::getPassword);
+    GrpcTestTls.register(registry);
   }
 
   @Autowired TrendService trends;

@@ -12,9 +12,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Integration test for {@link HypoPGValidator} — the decisive gate — against the real monitored
@@ -28,7 +28,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class HypoPGValidatorIntegrationTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   private static final String Q_SELECTIVE = "SELECT * FROM orders WHERE customer_id = $1";
   private static final String Q_UNSELECTIVE = "SELECT * FROM orders WHERE status = $1";

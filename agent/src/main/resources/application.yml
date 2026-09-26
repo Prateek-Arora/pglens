@@ -13,9 +13,14 @@ pglens:
     db-name: ${PGLENS_DB_NAME:demo}
     db-host: ${PGLENS_DB_HOST:localhost}
     token: ${PGLENS_AGENT_TOKEN:}
+    # TLS by default (ADR-0044). CA: a PEM file to trust (blank = the JVM trust store). AUTHORITY: the
+    # certificate name to verify when it differs from HOST. PLAINTEXT=true: trusted network only.
     server:
       host: ${PGLENS_SERVER_HOST:localhost}
       port: ${PGLENS_SERVER_PORT:9090}
+      plaintext: ${PGLENS_SERVER_PLAINTEXT:false}
+      ca-cert: ${PGLENS_SERVER_CA_CERT:}
+      authority: ${PGLENS_SERVER_AUTHORITY:}
     sample:
       interval-ms: ${PGLENS_SAMPLE_INTERVAL_MS:60000}
       top-n: ${PGLENS_SAMPLE_TOP_N:200}

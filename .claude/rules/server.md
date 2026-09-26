@@ -77,6 +77,23 @@ paths:
 - **No fabricated numbers** (charter #1): every persisted cost is a labeled HypoPG generic-plan
   estimate; the derived per-interval `mean_exec_time` is `total_delta/calls_delta` (NULL when
   `calls_delta=0`), never a sampled lifetime mean.
+- **HTTP auth is one choke point too** (ADR-0044): `BearerTokenFilter` resolves `Authorization:
+  Bearer …` (session `pglens_s_`, API `pglens_a_`) and `SecurityConfig` holds *every* access rule —
+  add a new endpoint's rule there, never an ad-hoc check in a controller. API tokens are read-only
+  (no `WRITE` authority). Only public: login, health, `/api/v1/openapi.json`. Store only SHA-256
+  token hashes; never log a token or password.
+- **Time comes from the injected `Clock`**, never the database's `now()`, for anything a test must
+  control (sessions, windows, staleness) — tests swap in `MutableClock`.
+- **API contract** (ADR-0044): `queryid` is a **string** in every path and payload (signed 64-bit);
+  numeric fields say what they are (`measured…` = summed pgss deltas, `estimated…`/`plannerCost…` =
+  planner estimates); every recommendation response carries `Confirm` (the caveat + the
+  `pglens confirm` command). Throw `Errors.Invalid` / `NotFound` / `Conflict` for 400/404/409 —
+  `ApiErrors` turns them into RFC 9457 problems; don't map generic `IllegalArgumentException`.
+- **Windowed reads sum the hourly rollup** `query_stats_hourly` (V10, ADR-0045), kept exact by a
+  statement-level trigger on `query_stats` — which is therefore **append-only: never UPDATE its
+  rows**. Windows start at `TrendMath.windowStart` (a UTC hour) and responses report that start.
+  Per-query raw series/detail read `query_stats` by its PK. Re-run `make bench-api` after changing
+  a read query (budget: p95 ≤ 300 ms at 30 days, `docs/benchmarks.md`).
 - **Tests:** unit (no DB) for pure logic; Testcontainers `@Tag("it")` (`:server:integrationTest`,
   pgvector image) for anything touching Postgres, via `@SpringBootTest` + `@DynamicPropertySource`.
   Park the `@Scheduled` analysis in ITs with a huge `pglens.analysis.initial-delay-ms` and drive

@@ -3,6 +3,7 @@ package com.pglens.server;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.pglens.agent.config.GrpcClientConfig;
 import com.pglens.agent.config.PglensAgentProperties;
 import com.pglens.agent.grpc.IngestClient;
 import com.pglens.agent.grpc.ValidationClient;
@@ -16,13 +17,13 @@ import com.pglens.engine.db.StatsReader;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.proto.v1.SampleBatch;
 import com.pglens.server.analysis.AnalysisService;
+import com.pglens.server.auth.Tokens;
 import com.pglens.server.grpc.GrpcServerLifecycle;
-import com.pglens.server.grpc.Tokens;
+import com.pglens.server.grpc.GrpcTestTls;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import com.pglens.server.trend.QueryTrend;
 import com.pglens.server.trend.TopMover;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -38,9 +39,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -73,14 +74,14 @@ class AgentToServerFlowIntegrationTest {
   private static final String DB_NAME = "demo";
 
   @Container
-  static final PostgreSQLContainer<?> METADATA =
-      new PostgreSQLContainer<>(
+  static final PostgreSQLContainer METADATA =
+      new PostgreSQLContainer(
           DockerImageName.parse("pgvector/pgvector:0.8.6-pg16")
               .asCompatibleSubstituteFor("postgres"));
 
   @Container
-  static final PostgreSQLContainer<?> MONITORED =
-      new PostgreSQLContainer<>(
+  static final PostgreSQLContainer MONITORED =
+      new PostgreSQLContainer(
               // Overridable so the CI compatibility job can run this flow on PG17/18 (ADR-0036).
               DockerImageName.parse(
                       System.getProperty("pglens.monitoredImage", "pglens/monitored-db:0.0.0"))
@@ -94,6 +95,7 @@ class AgentToServerFlowIntegrationTest {
     registry.add("spring.datasource.url", METADATA::getJdbcUrl);
     registry.add("spring.datasource.username", METADATA::getUsername);
     registry.add("spring.datasource.password", METADATA::getPassword);
+    GrpcTestTls.register(registry);
   }
 
   // Monitored-side fixtures (shared across tests; pg_stat_statements is reset per test).
@@ -164,8 +166,10 @@ class AgentToServerFlowIntegrationTest {
     props.getSample().setMinCalls(1);
     props.getValidation().setMaxLease(10);
 
-    channel =
-        ManagedChannelBuilder.forAddress("localhost", grpcServer.getPort()).usePlaintext().build();
+    // The agent's own channel code over TLS, trusting only the test CA (ADR-0044).
+    props.getServer().setCaCert(GrpcTestTls.CA.getAbsolutePath());
+    props.getServer().setAuthority(GrpcTestTls.AUTHORITY);
+    channel = GrpcClientConfig.channel("localhost", grpcServer.getPort(), props.getServer());
     collector =
         new SampleCollector(
             props,
@@ -276,8 +280,7 @@ class AgentToServerFlowIntegrationTest {
 
   @Test
   void anUnknownTokenIsRejected() throws InterruptedException {
-    ManagedChannel bad =
-        ManagedChannelBuilder.forAddress("localhost", grpcServer.getPort()).usePlaintext().build();
+    ManagedChannel bad = GrpcTestTls.channel(grpcServer.getPort()).build();
     try {
       IngestClient badClient = new IngestClient(bad, "wrong-token");
       SampleBatch batch =

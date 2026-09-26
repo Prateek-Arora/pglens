@@ -9,6 +9,10 @@ import java.util.List;
  *
  * <p>Findings are <em>candidates for</em> a recommendation, not recommendations themselves: HypoPG
  * validation downstream is the decisive gate.
+ *
+ * @param planNode the plan node the finding is about, as its position in {@link PlanNode#flatten()}
+ *     of the plan root (0 = the root); {@code null} when not tied to a node. Lets a plan viewer
+ *     highlight the offending node (ADR-0044, {@code --json} 1.4).
  */
 public record Finding(
     String ruleId,
@@ -16,7 +20,8 @@ public record Finding(
     String table,
     List<String> columns,
     Confidence confidence,
-    String evidence) {
+    String evidence,
+    Integer planNode) {
 
   /**
    * How strongly the plan evidence supports the finding (drives ordering + phrasing, not gating).
@@ -29,5 +34,16 @@ public record Finding(
 
   public Finding {
     columns = columns == null ? List.of() : List.copyOf(columns);
+  }
+
+  /** A finding not tied to a plan node. */
+  public Finding(
+      String ruleId,
+      String title,
+      String table,
+      List<String> columns,
+      Confidence confidence,
+      String evidence) {
+    this(ruleId, title, table, columns, confidence, evidence, null);
   }
 }

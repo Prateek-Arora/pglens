@@ -42,6 +42,9 @@ class AntiPatternDetectorTest {
               assertThat(f.table()).isEqualTo("customers");
               assertThat(f.columns()).containsExactly("email");
               assertThat(f.confidence()).isEqualTo(Confidence.HIGH); // 1 of 100k rows
+              PlanNode node = plan.flatten().get(f.planNode());
+              assertThat(node.isSeqScan()).isTrue();
+              assertThat(node.relationName()).isEqualTo("customers");
             });
   }
 
@@ -105,6 +108,7 @@ class AntiPatternDetectorTest {
                   .isEqualTo("order_items"); // orders.id is the PK side → not flagged
               assertThat(f.columns()).containsExactly("order_id");
               assertThat(f.confidence()).isEqualTo(Confidence.HIGH); // 1M-row side
+              assertThat(plan.flatten().get(f.planNode()).isJoin()).isTrue();
             });
   }
 
@@ -124,6 +128,7 @@ class AntiPatternDetectorTest {
               assertThat(f.ruleId()).isEqualTo("R4");
               assertThat(f.table()).isEqualTo("orders");
               assertThat(f.columns()).containsExactly("created_at");
+              assertThat(plan.flatten().get(f.planNode()).isSort()).isTrue(); // the sort, not Limit
               // Evidence must be fully interpolated — no raw format placeholders leak to the user.
               assertThat(f.evidence())
                   .contains("orders", "created_at")
@@ -169,6 +174,7 @@ class AntiPatternDetectorTest {
               assertThat(f.ruleId()).isEqualTo("R7");
               assertThat(f.table()).isEqualTo("events");
               assertThat(f.columns()).containsExactly("payload");
+              assertThat(plan.flatten().get(f.planNode()).isSeqScan()).isTrue();
               // Honesty must be in the evidence, and no format placeholders may leak.
               assertThat(f.evidence())
                   .contains("@>", "GIN", "Not planner-validated")

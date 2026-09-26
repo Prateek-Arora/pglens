@@ -3,6 +3,8 @@ package com.pglens.server.trend;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,5 +32,14 @@ class TrendMathTest {
   void meanIsTotalOverCallsExceptWithZeroCalls() {
     assertThat(TrendMath.mean(2500, 50)).isCloseTo(50.0, within(1e-9));
     assertThat(TrendMath.mean(100, 0)).isNull(); // 0/0 is undefined, not 0
+  }
+
+  @Test
+  void aWindowStartsOnTheUtcHourAtOrBeforeNowMinusItsLength() {
+    Instant now = Instant.parse("2026-09-26T10:17:42Z");
+    assertThat(TrendMath.windowStart(now, Duration.ofHours(24)))
+        .isEqualTo(Instant.parse("2026-09-25T10:00:00Z"));
+    assertThat(TrendMath.windowStart(Instant.parse("2026-09-26T10:00:00Z"), Duration.ofDays(7)))
+        .isEqualTo(Instant.parse("2026-09-19T10:00:00Z")); // already on the hour: unchanged
   }
 }

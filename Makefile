@@ -6,13 +6,8 @@ DB_USER ?= pglens
 MON_DB  ?= pglens_demo
 META_DB ?= pglens_meta
 
-# Agent identity for the local stack — must match the monitored_dbs row `make register` creates and
-# the agent service's env in docker-compose.yml.
-AGENT_DB_NAME ?= demo
-AGENT_TOKEN   ?= devtoken
-
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup register test smoke bench accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
+.PHONY: help up seed reseed warmup register test smoke bench bench-api accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -21,6 +16,7 @@ help: ## List available targets
 
 up: ## Build jars + images and start the full stack (dbs + server + agent), waiting for health
 	@docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docker Desktop"; exit 1; }
+	bash scripts/dev_env.sh
 	./gradlew :server:bootJar :agent:bootJar
 	$(COMPOSE) up -d --build --wait
 
@@ -35,19 +31,17 @@ reseed: ## Wipe and reload demo data
 warmup: ## Replay slow queries so pg_stat_statements accumulates stats
 	bash demo/warmup.sh
 
-register: ## Register the demo agent (db name + token hash) so it can authenticate — run after `make up`
-	$(COMPOSE) exec -T metadata-db psql -v ON_ERROR_STOP=1 -q -U $(DB_USER) -d $(META_DB) -c \
-	  "CREATE EXTENSION IF NOT EXISTS pgcrypto; \
-	   INSERT INTO monitored_dbs (name, host, agent_token_hash) \
-	   VALUES ('$(AGENT_DB_NAME)', 'monitored-db', encode(digest('$(AGENT_TOKEN)', 'sha256'), 'hex')) \
-	   ON CONFLICT (name) DO UPDATE SET agent_token_hash = EXCLUDED.agent_token_hash;"
-	@echo "Registered agent db '$(AGENT_DB_NAME)'. The agent authenticates on its next cycle."
+register: ## Register the demo db through the HTTP API (or rotate its token) and restart the agent with it — run after `make up`
+	bash scripts/register.sh
 
 test smoke: ## Run the smoke test (reproducibility gate + Phase 1 oracle)
 	bash scripts/smoke_test.sh
 
 bench: ## Dogfood benchmark — measure PgLens's own trend query, before/after the time-series index (KEEP=1 keeps the container)
 	bash scripts/dogfood_benchmark.sh
+
+bench-api: ## API latency benchmark — every read endpoint over HTTP on a 30-day, 500-query history (KEEP=1 keeps the containers)
+	bash scripts/api_benchmark.sh
 
 accuracy: ## Accuracy benchmark — PgLens's recs vs measured reality on a TPC-H-derived workload (SF=0.1; KEEP=1 keeps the container)
 	bash scripts/accuracy_benchmark.sh

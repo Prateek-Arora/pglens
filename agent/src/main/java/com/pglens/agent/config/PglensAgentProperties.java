@@ -73,10 +73,43 @@ public class PglensAgentProperties {
     return validation;
   }
 
-  /** The PgLens server's gRPC endpoint. */
+  /** The PgLens server's gRPC endpoint and how the channel to it is secured (ADR-0044). */
   public static class Server {
     private String host = "localhost";
     private int port = 9090;
+
+    /** TLS is the default; true only on a trusted private network (the token is then exposed). */
+    private boolean plaintext;
+
+    /** PEM CA certificate to trust for the server; blank = the JVM's default trust store. */
+    private String caCert;
+
+    /** TLS name to verify instead of {@code host} (e.g. connecting by IP to a DNS-named cert). */
+    private String authority;
+
+    public boolean isPlaintext() {
+      return plaintext;
+    }
+
+    public void setPlaintext(boolean plaintext) {
+      this.plaintext = plaintext;
+    }
+
+    public String getCaCert() {
+      return caCert;
+    }
+
+    public void setCaCert(String caCert) {
+      this.caCert = caCert;
+    }
+
+    public String getAuthority() {
+      return authority;
+    }
+
+    public void setAuthority(String authority) {
+      this.authority = authority;
+    }
 
     public String getHost() {
       return host;

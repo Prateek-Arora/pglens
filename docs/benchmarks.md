@@ -5,6 +5,7 @@ Three benchmarks, all reproducible, all **measured** (no fabricated numbers — 
 1. [**Recommendation accuracy on an external workload**](#accuracy-benchmark--tpc-h-derived-workload-phase-25) — `make accuracy` (Phase 2.5, ADR-0038/0039; re-measured under server settings, ADR-0041).
 2. [**Recommendation accuracy on real skewed data — JOB/IMDB**](#accuracy-benchmark-2--join-order-benchmark-on-real-imdb-data-pre-registered) — `make accuracy-job` (pre-registered).
 3. [**Dogfood: tuning PgLens's own metadata schema**](#pglens-dogfood-benchmark--tuning-our-own-metadata-schema) — `make bench` (Phase 2, ADR-0033).
+4. [**API latency: the read API on a big history**](#api-latency-benchmark--the-read-api-on-a-30-day-history-phase-4) — `make bench-api` (Phase 4, ADR-0044/0045).
 
 ---
 
@@ -492,3 +493,64 @@ KEEP=1 make bench     # leave the throwaway container up to poke at
 The script spins a throwaway `pgvector` container (never the live stack, never a monitored DB),
 applies V1–V3, backfills, and prints the table above. Numbers are stable run-to-run within ~2 %
 (the buffer counts are identical); absolute wall-times depend on the host.
+
+---
+
+# API latency benchmark — the read API on a 30-day history (Phase 4)
+
+> **The question:** is PgLens's own HTTP API fast on a big history? A slow performance tool is the
+> embarrassing failure mode. Budget, set in the Phase 4 plan before measuring: **p95 ≤ 300 ms** for
+> the 30-day leaderboard. Measured 2026-09-26 on this dev box (Docker Desktop on macOS).
+
+## Setup
+
+- **Everything throwaway** (never the live stack, never a monitored DB): a `pgvector/pgvector:0.8.6-pg16`
+  metadata Postgres plus the **real server image**; the server's own Flyway applies every migration.
+- **History:** 500 queries × 30 days × one sample every 5 minutes = **4,320,000 `query_stats` rows,
+  749 MB**, inserted in time order (as ingest appends). **Dense** — every query has a row in every
+  interval, the worst case: a real idle interval writes no row (ADR-0034). Every tenth query has a
+  validated recommendation. The row *values* are synthetic random deltas; only the size and physical
+  order drive the result.
+- **Measurement:** each endpoint called over HTTP (curl, loopback, a logged-in session) 40 times after
+  3 untimed warm-up calls; p50 / p95 / max of `time_total`. Server settings are Postgres defaults
+  (parallel workers on) — what the stack runs with.
+
+## Results
+
+**Before (V1–V9): three endpoints over budget.** Every windowed read summed the raw 5-minute deltas —
+the 30-day leaderboard's aggregation was a parallel scan of the whole 749 MB table (57,615 buffers,
+~290 ms for the SQL alone; the full request 741 ms p95).
+
+| endpoint (p95, ms) | before (raw deltas) | after (hourly rollup, V10) | response |
+|---|---:|---:|---:|
+| leaderboard 24 h (top 50) | 24.3 | **13.6** | 21 kB |
+| leaderboard 7 d (top 50) | 137.2 | **24.0** | 21 kB |
+| **leaderboard 30 d (top 50)** | **740.7** ✗ | **43.8** ✓ | 21 kB |
+| leaderboard 30 d (by mean, top 200) | 748.6 ✗ | **36.2** | 84 kB |
+| query detail (30 d window) | 6.8 | **2.8** | 1.6 kB |
+| trend, last 24 h (raw points) | 5.2 | **4.0** | 37 kB |
+| trend, 30 days | 20.6 (8,640 raw points, **1.09 MB**) | **3.9** (720 hourly points, 87 kB) | |
+| top movers, 7 d vs the 7 d before | 967.9 ✗ | **44.9** | 7 kB |
+| new slow queries, 24 h | 268.4 | **35.1** | 0.1 kB |
+| recommendations | 6.6 | **6.6** | 20 kB |
+
+**The fix — an hourly rollup (migration V10, ADR-0045).** `query_stats_hourly` holds one row per
+query per UTC hour, maintained by a statement-level trigger on `query_stats`; the windowed reads sum
+it. The 30-day leaderboard reads **5,169 buffers instead of 57,615 (11× fewer)**; the table is ~44 MB
+next to the raw 749 MB. Windows now start on a UTC hour, and the API reports the real start. Long
+trends default to hourly points (raw up to 48 h), since no chart needs 8,640 points.
+
+**The cost, measured:** the trigger adds **7.6 ms to an 11.3 ms insert** of one 500-row interval
+(median of 5, rolled back) — once a minute per monitored database at the default cadence.
+
+**Caveats.** Absolute times depend on the host; one standalone `EXPLAIN ANALYZE` of the 30-day
+aggregation varied between runs (41.5 ms and 80.9 ms) while the HTTP p95 stayed ~40 ms, so the
+budget is judged on the repeated HTTP measurement. Raw rows are still kept in full (retention/
+downsampling of the raw table: backlog B26).
+
+## Reproduce
+
+```bash
+make bench-api      # or: KEEP=1 bash scripts/api_benchmark.sh  (leave the containers up)
+```
+

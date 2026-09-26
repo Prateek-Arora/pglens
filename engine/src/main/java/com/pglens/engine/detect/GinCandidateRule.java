@@ -57,7 +57,8 @@ final class GinCandidateRule implements Rule {
                   table,
                   List.of(column),
                   Confidence.MEDIUM,
-                  evidence(node.relationName(), column, jp.operator(), reltuples)));
+                  evidence(node.relationName(), column, jp.operator(), reltuples),
+                  ctx.nodeId(node)));
         }
       }
     }

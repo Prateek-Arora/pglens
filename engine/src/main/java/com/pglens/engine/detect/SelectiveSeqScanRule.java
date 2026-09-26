@@ -50,7 +50,8 @@ final class SelectiveSeqScanRule implements Rule {
                 node.relationName(),
                 List.of(column),
                 confidence(node.planRows(), reltuples),
-                evidence(node, column, reltuples)));
+                evidence(node, column, reltuples),
+                ctx.nodeId(node)));
       }
     }
     return findings;

@@ -344,6 +344,24 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Why deferred:** it needs a new held-out set, since the current 12 have been seen, and a new ranking. The template already delivers every number.
 - **Effort/type:** `needs-design` (the eval protocol is in `docs/llm-eval.md`). **Refs:** ADR-0043.
 
+### B24. Import `pglens confirm` results into the server
+- **What:** Let a user upload a `pglens confirm` JSON report (or have the CLI post it with an API token) so the dashboard shows the *measured* verdict (faster / no real effect / slower / couldn't be built) beside each planner estimate, and can rank measured wins first.
+- **Why deferred:** Phase 4 is already the largest phase; every recommendation card carries "planner-validated ≠ safe" and a pre-filled `pglens confirm` command instead. The measured result is the most honest signal PgLens has, so this is the natural next step.
+- **Constraints:** confirm reports come from a *copy*, whose queryids differ — match by DDL + normalized text, as confirm itself does (ADR-0042). A measurement ages: show when it was taken and against which copy.
+- **Effort/type:** `needs-design`. **Refs:** ADR-0041, ADR-0042, ADR-0044.
+
+### B25. Migrate the pure modules to Jackson 3
+- **What:** `engine`, `explain`, `cli` (≈25 files) still use Jackson 2 (`com.fasterxml.jackson`). Spring Boot 4 prefers Jackson 3 (`tools.jackson`) and keeps Jackson 2 only as dependency management.
+- **Why deferred:** Jackson 2 is still maintained and managed by Boot 4; migrating now would be churn inside the Boot-4 upgrade. Two Jacksons coexist safely (different packages).
+- **Constraints:** `--json` output must stay byte-compatible (schema tests guard it). OpenRewrite has a Boot-4 "adopt Jackson 3" recipe.
+- **Effort/type:** `good-first-issue`. **Refs:** ADR-0044.
+
+### B26. Retention for the raw `query_stats` rows
+- **What:** keep the 5-minute deltas for a limited time (e.g. 14 days) and the hourly rollup (`query_stats_hourly`, V10) much longer; prune raw rows on a schedule.
+- **Why deferred:** nothing needs it yet — the API reads the rollup for windows and the raw rows only for short trends and one query's detail, both served by the primary key (measured: `docs/benchmarks.md`, API latency). Measured size: ~18 MB per query-year of 5-minute rows (749 MB for 500 queries × 30 days).
+- **Constraints:** the rollup must be complete before raw rows go (it is — trigger-maintained); "first seen" for new-slow queries reads the raw minimum, so keep it or store it on `query_texts`; delta anchoring uses `query_cumulative`, not old raw rows.
+- **Effort/type:** `good-first-issue`. **Refs:** ADR-0045.
+
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):
 follow the **What / Why deferred / Constraints / Effort / Refs** shape, tag it `good-first-issue` or

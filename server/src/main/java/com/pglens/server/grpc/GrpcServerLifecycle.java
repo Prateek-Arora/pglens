@@ -1,7 +1,10 @@
 package com.pglens.server.grpc;
 
+import io.grpc.Grpc;
+import io.grpc.InsecureServerCredentials;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.ServerCredentials;
 import io.grpc.ServerServiceDefinition;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -15,25 +18,28 @@ import org.springframework.context.SmartLifecycle;
  * Owns the grpc-java {@link Server}'s lifecycle as a Spring bean (ADR-0025 — plain grpc-java, no
  * starter). Starts the server when the context starts and shuts it down gracefully when the context
  * closes. Binding to port 0 yields an OS-assigned port, readable via {@link #getPort()} (used by
- * tests).
+ * tests). Transport security comes from {@link GrpcServerSecurity} (TLS unless told otherwise).
  */
 public class GrpcServerLifecycle implements SmartLifecycle {
 
   private static final Logger log = LoggerFactory.getLogger(GrpcServerLifecycle.class);
 
   private final int port;
+  private final ServerCredentials credentials;
   private final List<ServerServiceDefinition> services;
   private Server server;
   private volatile boolean running;
 
-  public GrpcServerLifecycle(int port, List<ServerServiceDefinition> services) {
+  public GrpcServerLifecycle(
+      int port, ServerCredentials credentials, List<ServerServiceDefinition> services) {
     this.port = port;
+    this.credentials = credentials;
     this.services = services;
   }
 
   @Override
   public void start() {
-    ServerBuilder<?> builder = ServerBuilder.forPort(port);
+    ServerBuilder<?> builder = Grpc.newServerBuilderForPort(port, credentials);
     services.forEach(builder::addService);
     try {
       server = builder.build().start();
@@ -41,7 +47,14 @@ public class GrpcServerLifecycle implements SmartLifecycle {
       throw new UncheckedIOException("Failed to start gRPC server on port " + port, e);
     }
     running = true;
-    log.info("gRPC server listening on port {}", server.getPort());
+    if (credentials instanceof InsecureServerCredentials) {
+      log.warn(
+          "gRPC server listening on port {} WITHOUT TLS (pglens.grpc.plaintext=true): agent"
+              + " tokens travel unencrypted — use only on a trusted private network",
+          server.getPort());
+    } else {
+      log.info("gRPC server listening on port {} (TLS)", server.getPort());
+    }
   }
 
   @Override

@@ -13,11 +13,49 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true   # RFC 9457 error bodies for framework errors too (bad JSON, 404, 405)
 
-# gRPC listener (wired from Step 3).
+# The HTTP API's OpenAPI description (ADR-0044) — public, like the health check: it describes the
+# API, it holds no data. No Swagger UI is shipped.
+springdoc:
+  api-docs:
+    path: /api/v1/openapi.json
+  paths-to-match: /api/v1/**
+
+# HTTP API (Phase 4, ADR-0044): /api/v1, stateless bearer tokens. The dashboard calls it from its own
+# server code on the private network; scripts can use it with a read-only API token.
+server:
+  port: ${PGLENS_HTTP_PORT:8080}
+
 pglens:
+  version: 0.0.7   # reported by /api/v1/health and the OpenAPI description
+  # Login for the HTTP API (ADR-0044). REQUIRED by default; `none` = one person on their own machine
+  # (every response is flagged and the dashboard shows a banner). On an empty users table the server
+  # creates the first admin: PGLENS_ADMIN_PASSWORD (12+ characters), or a generated password logged
+  # once. A username gets `login-max-failures` wrong passwords per `login-lockout`.
+  auth:
+    mode: ${PGLENS_AUTH_MODE:required}
+    session-idle-timeout: ${PGLENS_SESSION_IDLE_TIMEOUT:8h}
+    session-max-age: ${PGLENS_SESSION_MAX_AGE:7d}
+    admin-username: ${PGLENS_ADMIN_USERNAME:admin}
+    admin-password: ${PGLENS_ADMIN_PASSWORD:}
+    login-max-failures: 5
+    login-lockout: 15m
+  api:
+    # A registered database whose agent sent nothing for this long shows as STALE (the agent may be
+    # down). Several default sampling intervals (60 s), so one slow cycle doesn't flap it.
+    agent-stale-after: ${PGLENS_AGENT_STALE_AFTER:5m}
+  # gRPC listener for agents. TLS is ON by default (ADR-0044): the agent's bearer token rides every
+  # call. Give a PEM certificate chain + unencrypted PKCS#8 key; the compose stack generates a dev CA.
+  # PGLENS_GRPC_PLAINTEXT=true runs without TLS (trusted private network only; logged as a warning).
   grpc:
     port: ${PGLENS_GRPC_PORT:9090}
+    plaintext: ${PGLENS_GRPC_PLAINTEXT:false}
+    tls:
+      cert: ${PGLENS_GRPC_TLS_CERT:}
+      key: ${PGLENS_GRPC_TLS_KEY:}
   # Scheduled analysis job (ADR-0028): singleton across replicas via a transaction-scoped advisory
   # lock. Enqueues HypoPG-validation work for the agent edge to run.
   analysis:

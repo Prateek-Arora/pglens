@@ -10,9 +10,9 @@ import com.pglens.proto.v1.ValidateRequest;
 import com.pglens.proto.v1.ValidateResult;
 import com.pglens.proto.v1.ValidationGrpc;
 import com.pglens.proto.v1.ValidationStatus;
+import com.pglens.server.auth.Tokens;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.MetadataUtils;
@@ -33,9 +33,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -58,8 +58,8 @@ import org.testcontainers.utility.DockerImageName;
 class ValidationFlowIntegrationTest {
 
   @Container
-  static final PostgreSQLContainer<?> METADATA =
-      new PostgreSQLContainer<>(
+  static final PostgreSQLContainer METADATA =
+      new PostgreSQLContainer(
           DockerImageName.parse("pgvector/pgvector:0.8.6-pg16")
               .asCompatibleSubstituteFor("postgres"));
 
@@ -68,6 +68,7 @@ class ValidationFlowIntegrationTest {
     registry.add("spring.datasource.url", METADATA::getJdbcUrl);
     registry.add("spring.datasource.username", METADATA::getUsername);
     registry.add("spring.datasource.password", METADATA::getPassword);
+    GrpcTestTls.register(registry);
   }
 
   private static final String TOKEN = "agent-secret-token";
@@ -331,8 +332,7 @@ class ValidationFlowIntegrationTest {
   private ManagedChannel channelWithToken(String token) {
     Metadata md = new Metadata();
     md.put(AuthInterceptor.TOKEN_HEADER, token);
-    return ManagedChannelBuilder.forAddress("localhost", grpcServer.getPort())
-        .usePlaintext()
+    return GrpcTestTls.channel(grpcServer.getPort())
         .intercept(MetadataUtils.newAttachHeadersInterceptor(md))
         .build();
   }

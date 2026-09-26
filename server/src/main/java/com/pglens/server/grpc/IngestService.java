@@ -86,6 +86,7 @@ public class IngestService extends IngestGrpc.IngestImplBase {
     }
 
     private void persistBatch(SampleBatch batch, Instant receiveAt, Instant agentAt) {
+      monitoredDbs.recordIngest(db.id(), receiveAt); // agent liveness for the API (ADR-0044)
       boolean globalReset = detectGlobalReset(batch);
 
       // Replace this db's catalog (table estimates + existing indexes) so the scheduled analysis

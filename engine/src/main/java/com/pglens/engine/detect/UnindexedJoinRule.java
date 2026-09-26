@@ -48,10 +48,8 @@ final class UnindexedJoinRule implements Rule {
                 reltuples >= DetectionThresholds.LARGE_TABLE ? Confidence.HIGH : Confidence.MEDIUM,
                 "Join on %s.%s has no index, so the %s side is scanned (~%s rows)."
                     .formatted(
-                        table,
-                        qc.column(),
-                        table,
-                        reltuples < 0 ? "?" : Long.toString(reltuples))));
+                        table, qc.column(), table, reltuples < 0 ? "?" : Long.toString(reltuples)),
+                ctx.nodeId(node)));
       }
     }
     return findings;

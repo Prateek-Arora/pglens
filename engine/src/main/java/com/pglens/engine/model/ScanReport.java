@@ -24,6 +24,10 @@ import java.util.List;
  * :explain} module, which the engine doesn't depend on). Without {@code --plain} a 1.3 report is a
  * 1.2 report with a new version string.
  *
+ * <p>Contract 1.4 (ADR-0044, additive over 1.3): each finding carries {@code planNode}, the
+ * position of the node it is about in a pre-order walk of its query's plan (0 = the root), so a
+ * plan viewer can highlight it.
+ *
  * <p>A validated recommendation appears twice by design: once under its query ({@link
  * QueryReport#recommendations()}, the full per-query story) and once, ranked and scored, in {@link
  * #topRecommendations()} (the cross-query "indexes to create" summary).
@@ -41,7 +45,7 @@ public record ScanReport(
    * The frozen {@code --json} contract version. Bump on any breaking field change (Phase 2 reads
    * it).
    */
-  public static final String SCHEMA_VERSION = "1.3";
+  public static final String SCHEMA_VERSION = "1.4";
 
   public ScanReport {
     queries = queries == null ? List.of() : List.copyOf(queries);

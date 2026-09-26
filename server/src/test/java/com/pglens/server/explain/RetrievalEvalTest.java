@@ -29,7 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -66,8 +66,8 @@ class RetrievalEvalTest {
       }
     }
 
-    try (PostgreSQLContainer<?> pg =
-        new PostgreSQLContainer<>(
+    try (PostgreSQLContainer pg =
+        new PostgreSQLContainer(
             DockerImageName.parse("pgvector/pgvector:0.8.6-pg16")
                 .asCompatibleSubstituteFor("postgres"))) {
       pg.start();

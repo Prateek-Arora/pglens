@@ -21,9 +21,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * End-to-end integration test for the whole engine facade against the real monitored image. Seeds a
@@ -47,7 +47,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 class PgLensEngineIntegrationTest {
 
-  @Container static final PostgreSQLContainer<?> DB = MonitoredDbContainer.create();
+  @Container static final PostgreSQLContainer DB = MonitoredDbContainer.create();
 
   private static final String Q_SELECTIVE =
       "SELECT * FROM orders WHERE customer_id = 7 ORDER BY created_at DESC";
@@ -141,7 +141,12 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
-    assertThat(report.schemaVersion()).isEqualTo("1.3");
+    assertThat(report.schemaVersion()).isEqualTo("1.4");
+    // 1.4: every finding points at a node of its query's plan (ADR-0044).
+    assertThat(report.queries())
+        .flatExtracting(q -> q.findings())
+        .isNotEmpty()
+        .allSatisfy(f -> assertThat(f.planNode()).isNotNull().isNotNegative());
     RankedRecommendation top =
         report.topRecommendations().stream()
             .filter(rr -> rr.candidate().columns().equals(List.of("customer_id")))
