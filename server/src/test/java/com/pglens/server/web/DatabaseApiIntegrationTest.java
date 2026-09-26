@@ -17,6 +17,7 @@ import com.pglens.server.grpc.GrpcTestTls;
 import io.grpc.ManagedChannel;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -125,7 +126,8 @@ class DatabaseApiIntegrationTest {
   void historyFromBeforeTheUpgradeCountsAsTheLastIngest() throws Exception {
     register("shop").andExpect(status().isCreated());
     long id = jdbc.queryForObject("SELECT id FROM monitored_dbs WHERE name = 'shop'", Long.class);
-    Instant old = clock.instant().minus(Duration.ofDays(2));
+    // Postgres keeps microseconds; Linux clocks give nanoseconds (CI failed on the difference).
+    Instant old = clock.instant().minus(Duration.ofDays(2)).truncatedTo(ChronoUnit.MICROS);
     jdbc.update(
         "INSERT INTO query_cumulative (db_id, queryid, calls, total_exec_time_ms, rows, "
             + "shared_blks_hit, shared_blks_read, captured_at) VALUES (?, 1, 1, 1, 1, 0, 0, ?)",
