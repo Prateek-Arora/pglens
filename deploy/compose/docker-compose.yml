@@ -83,6 +83,11 @@ services:
       PGLENS_EXPLAIN_ENABLED: ${PGLENS_EXPLAIN_ENABLED:-false}
       PGLENS_LLM_URL: ${PGLENS_LLM_URL:-http://llm:11434/v1}
       PGLENS_LLM_MODEL: ${PGLENS_LLM_MODEL:-qwen3.5:4b}
+      # A hosted OpenAI-compatible API instead of a local model: set all three in your shell or a
+      # git-ignored .env (never in this file). Remote hosts are refused unless ALLOW_REMOTE=true.
+      PGLENS_LLM_API_KEY: ${PGLENS_LLM_API_KEY:-}
+      PGLENS_LLM_ALLOW_REMOTE: ${PGLENS_LLM_ALLOW_REMOTE:-false}
+      PGLENS_LLM_EMBEDDING_MODEL: ${PGLENS_LLM_EMBEDDING_MODEL:-nomic-embed-text}
     ports:
       - "${PGLENS_GRPC_PORT:-9090}:9090"
     healthcheck:
