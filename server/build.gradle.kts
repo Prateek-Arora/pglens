@@ -19,6 +19,7 @@ java {
 
 dependencies {
   implementation(project(":engine")) // pure half only (detect/candidate/rank + models)
+  implementation(project(":explain")) // plain-language explanations (Phase 3, ADR-0043)
   implementation(project(":proto")) // brings grpc-protobuf/grpc-stub/protobuf-java (api on :proto)
   implementation(libs.spring.boot.starter)
   implementation(libs.spring.boot.starter.jdbc)
@@ -39,6 +40,7 @@ dependencies {
   // ValidationRunner, the gRPC clients) against a booted server — test scope only, no runtime
   // coupling (:agent never depends on :server, so there is no cycle).
   testImplementation(project(":agent"))
+  testImplementation(testFixtures(project(":explain"))) // StubLlmServer — no model in CI
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -50,7 +52,7 @@ tasks.bootJar { archiveFileName.set("app.jar") }
 // Fast unit tests run by default; Testcontainers integration tests (@Tag("it"), need Docker) run as a
 // separate task that `check`/`build` include — mirrors :engine, keeping the inner loop container-free.
 tasks.test {
-  useJUnitPlatform { excludeTags("it") }
+  useJUnitPlatform { excludeTags("it", "llm") }
 }
 
 val integrationTest by
@@ -67,6 +69,19 @@ val integrationTest by
           "pglens.monitoredImage",
           providers.gradleProperty("monitoredImage").getOrElse("pglens/monitored-db:0.0.0"))
     }
+
+// M7 of the Phase 3 eval: real embeddings, pgvector HNSW vs exact (docs/llm-eval.md). Needs a
+// running embedding model, so it is never part of `build`/CI: `./gradlew :server:retrievalEval`.
+tasks.register<Test>("retrievalEval") {
+  description = "Measures pgvector HNSW vs exact retrieval recall with a real embedding model."
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  useJUnitPlatform { includeTags("llm") }
+  systemProperty("pglens.repoRoot", rootDir.absolutePath)
+  testLogging { showStandardStreams = true }
+  outputs.upToDateWhen { false }
+}
 
 tasks.named("check") {
   dependsOn(integrationTest)

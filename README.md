@@ -2,15 +2,15 @@
 
 > Open-source, self-hosted Postgres **slow-query & index advisor** with **HypoPG-validated** index recommendations and **local-LLM-explained** query plans.
 
-PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **checks each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is the planner's own cost estimate for that index — not a guess, and always labeled as an estimate rather than a measured runtime. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is ever sent to a third-party service).
+PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **checks each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is the planner's own cost estimate for that index — not a guess, and always labeled as an estimate rather than a measured runtime. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is sent to a third-party service; the optional LLM explanations use a local model unless you explicitly allow a remote one).
 
-**Status:** 🟢 **`v0.0.4` — Phases 0–2.5 shipped: the CLI engine, the collector agent + server + time-series history, and a recommendation-accuracy pass measured on two public benchmarks** ([how accurate is it?](#how-accurate-is-it--check-before-you-apply)). A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot, and **`pglens confirm`** (Phase 2.6, unreleased — `v0.0.5`) measures its recommendations on a copy of your database before you apply them. Next: a local-LLM plan explainer (Phase 3) and a Next.js dashboard (Phase 4, the ship target) — see the [roadmap](docs/project.md).
+**Status:** 🟢 **`v0.0.6` — Phases 0–3 shipped: the CLI engine, the collector agent + server + time-series history, and a recommendation-accuracy pass measured on two public benchmarks** ([how accurate is it?](#how-accurate-is-it--check-before-you-apply)). A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot, **`pglens confirm`** (Phase 2.6, `v0.0.5`) measures its recommendations on a copy of your database before you apply them, and **`--plain`** (Phase 3, `v0.0.6`) explains each recommended index in plain language, with an optional local LLM whose wording is checked against PgLens's facts. Next: a Next.js dashboard (Phase 4, the ship target) — see the [roadmap](docs/project.md).
 
 ## Design principles
 
 - **No fabricated evidence.** Every number is real and labeled — a HypoPG cost *estimate* is shown as such, alongside the real `pg_stat_statements` time as the measured "before".
 - **Safe by default.** The monitored database is opened **read-only** at two independent layers — a least-privilege login role with no write grant, plus a session-level `READ ONLY` guard — so writes are rejected by the database itself. Recommendations are validated with *hypothetical* indexes only (HypoPG) — nothing is ever created on your DB. The one command that builds real indexes, `pglens confirm`, never connects to it: it runs only on a **copy you explicitly mark** as scratch.
-- **Deterministic core, optional AI.** Analysis is correct and complete with no LLM; the LLM (later) only phrases facts the core already owns.
+- **Deterministic core, optional AI.** Analysis is correct and complete with no LLM. The optional LLM (`--plain`) only phrases facts the core already owns. PgLens checks its words against those facts and falls back to its own template.
 - **HypoPG honesty.** btree/brin/hash/bloom recs are planner-validated with a planner cost estimate. GIN/GiST recs (jsonb, full-text, `LIKE '%…%'`) are surfaced but clearly labeled **"not planner-validated"** — HypoPG can't simulate them, and PgLens never pretends it did.
 
 ## Try it on your DB in 2 minutes
@@ -99,6 +99,39 @@ Summary: 6 faster · 1 no real effect · 0 slower · 0 couldn't be built · 0 no
 
 The #1 recommendation did nothing here: the logged workload asks for the demo's hottest customer, exactly the case its "−0.0 % for common values" caution warns about. Times are **measured on the copy** — different hardware, cache and load than production — and each index is measured only on the queries it was recommended for. Statement values stay on your machine: the report holds queryids, counts and times only. `--dry-run` shows what would be built and matched; `--json` emits the versioned `confirm` contract. Details and the safety design: [Phase 2.6](docs/phases/phase_2_6.md), [ADR-0042](docs/decisions.md#adr-0042).
 
+### Plain-language explanations — `--plain`
+
+Add `--plain` to `scan` (or `explain`) and PgLens explains its top indexes in plain language: why the query is slow, what the index changes, and the numbers behind it (how often the query ran and how long it took, the planner's estimated cost drop, and how many other queries the index helps). By default this is PgLens's own fixed wording, so every number is exact and no model is needed.
+
+Add `--plain=llm` and a **local LLM** rewrites the three sentences from the same facts instead. PgLens itself still prints the index, the planner estimate and every caution, and checks the model's text before showing it:
+
+```text
+1. CREATE INDEX idx_orders_customer_id ON orders (customer_id);
+   In short: PgLens recommends adding a B-tree index on the customer_id column in the orders table because the current plan has an estimated cost of 3,943.
+   Why it's slow: The planner estimates that scanning all rows to find just eight matching ones costs 2,941.59 units of work.
+   What the index changes: Creating this index would lower the estimated cost to 53 by allowing Postgres to locate the matching rows directly instead of reading the entire table.
+   Estimate: Planner-validated (HypoPG estimate): total cost 3943 → 53 (−98.7%). Estimate from the planner, not a runtime measurement.
+   (Written by qwen3.5:4b from PgLens's findings. Numbers, tables and the index were checked against them; the wording wasn't.)
+```
+
+**What is checked.** Every number in the model's answer, read with its unit ("~600k", "2.6 minutes", "58.3%"), must match one of PgLens's facts. Every table, column and index it names must be real, and the recommended index must be the only index it mentions. It must not write SQL, call a cost estimate a runtime, claim "N× faster", or give a percentage for an index the planner couldn't check. A failing answer is retried once. If it fails again, PgLens shows its own **template** explanation and says why; the template is also used when no model is running. The scan itself never depends on the model.
+
+**Why the template is the default.** On 12 held-out real cases the model's answers passed every check with no false claims. But in a side-by-side ranking they read more smoothly while leaving out impact numbers (the measured runtime, how many other queries an index helps), and the template won 10–0. Full results: [`docs/llm-eval.md`](docs/llm-eval.md).
+
+**Running a model.** PgLens talks to any **OpenAI-compatible** endpoint; the default is a local [Ollama](https://ollama.com) with `qwen3.5:4b` (Apache-2.0, 3.4 GB download, **~5 GB free RAM**).
+
+| Runtime | How | Notes |
+|---|---|---|
+| Ollama, native (macOS / Windows / Linux) | install, then `ollama pull qwen3.5:4b` | **Best on a Mac**: it uses the GPU. The default `--llm-url` already points at it. |
+| Ollama in Docker | `make llm-up` | Pulls the models into a volume. On macOS Docker has **no GPU**, so it runs on the CPU: ~13–35 s per explanation on an M3 Pro. On Linux with an NVIDIA GPU it's fast. |
+| Docker Model Runner, llama.cpp `llama-server`, LM Studio, vLLM | `--llm-url http://host:port/v1 --llm-model <name>` | Any server that speaks `/v1/chat/completions`. For a thinking model, PgLens turns thinking off (`reasoning_effort: none`). |
+
+Lower on RAM? `--llm-model qwen3.5:2b` (2.7 GB) works, but in PgLens's tests it invented facts more often; the checks then fall back to the template.
+
+**Privacy.** The prompt holds `pg_stat_statements`' *normalized* query text (constants replaced by `$1`, `$2`, …), table and column names, the plan findings, planner costs and timings. It never holds sampled values or connection details. By default PgLens only sends it to **this machine or a private network**: loopback, private address ranges, `host.docker.internal`, or a Compose service name. It **refuses** any other endpoint unless you pass `--allow-remote-llm`, and then prints the host it sends to. With a local model, no query text reaches a third-party LLM service.
+
+If you do allow a hosted API (set `PGLENS_LLM_API_KEY`), check its data terms first. As of 2026-09: Groq doesn't retain inference data by default, while Google's Gemini free tier may use your content to improve its products.
+
 ### 3. Point it at your own database
 
 ```bash
@@ -122,6 +155,9 @@ scan <conn> [--top N] [--min-calls N] [--order-by total|mean|calls] [--json]
 
 # explain: drill into one statement by its pg_stat_statements queryid
 explain <conn> <queryid>
+
+# either, plus plain-language explanations of the top indexes (template by default; =llm for a local model, checked)
+… --plain[=template|llm] [--plain-top N] [--llm-url URL] [--llm-model NAME] [--llm-timeout S] [--allow-remote-llm]
 
 # confirm: build a scan's indexes on a marked scratch copy and time your real statements
 confirm --report scan.json --copy <conn> --statements <file.sql|postgresql.log> [--statements …]
@@ -153,6 +189,8 @@ make psql-metadata   # open a shell on PgLens's own store, then e.g.:
 #   SELECT ddl, status, before_cost, after_cost
 #     FROM recommendations WHERE status = 'PLANNER_VALIDATED';
 ```
+
+**Plain-language explanations on the server (optional).** With `PGLENS_EXPLAIN_ENABLED=true` (and `make llm-up`, or `PGLENS_LLM_URL=http://host.docker.internal:11434/v1` for native Ollama), the server explains each database's top indexes in the background. It uses the same checks and template fallback as `--plain`, and caches the results in the `explanations` table for the Phase 4 dashboard. It explains an index again only when its facts, the model or the prompt change. It also embeds a bundled set of PostgreSQL-docs passages in **pgvector** (HNSW index) for "further reading" links.
 
 **Topology (`a-pull`).** The agent only ever dials **out** — it pushes samples up and *pulls* validation work down (short, retryable, load-balanceable gRPC calls; the server never connects into the agent). Deltas are computed **server-side**, anchored to the last persisted sample, so a lost send can't lose or double-count a window. The full REST/GraphQL API and dashboard are Phase 4; today the trends/recs are reached via SQL (above) and the integration tests. Details in [`docs/architecture.md`](docs/architecture.md); the *why* in [`docs/decisions.md`](docs/decisions.md) (ADR-0023…0034).
 

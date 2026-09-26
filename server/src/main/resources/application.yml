@@ -29,3 +29,28 @@ pglens:
     # Prune terminal (DONE/FAILED) validation jobs older than this (F1); the verdict lives on in
     # `recommendations`, so this only bounds the work-queue's audit trail (default 7 days).
     job-retention-ms: ${PGLENS_ANALYSIS_JOB_RETENTION_MS:604800000}
+  # Plain-language explanations (Phase 3, ADR-0043). OFF by default: when enabled, a separate
+  # scheduled pass explains each db's top indexes with an OpenAI-compatible LLM and caches the result
+  # (table `explanations`) for the Phase-4 dashboard. It also embeds the bundled PostgreSQL-docs
+  # passages into pgvector (`knowledge_chunks`) once per corpus version + embedding model.
+  explain:
+    enabled: ${PGLENS_EXPLAIN_ENABLED:false}
+    interval-ms: ${PGLENS_EXPLAIN_INTERVAL_MS:300000}
+    initial-delay-ms: ${PGLENS_EXPLAIN_INITIAL_DELAY_MS:60000}
+    top-n: ${PGLENS_EXPLAIN_TOP_N:5}
+    max-per-pass: ${PGLENS_EXPLAIN_MAX_PER_PASS:5}
+    # A template written because the model was unreachable is regenerated after this long.
+    retry-after-ms: ${PGLENS_EXPLAIN_RETRY_AFTER_MS:3600000}
+    # Retrieved docs go into the prompt only if the pre-registered eval says they help
+    # (docs/llm-eval.md §1.6); otherwise they only add "further reading" links.
+    docs-in-prompt: ${PGLENS_EXPLAIN_DOCS_IN_PROMPT:false}
+  llm:
+    base-url: ${PGLENS_LLM_URL:http://localhost:11434/v1}
+    model: ${PGLENS_LLM_MODEL:qwen3.5:4b}
+    embedding-model: ${PGLENS_LLM_EMBEDDING_MODEL:nomic-embed-text}
+    api-key: ${PGLENS_LLM_API_KEY:}
+    timeout-seconds: ${PGLENS_LLM_TIMEOUT_SECONDS:120}
+    reasoning-effort: ${PGLENS_LLM_REASONING_EFFORT:none}
+    # Endpoints outside this machine/private network are refused unless this is true: prompts carry
+    # normalized query text and table/column names.
+    allow-remote: ${PGLENS_LLM_ALLOW_REMOTE:false}

@@ -312,6 +312,38 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
   design and a pre-registered test.
 - **Effort/type:** `needs-design`. **Refs:** ADR-0038, ADR-0040, ADR-0041.
 
+### B19. Explain `pglens confirm` reports in plain language
+- **What:** Run the Phase 3 explainer over a confirm report's measured verdicts, for example why an index made 3 of its queries slower.
+- **Why deferred:** Phase 3 explains scan recommendations first, where the facts already exist in every report. Confirm verdicts are the best facts PgLens has, but they need their own cards and guard rules (measured times, not estimates).
+- **Effort/type:** `needs-design`. **Refs:** ADR-0042, ADR-0043.
+
+### B20. Per-runtime context tuning (`num_ctx`)
+- **What:** Ollama's OpenAI-compatible API runs with a 4,096-token context and can't raise it. Use the native API (or a runtime option) when a longer prompt would help.
+- **Why deferred:** Phase 3 prompts fit in about 2k tokens. Only worth doing if the eval shows the budget binds.
+- **Effort/type:** `good-first-issue`. **Refs:** ADR-0043, `docs/phases/phase_3.md` §3.
+
+### B21. Regression-risk flag for recommended indexes (deterministic)
+- **What:** Flag a recommendation when the with-index plan introduces a new nested-loop join whose outer side the planner may underestimate.
+  - This is the pattern behind most measured slowdowns (ADR-0040/0041). Microsoft Research 2025 (Wu et al., "Understanding and Detecting Query Performance Regression in Practical Index Tuning") found that a pattern detector beats ML models for this. Their version recosts the join with the before-plan's *actual* row counts.
+  - PgLens has actual row counts only from a `confirm` baseline or `auto_explain` (B6a). Without them, the flag could only use estimates.
+- **Why deferred:** it needs a pre-registered test against the JOB/TPC-H slowdowns before it can be shown to users. Phase 3 doesn't depend on it, and `pglens confirm` already measures the real answer.
+- **Effort/type:** `needs-design`. **Refs:** ADR-0040, ADR-0041, ADR-0042, B6a.
+
+### B22. Better retrieval queries for the docs passages
+- **What:** The retrieval query is built from short rule/card titles. For R1 and R3 it lands on passages about join *syntax* (`explicit-joins`) instead of scan and join *strategies*, giving recall@3 of 0.33 (`docs/llm-eval.md` M7). Options:
+  - a hand-written query per rule;
+  - adding plan node types to the signals;
+  - a re-ranker.
+- **Why deferred:** the Phase 3 A/B kept docs out of the prompt (links only), so retrieval quality only affects the "Read more" links. Revisit if docs ever go back into the prompt.
+- **Effort/type:** `good-first-issue` (a per-rule query plus rerunning `./gradlew :server:retrievalEval`). **Refs:** ADR-0043.
+
+### B23. A prompt that keeps the impact numbers (`p2`), re-evaluated on new cases
+- **What:** The Phase 3 blind ranking went to the template 10–0 because the model's prose dropped the measured runtime (calls and time) and the "also validated for N other queries" count. The `p1` prompt never asked for either.
+  - A `p2` prompt would require both (they're already in the facts), and the guard already checks the numbers.
+  - If it wins a fresh blind ranking (≥ 6/10), `--plain` could default to the model again.
+- **Why deferred:** it needs a new held-out set, since the current 12 have been seen, and a new ranking. The template already delivers every number.
+- **Effort/type:** `needs-design` (the eval protocol is in `docs/llm-eval.md`). **Refs:** ADR-0043.
+
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):
 follow the **What / Why deferred / Constraints / Effort / Refs** shape, tag it `good-first-issue` or

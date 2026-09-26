@@ -1,0 +1,192 @@
+{
+ "id": "14-tpch-orders-o_custkey",
+ "split": "dev",
+ "source": "tpch",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-25T15:53:47.709649Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -7403472884324480101,
+   "normalizedText": "select\n\tcntrycode,\n\tcount(*) as numcust,\n\tsum(c_acctbal) as totacctbal\nfrom\n\t(\n\t\tselect\n\t\t\tsubstring(c_phone from $1 for $2) as cntrycode,\n\t\t\tc_acctbal\n\t\tfrom\n\t\t\tcustomer\n\t\twhere\n\t\t\tsubstring(c_phone from $3 for $4) in\n\t\t\t\t($5, $6, $7, $8, $9, $10, $11)\n\t\t\tand c_acctbal > (\n\t\t\t\tselect\n\t\t\t\t\tavg(c_acctbal)\n\t\t\t\tfrom\n\t\t\t\t\tcustomer\n\t\t\t\twhere\n\t\t\t\t\tc_acctbal > $12\n\t\t\t\t\tand substring(c_phone from $13 for $14) in\n\t\t\t\t\t\t($15, $16, $17, $18, $19, $20, $21)\n\t\t\t)\n\t\t\tand not exists (\n\t\t\t\tselect\n\t\t\t\t\t*\n\t\t\t\tfrom\n\t\t\t\t\torders\n\t\t\t\twhere\n\t\t\t\t\to_custkey = c_custkey\n\t\t\t)\n\t) as custsale\ngroup by\n\tcntrycode\norder by\n\tcntrycode",
+   "truncated": false,
+   "calls": 6,
+   "totalExecMs": 91.39033400000001,
+   "meanExecMs": 15.231722333333334,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "customer",
+     "columns": [
+      "c_acctbal"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Seq Scan on customer filters c_acctbal (est. 175 of ~15000 rows, total cost 792.25)."
+    },
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "customer",
+     "columns": [
+      "c_acctbal"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Seq Scan on customer filters c_acctbal (est. 175 of ~15000 rows, total cost 792.25)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "orders",
+     "columns": [
+      "o_custkey"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on orders.o_custkey has no index, so the orders side is scanned (~150000 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "customer",
+      "columns": [
+       "c_acctbal"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on c_acctbal"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 7214.63,
+      "costAfter": 6842.79,
+      "relativeDelta": 0.051539718599567845,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 5.2% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "o_custkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key o_custkey"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 7214.63,
+      "costAfter": 1673.27,
+      "relativeDelta": 0.7680726523744115,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 7215 \u2192 1673 (\u221276.8%). Estimate from the planner, not a runtime measurement.",
+      "footprint": {
+       "estimatedIndexBytes": 3481600,
+       "tableBytes": 21692416,
+       "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.16049848942598188
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "orders",
+    "columns": [
+     "o_custkey"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R3"
+    ],
+    "rationale": "Unindexed join key o_custkey"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 7214.63,
+    "costAfter": 1673.27,
+    "relativeDelta": 0.7680726523744115,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 7215 \u2192 1673 (\u221276.8%). Estimate from the planner, not a runtime measurement.",
+    "footprint": {
+     "estimatedIndexBytes": 3481600,
+     "tableBytes": 21692416,
+     "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.16049848942598188
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -7403472884324480101,
+   "queryTotalExecTimeMs": 91.39033400000001,
+   "recommendation": {
+    "candidate": {
+     "table": "orders",
+     "columns": [
+      "o_custkey"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R3"
+     ],
+     "rationale": "Unindexed join key o_custkey"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 7214.63,
+     "costAfter": 1673.27,
+     "relativeDelta": 0.7680726523744115,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 7215 \u2192 1673 (\u221276.8%). Estimate from the planner, not a runtime measurement.",
+     "footprint": {
+      "estimatedIndexBytes": 3481600,
+      "tableBytes": 21692416,
+      "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.16049848942598188
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 70.19441623676336,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "orders",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 150000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 8297982
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 150,000 rows written (150,000 ins / 0 upd / 0 del) vs 8,297,982 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

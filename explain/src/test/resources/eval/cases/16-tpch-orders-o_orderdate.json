@@ -1,0 +1,271 @@
+{
+ "id": "16-tpch-orders-o_orderdate",
+ "split": "heldout",
+ "source": "tpch",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-25T15:53:47.709649Z"
+ },
+ "input": {
+  "query": {
+   "queryId": 7090874864503457421,
+   "normalizedText": "select\n\to_year,\n\tsum(case\n\t\twhen nation = $1 then volume\n\t\telse $2\n\tend) / sum(volume) as mkt_share\nfrom\n\t(\n\t\tselect\n\t\t\textract($3 from o_orderdate) as o_year,\n\t\t\tl_extendedprice * ($4 - l_discount) as volume,\n\t\t\tn2.n_name as nation\n\t\tfrom\n\t\t\tpart,\n\t\t\tsupplier,\n\t\t\tlineitem,\n\t\t\torders,\n\t\t\tcustomer,\n\t\t\tnation n1,\n\t\t\tnation n2,\n\t\t\tregion\n\t\twhere\n\t\t\tp_partkey = l_partkey\n\t\t\tand s_suppkey = l_suppkey\n\t\t\tand l_orderkey = o_orderkey\n\t\t\tand o_custkey = c_custkey\n\t\t\tand c_nationkey = n1.n_nationkey\n\t\t\tand n1.n_regionkey = r_regionkey\n\t\t\tand r_name = $5\n\t\t\tand s_nationkey = n2.n_nationkey\n\t\t\tand o_orderdate between date $6 and date $7\n\t\t\tand p_type = $8\n\t) as all_nations\ngroup by\n\to_year\norder by\n\to_year",
+   "truncated": false,
+   "calls": 6,
+   "totalExecMs": 108.957875,
+   "meanExecMs": 18.159645833333332,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "orders",
+     "columns": [
+      "o_orderdate"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on orders filters o_orderdate (est. 441 of ~150000 rows, total cost 3971.53)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "orders",
+     "columns": [
+      "o_custkey"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Join on orders.o_custkey has no index, so the orders side is scanned (~150000 rows)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "customer",
+     "columns": [
+      "c_nationkey"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Join on customer.c_nationkey has no index, so the customer side is scanned (~15000 rows)."
+    },
+    {
+     "ruleId": "R3",
+     "title": "Unindexed join key",
+     "table": "nation",
+     "columns": [
+      "n_regionkey"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Join on nation.n_regionkey has no index, so the nation side is scanned (~25 rows)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "o_orderdate"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on o_orderdate"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 6911.42,
+      "costAfter": 4533.84,
+      "relativeDelta": 0.34400745432921165,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 6911 \u2192 4534 (\u221234.4%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "region.r_name",
+       "valuesSampled": 1,
+       "worstRelativeDrop": 0.34400745432921165,
+       "bestRelativeDrop": 0.34400745432921165,
+       "label": "Across 1 sampled values of region.r_name (HypoPG planner estimates): \u221234.4% for a typical value of region.r_name, up to \u221234.4% (generic plan: \u221234.4%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 3481600,
+       "tableBytes": 21692416,
+       "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.16049848942598188
+      },
+      "recommended": true
+     },
+     "recommended": true
+    },
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "o_custkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key o_custkey"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 6911.42,
+      "costAfter": 6452.81,
+      "relativeDelta": 0.06635539440520177,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 6.6% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "customer",
+      "columns": [
+       "c_nationkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key c_nationkey"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 6911.42,
+      "costAfter": 6684.77,
+      "relativeDelta": 0.03279355038472552,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 3.3% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "nation",
+      "columns": [
+       "n_regionkey"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R3"
+      ],
+      "rationale": "Unindexed join key n_regionkey"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 6911.42,
+      "costAfter": 6911.42,
+      "relativeDelta": 0.0,
+      "indexUsed": false,
+      "label": "Suppressed: the planner did not use the hypothetical index \u2014 no benefit (a legitimate full scan).",
+      "recommended": false
+     },
+     "recommended": false
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "orders",
+    "columns": [
+     "o_orderdate"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1"
+    ],
+    "rationale": "Selective filter on o_orderdate"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 6911.42,
+    "costAfter": 4533.84,
+    "relativeDelta": 0.34400745432921165,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 6911 \u2192 4534 (\u221234.4%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "region.r_name",
+     "valuesSampled": 1,
+     "worstRelativeDrop": 0.34400745432921165,
+     "bestRelativeDrop": 0.34400745432921165,
+     "label": "Across 1 sampled values of region.r_name (HypoPG planner estimates): \u221234.4% for a typical value of region.r_name, up to \u221234.4% (generic plan: \u221234.4%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 3481600,
+     "tableBytes": 21692416,
+     "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.16049848942598188
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": 7090874864503457421,
+   "queryTotalExecTimeMs": 108.957875,
+   "recommendation": {
+    "candidate": {
+     "table": "orders",
+     "columns": [
+      "o_orderdate"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1"
+     ],
+     "rationale": "Selective filter on o_orderdate"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 6911.42,
+     "costAfter": 4533.84,
+     "relativeDelta": 0.34400745432921165,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 6911 \u2192 4534 (\u221234.4%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "region.r_name",
+      "valuesSampled": 1,
+      "worstRelativeDrop": 0.34400745432921165,
+      "bestRelativeDrop": 0.34400745432921165,
+      "label": "Across 1 sampled values of region.r_name (HypoPG planner estimates): \u221234.4% for a typical value of region.r_name, up to \u221234.4% (generic plan: \u221234.4%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 3481600,
+      "tableBytes": 21692416,
+      "label": "Estimated index size 3.3 MB (HypoPG estimate), \u224816% of the table's 20.7 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.16049848942598188
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 37.48232120787045,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "orders",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 150000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 8297982
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 150,000 rows written (150,000 ins / 0 upd / 0 del) vs 8,297,982 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 1
+ }
+}

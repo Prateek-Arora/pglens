@@ -4,11 +4,15 @@ import com.pglens.engine.PgLensEngine;
 import com.pglens.engine.PgLensException;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.QueryReport;
+import com.pglens.explain.Explanation;
+import com.pglens.explain.ExplanationTarget;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Parameters;
 
 /**
@@ -32,11 +36,17 @@ class ExplainCommand implements Callable<Integer> {
   @Parameters(index = "1", paramLabel = "QUERYID", description = "pg_stat_statements queryid.")
   long queryId;
 
+  @Mixin LlmOptions llm = new LlmOptions();
+
   @Override
   public Integer call() {
     final ConnectionTarget target;
     try {
       target = ConnectionTarget.parse(conn);
+      if (llm.enabled()) {
+        llm.templateOnly();
+        llm.settings();
+      }
     } catch (IllegalArgumentException badInput) {
       System.err.println("pglens: " + badInput.getMessage());
       return 2; // usage error
@@ -56,6 +66,11 @@ class ExplainCommand implements Callable<Integer> {
       System.out.print(
           ScanReportRenderer.toQueryDetail(
               query.get(), engine.targetInfo(), Instant.now().toString()));
+      if (llm.enabled()) {
+        List<ExplanationTarget> targets = ExplanationTarget.forQuery(query.get(), llm.plainTop);
+        List<Explanation> explanations = PlainExplanations.run(targets, llm, System.err);
+        System.out.print(ExplanationRenderer.toHuman(targets, explanations, List.of()));
+      }
       return 0;
     } catch (PgLensException failure) {
       System.err.println("pglens: " + failure.getMessage());

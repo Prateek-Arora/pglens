@@ -66,7 +66,9 @@ class FlywayMigrationIntegrationTest {
             "index_hygiene", // V3
             "recommendations",
             "validation_jobs",
-            "table_stats"); // V6
+            "table_stats", // V6
+            "knowledge_chunks", // V8
+            "explanations");
   }
 
   @Test
@@ -74,14 +76,30 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(7); // V1 … V7
+    assertThat(applied).isEqualTo(8); // V1 … V8
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("7");
+    assertThat(version).isEqualTo("8");
+  }
+
+  /** V8 (ADR-0043): pgvector + an HNSW cosine index over the docs passages. */
+  @Test
+  void knowledgeChunksHaveAnHnswCosineIndex() {
+    String def =
+        jdbc.queryForObject(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'knowledge_chunks_embedding_hnsw'",
+            String.class);
+    assertThat(def).contains("USING hnsw").contains("vector_cosine_ops");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                    + "WHERE attrelid = 'knowledge_chunks'::regclass AND attname = 'embedding'",
+                String.class))
+        .isEqualTo("vector(768)");
   }
 
   /** V7 (ADR-0041, B17): the build-caution column on recommendations. */

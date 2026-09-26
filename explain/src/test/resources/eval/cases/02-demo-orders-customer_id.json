@@ -1,0 +1,172 @@
+{
+ "id": "02-demo-orders-customer_id",
+ "split": "dev",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -4700021249033714155,
+   "normalizedText": "SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 182.178046,
+   "meanExecMs": 6.072601533333334,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "orders",
+     "columns": [
+      "customer_id"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on orders filters customer_id (est. 8 of ~200000 rows, total cost 2941.59)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "orders",
+      "columns": [
+       "customer_id"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on customer_id"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 3942.64,
+      "costAfter": 52.91,
+      "relativeDelta": 0.9865800580321815,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 3943 \u2192 53 (\u221298.7%). Estimate from the planner, not a runtime measurement.",
+      "valueRange": {
+       "column": "orders.customer_id",
+       "valuesSampled": 4,
+       "worstRelativeDrop": 0.5660274585172782,
+       "worstValueFrequency": 0.018833333626389503,
+       "bestRelativeDrop": 0.9884257439053158,
+       "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u221256.6% for a common value of orders.customer_id (1.9% of rows), up to \u221298.8% (generic plan: \u221298.7%, which is what the ranking uses)."
+      },
+      "footprint": {
+       "estimatedIndexBytes": 4644864,
+       "tableBytes": 12050432,
+       "label": "Estimated index size 4.4 MB (HypoPG estimate), \u224839% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.38545207341944254
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "orders",
+    "columns": [
+     "customer_id"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1"
+    ],
+    "rationale": "Selective filter on customer_id"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 3942.64,
+    "costAfter": 52.91,
+    "relativeDelta": 0.9865800580321815,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 3943 \u2192 53 (\u221298.7%). Estimate from the planner, not a runtime measurement.",
+    "valueRange": {
+     "column": "orders.customer_id",
+     "valuesSampled": 4,
+     "worstRelativeDrop": 0.5660274585172782,
+     "worstValueFrequency": 0.018833333626389503,
+     "bestRelativeDrop": 0.9884257439053158,
+     "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u221256.6% for a common value of orders.customer_id (1.9% of rows), up to \u221298.8% (generic plan: \u221298.7%, which is what the ranking uses)."
+    },
+    "footprint": {
+     "estimatedIndexBytes": 4644864,
+     "tableBytes": 12050432,
+     "label": "Estimated index size 4.4 MB (HypoPG estimate), \u224839% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.38545207341944254
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -4700021249033714155,
+   "queryTotalExecTimeMs": 182.178046,
+   "recommendation": {
+    "candidate": {
+     "table": "orders",
+     "columns": [
+      "customer_id"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1"
+     ],
+     "rationale": "Selective filter on customer_id"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 3942.64,
+     "costAfter": 52.91,
+     "relativeDelta": 0.9865800580321815,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 3943 \u2192 53 (\u221298.7%). Estimate from the planner, not a runtime measurement.",
+     "valueRange": {
+      "column": "orders.customer_id",
+      "valuesSampled": 4,
+      "worstRelativeDrop": 0.5660274585172782,
+      "worstValueFrequency": 0.018833333626389503,
+      "bestRelativeDrop": 0.9884257439053158,
+      "label": "Across 4 sampled values of orders.customer_id (HypoPG planner estimates): \u221256.6% for a common value of orders.customer_id (1.9% of rows), up to \u221298.8% (generic plan: \u221298.7%, which is what the ranking uses)."
+     },
+     "footprint": {
+      "estimatedIndexBytes": 4644864,
+      "tableBytes": 12050432,
+      "label": "Estimated index size 4.4 MB (HypoPG estimate), \u224839% of the table's 11.5 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.38545207341944254
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 179.73322719486944,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "orders",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 200000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 107300052
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 200,000 rows written (200,000 ins / 0 upd / 0 del) vs 107,300,052 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 1
+ }
+}

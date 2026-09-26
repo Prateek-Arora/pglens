@@ -17,11 +17,12 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
                                                                          │ calls          │ SQL
                                                                          ▼                ▼
                                                           ┌───────────────────┐  ┌────────────────────────┐
-                                                          │ explain-svc (LLM) │  │ Metadata Postgres      │
-                                                          │ RAG over PG docs  │◀─│  + pgvector            │
-                                                          │ Ollama (local)    │  │  snapshots, recs,      │
-                                                          └───────────────────┘  │  embeddings, trends    │
-                                                                                  └────────────────────────┘
+                                                          │ local LLM (any    │  │ Metadata Postgres      │
+                                                          │ OpenAI-compatible │◀─│  + pgvector            │
+                                                          │ runtime; Ollama)  │  │  snapshots, recs,      │
+                                                          └───────────────────┘  │  docs embeddings,      │
+                                                            ▲ :explain module    │  explanations, trends  │
+                                                            │ (in CLI + server)  └────────────────────────┘
                                                                          ▲
    Next.js dashboard (App Router) ── REST/GraphQL ─────────────────────┘
    Deploy: Docker Compose (dev) → Helm on kind/k3d → Terraform to free-tier cloud + Neon
@@ -33,7 +34,7 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
 |---|---|---|
 | `pglens-agent` (collector) | Java 21 / Spring Boot | Read `pg_stat_statements` + run safe `EXPLAIN` on the monitored DB (read-only); stream over gRPC. |
 | `pglens-server` | Spring Boot | Rank slow queries, capture plans, detect anti-patterns, run HypoPG validation, expose REST/GraphQL. |
-| `explain-svc` (LLM layer) | Ollama + RAG (pgvector) | Turn structured analysis into plain-language explanation + rationale. Optional; degrades gracefully. |
+| `:explain` (LLM layer, in-JVM) | `java.net.http` → any OpenAI-compatible LLM (default: local Ollama + `qwen3.5:4b`); pgvector docs retrieval on the server | Turn PgLens's facts into a checked plain-language explanation. Optional; falls back to a deterministic template (ADR-0043). |
 | Metadata Postgres | Postgres + pgvector | PgLens's own store: snapshots, recommendations, embeddings, trends. |
 | Dashboard | Next.js (App Router) | Leaderboard, plan viewer, recommendations, trends over time. |
 
@@ -41,8 +42,44 @@ _Last updated: 2026-09-24 — end-state target below; Phases 0–2.5 are impleme
 1. **Two Postgres instances, never one** (ADR-0003). The *monitored* DB is touched read-only. PgLens keeps its own *metadata* Postgres with pgvector. Bonus: gives us a real growing schema to dogfood indexing on.
 2. **Deterministic core, LLM as a layer** (ADR-0004). The analyzer is correct and explainable with zero LLM; the LLM only translates to prose. Trustworthy + useful offline.
 3. **HypoPG for validation** (ADR-0005). Suggesting an index is easy; checking it helps without building it (minutes on a big table) is the valuable part. HypoPG gives the real planner's cost *estimate* with the index — the honest "expected improvement", always labeled an estimate. Covers btree/brin/hash/bloom + partial; GIN/GiST are surfaced but labeled *not planner-validated*. **Not a differentiator on its own** — Dexter, PoWA, Supabase `index_advisor` and Postgres MCP Pro use HypoPG too (ADR-0037); PgLens's edge is the integrated, history-aware loop on pgss + hypopg only.
-4. **Local LLM (Ollama) for privacy** (ADR-0006). Query text never leaves the user's infra — the sharpest differentiator vs hosted AI-EXPLAIN tools.
+4. **Local LLM for privacy** (ADR-0006, refined by ADR-0043). Query text never leaves the user's infra by default: any OpenAI-compatible runtime works (Ollama is the documented default), and non-local endpoints are refused unless explicitly allowed.
 5. **gRPC for ingest + edge-pull validation** (ADR-0001 stack; topology ADR-0023, lib ADR-0025). Stats flow agent → server as short-lived **client-streaming** calls; validation work is **server-streamed** to the agent and results **client-streamed** back — three of gRPC's four modes, chosen over live-bidi so calls stay short-lived and load-balanceable. A real, justified gRPC use case (not bolted on).
+
+## Plain-language explanations (implemented — Phase 3, ADR-0043)
+
+```
+engine model (QueryReport, Recommendation)       — CLI: from the scan; server: rebuilt from query_texts,
+        │                                          query_cumulative, recommendations + the pure detector
+        ▼ FactsBuilder (pure)
+ExplanationFacts ─► TemplateExplainer (pure, always available) ─────────────────┐ fallback
+        │   cards by rule id (knowledge/cards/*.md)                              │
+        │   [server] + pgvector docs passages (links only unless the A/B says)   │
+        ▼                                                                        │
+PromptBuilder ─► OpenAiCompatibleClient ─► OutputGuard ─ pass ─► Explanation ◄───┘
+   (EndpointPolicy: local only by default)     │ fail → 1 retry with the violations → template
+                                               ▼
+CLI ExplanationRenderer: prose + PgLens-rendered DDL, estimate label, cautions, provenance, links
+Server ExplanationService: scheduled, off by default → `explanations` cache (facts hash + model + prompt)
+```
+
+- **Module boundary.** `:explain` depends on `:engine`'s model; `:engine` never depends on `:explain`,
+  so "deterministic core" is enforced by the build graph. `:cli` and `:server` both use it.
+- **What the model sees and writes.** Pre-formatted facts (query, measured calls/times, the index,
+  the planner estimate, only the findings this index addresses) plus rule cards. It writes three
+  prose fields. DDL, labels and every caveat stay out of the prompt and are rendered by PgLens.
+- **Guard.** Shape; no SQL; every number unit- and magnitude-aware within 5 % of a fact; every
+  `snake_case`/dotted/backticked name known; only the recommended index mentioned; cost drop called a
+  cost; no "N× faster", promises, or percentages for an unvalidated index.
+- **Runtime realities handled.** `reasoning_effort: none` (thinking models); `json_schema` →
+  `json_object` → no `reasoning_effort` downgrade on HTTP 400; `finish_reason=length` / empty /
+  unparseable → template with a reason; a down endpoint short-circuits the rest of the run.
+- **Server.** `ExplanationService` runs on its own schedule (so a slow model never delays analysis),
+  explains the top N actionable indexes per db, caches by `(db, queryid, ddl, facts_hash, model,
+  prompt_version)`. An outage is cached as a template with `retry_after`; a rejected answer is
+  cached for good (temperature 0 repeats). V8 adds `knowledge_chunks` (`vector(768)`, HNSW cosine)
+  and `explanations`.
+- **Eval.** 24 frozen real cases, pre-registered decision rules, dev/held-out split:
+  `docs/llm-eval.md`.
 
 ## Recommendation accuracy (implemented — Phase 2.5, ADR-0038; amended by ADR-0041)
 The engine's *whether* (HypoPG used + ≥ 15 % gate) was already trustworthy; Phase 2.5 fixes the *how
@@ -197,4 +234,4 @@ from Phase 1 on.
 - Index-rec false positives → HypoPG validation gate with a minimum cost-win threshold.
 - Index-rec *magnitude* and *set* quality → generic-plan deltas overstate skewed wins, and selection was per-query with no write-overhead model. Phase 2.5 (ADR-0038) added value ranges (shown as evidence; ranking stays generic per ADR-0041), footprint/write-load notes and prefix-overlap cross-validation; JOB/IMDB (ADR-0040) showed estimates can't rule out slowdowns — Phase 2.6 (proposed) measures on a copy; a full workload solver is still backlog B16, and `pg_stat_statements` never tells PgLens which parameter values a workload really uses (only a range can be reported).
 - Postgres-version drift → PG16+ gate + CI `compat` on 17/18 (ADR-0036). PG18 already changed pgss behaviour (leading comments stripped), so new majors get tested, not assumed.
-- LLM hallucination → deterministic core owns all facts; validate suggested DDL parses and matches the analyzer's rec.
+- LLM hallucination → the model never writes DDL, numbers-with-meaning or caveats of its own: PgLens renders those, and `OutputGuard` checks every number, name and cost/runtime phrasing in the model's three sentences (retry once, then template). What it can't check — a wrong number-free sentence — is measured in `docs/llm-eval.md` (M4) and disclosed in every explanation's provenance line.

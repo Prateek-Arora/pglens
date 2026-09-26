@@ -1,0 +1,94 @@
+{
+ "id": "08-demo-events-payload",
+ "split": "dev",
+ "source": "demo",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-26T05:51:18.530216Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -2465190988466526723,
+   "normalizedText": "SELECT count(*) FROM events WHERE payload @> $1",
+   "truncated": false,
+   "calls": 30,
+   "totalExecMs": 301.37333499999994,
+   "meanExecMs": 10.045777833333336,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R7",
+     "title": "Unindexed containment/existence filter (GIN candidate)",
+     "table": "events",
+     "columns": [
+      "payload"
+     ],
+     "confidence": "MEDIUM",
+     "evidence": "Seq Scan on events filters payload with a @> operator over ~300000 rows; a GIN index can serve containment/existence lookups. Not planner-validated \u2014 HypoPG cannot simulate GIN."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "events",
+      "columns": [
+       "payload"
+      ],
+      "accessMethod": "GIN",
+      "plannerValidatable": false,
+      "notValidatableReason": "HypoPG cannot simulate a GIN index \u2014 surfaced but not planner-validated.",
+      "sourceRuleIds": [
+       "R7"
+      ],
+      "rationale": "Containment/existence filter on payload (GIN-servable)"
+     },
+     "validation": {
+      "status": "NOT_PLANNER_VALIDATED",
+      "indexUsed": false,
+      "label": "HypoPG cannot simulate a GIN index \u2014 surfaced but not planner-validated.",
+      "recommended": false
+     },
+     "recommended": false
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "events",
+    "columns": [
+     "payload"
+    ],
+    "accessMethod": "GIN",
+    "plannerValidatable": false,
+    "notValidatableReason": "HypoPG cannot simulate a GIN index \u2014 surfaced but not planner-validated.",
+    "sourceRuleIds": [
+     "R7"
+    ],
+    "rationale": "Containment/existence filter on payload (GIN-servable)"
+   },
+   "validation": {
+    "status": "NOT_PLANNER_VALIDATED",
+    "indexUsed": false,
+    "label": "HypoPG cannot simulate a GIN index \u2014 surfaced but not planner-validated.",
+    "recommended": false
+   },
+   "recommended": false
+  },
+  "ranked": null,
+  "writeLoad": {
+   "table": "events",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 300000,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 79500000
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 300,000 rows written (300,000 ins / 0 upd / 0 del) vs 79,500,000 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "_about": "Hand-labelled relevant PostgreSQL-docs passages for M7 (retrieval recall@3), written 2026-09-26 BEFORE any retrieval ran. The retrieval query is built only from signals (finding titles, card titles, index method), so every case with the same rule set sends the same query: 5 distinct queries. A passage is relevant if it explains the mechanism the rule describes or what the index does about it.",
+ "queries": {
+  "R1": ["indexes-intro-01", "indexes-intro-02", "indexes-intro-03", "indexes-types-02", "using-explain-02", "using-explain-03", "using-explain-05", "using-explain-07", "using-explain-08"],
+  "R3": ["planner-optimizer-03", "planner-optimizer-04", "using-explain-12", "using-explain-13", "using-explain-14", "using-explain-15", "using-explain-16", "indexes-intro-01", "indexes-types-02"],
+  "R4": ["indexes-ordering-01", "indexes-ordering-02", "indexes-ordering-03", "using-explain-09", "using-explain-10", "using-explain-11"],
+  "R1+R4": ["indexes-intro-01", "indexes-intro-02", "indexes-intro-03", "indexes-types-02", "using-explain-02", "using-explain-03", "using-explain-05", "using-explain-07", "using-explain-08", "indexes-ordering-01", "indexes-ordering-02", "indexes-ordering-03", "using-explain-09", "using-explain-10", "using-explain-11", "indexes-multicolumn-01", "indexes-multicolumn-02"],
+  "R7": ["datatype-json-01", "datatype-json-02", "datatype-json-03", "datatype-json-04", "datatype-json-05", "datatype-json-06", "gin-intro-01", "gin-intro-02", "indexes-types-06"]
+ }
+}

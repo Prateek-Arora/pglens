@@ -1,0 +1,222 @@
+{
+ "id": "13-tpch-lineitem-l_discount",
+ "split": "heldout",
+ "source": "tpch",
+ "spikeSeen": false,
+ "sourceReport": {
+  "schemaVersion": "1.2",
+  "generatedAt": "2026-09-25T15:53:47.709649Z"
+ },
+ "input": {
+  "query": {
+   "queryId": -7138647865556806770,
+   "normalizedText": "select\n\tsum(l_extendedprice * l_discount) as revenue\nfrom\n\tlineitem\nwhere\n\tl_shipdate >= date $1\n\tand l_shipdate < date $2 + interval $3 year\n\tand l_discount between $4 - $5 and $6 + $7\n\tand l_quantity < $8",
+   "truncated": false,
+   "calls": 6,
+   "totalExecMs": 109.52408199999999,
+   "meanExecMs": 18.25401366666667,
+   "planCaptured": true,
+   "plan": null,
+   "findings": [
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "lineitem",
+     "columns": [
+      "l_shipdate"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on lineitem filters l_shipdate (est. 2 of ~600572 rows, total cost 19420.75)."
+    },
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "lineitem",
+     "columns": [
+      "l_quantity"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on lineitem filters l_quantity (est. 2 of ~600572 rows, total cost 19420.75)."
+    },
+    {
+     "ruleId": "R1",
+     "title": "Sequential scan with an unindexed filter",
+     "table": "lineitem",
+     "columns": [
+      "l_discount"
+     ],
+     "confidence": "HIGH",
+     "evidence": "Seq Scan on lineitem filters l_discount (est. 2 of ~600572 rows, total cost 19420.75)."
+    }
+   ],
+   "recommendations": [
+    {
+     "candidate": {
+      "table": "lineitem",
+      "columns": [
+       "l_shipdate"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on l_shipdate"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 20420.99,
+      "costAfter": 6913.58,
+      "relativeDelta": 0.66144736371743,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 20421 \u2192 6914 (\u221266.1%). Estimate from the planner, not a runtime measurement.",
+      "footprint": {
+       "estimatedIndexBytes": 13942784,
+       "tableBytes": 92471296,
+       "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.15077958894401133
+      },
+      "recommended": true
+     },
+     "recommended": true
+    },
+    {
+     "candidate": {
+      "table": "lineitem",
+      "columns": [
+       "l_quantity"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on l_quantity"
+     },
+     "validation": {
+      "status": "SUPPRESSED",
+      "costBefore": 20420.99,
+      "costAfter": 18916.65,
+      "relativeDelta": 0.07366635995610399,
+      "indexUsed": true,
+      "label": "Suppressed: hypothetical index used but cost fell only 7.4% (< 15% threshold).",
+      "recommended": false
+     },
+     "recommended": false
+    },
+    {
+     "candidate": {
+      "table": "lineitem",
+      "columns": [
+       "l_discount"
+      ],
+      "accessMethod": "BTREE",
+      "plannerValidatable": true,
+      "sourceRuleIds": [
+       "R1"
+      ],
+      "rationale": "Selective filter on l_discount"
+     },
+     "validation": {
+      "status": "PLANNER_VALIDATED",
+      "costBefore": 20420.99,
+      "costAfter": 6913.58,
+      "relativeDelta": 0.66144736371743,
+      "indexUsed": true,
+      "label": "Planner-validated (HypoPG estimate): total cost 20421 \u2192 6914 (\u221266.1%). Estimate from the planner, not a runtime measurement.",
+      "footprint": {
+       "estimatedIndexBytes": 13942784,
+       "tableBytes": 92471296,
+       "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+       "sizeRatio": 0.15077958894401133
+      },
+      "recommended": true
+     },
+     "recommended": true
+    }
+   ]
+  },
+  "recommendation": {
+   "candidate": {
+    "table": "lineitem",
+    "columns": [
+     "l_discount"
+    ],
+    "accessMethod": "BTREE",
+    "plannerValidatable": true,
+    "sourceRuleIds": [
+     "R1"
+    ],
+    "rationale": "Selective filter on l_discount"
+   },
+   "validation": {
+    "status": "PLANNER_VALIDATED",
+    "costBefore": 20420.99,
+    "costAfter": 6913.58,
+    "relativeDelta": 0.66144736371743,
+    "indexUsed": true,
+    "label": "Planner-validated (HypoPG estimate): total cost 20421 \u2192 6914 (\u221266.1%). Estimate from the planner, not a runtime measurement.",
+    "footprint": {
+     "estimatedIndexBytes": 13942784,
+     "tableBytes": 92471296,
+     "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+     "sizeRatio": 0.15077958894401133
+    },
+    "recommended": true
+   },
+   "recommended": true
+  },
+  "ranked": {
+   "queryId": -7138647865556806770,
+   "queryTotalExecTimeMs": 109.52408199999999,
+   "recommendation": {
+    "candidate": {
+     "table": "lineitem",
+     "columns": [
+      "l_discount"
+     ],
+     "accessMethod": "BTREE",
+     "plannerValidatable": true,
+     "sourceRuleIds": [
+      "R1"
+     ],
+     "rationale": "Selective filter on l_discount"
+    },
+    "validation": {
+     "status": "PLANNER_VALIDATED",
+     "costBefore": 20420.99,
+     "costAfter": 6913.58,
+     "relativeDelta": 0.66144736371743,
+     "indexUsed": true,
+     "label": "Planner-validated (HypoPG estimate): total cost 20421 \u2192 6914 (\u221266.1%). Estimate from the planner, not a runtime measurement.",
+     "footprint": {
+      "estimatedIndexBytes": 13942784,
+      "tableBytes": 92471296,
+      "label": "Estimated index size 13.3 MB (HypoPG estimate), \u224815% of the table's 88.2 MB \u2014 every write to the indexed columns also maintains it.",
+      "sizeRatio": 0.15077958894401133
+     },
+     "recommended": true
+    },
+    "recommended": true
+   },
+   "estimatedMsSaved": 72.44441530247163,
+   "scoreBasis": "GENERIC_PLAN",
+   "subsumed": false,
+   "actionable": true,
+   "coveredBySubsumer": false
+  },
+  "writeLoad": {
+   "table": "lineitem",
+   "level": "READ_DOMINANT",
+   "activity": {
+    "inserted": 600572,
+    "updated": 0,
+    "deleted": 0,
+    "tuplesRead": 5521605608
+   },
+   "window": "since statistics collection began (never reset)",
+   "label": "Read-dominant table: 600,572 rows written (600,572 ins / 0 upd / 0 del) vs 5,521,605,608 rows read since statistics collection began (never reset)."
+  },
+  "otherQueriesCovered": 0
+ }
+}

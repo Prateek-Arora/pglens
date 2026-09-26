@@ -19,6 +19,11 @@ import java.util.List;
  * — {@code pglens confirm} compares it with the copy). Also since 1.2, {@code scoreBasis} is always
  * {@code GENERIC_PLAN} — the value range is evidence, not the ranking drop.
  *
+ * <p>Contract 1.3 (ADR-0043, additive over 1.2): the CLI's {@code --plain} adds a root {@code
+ * explanations} array (one plain-language explanation per explained index, written by the {@code
+ * :explain} module, which the engine doesn't depend on). Without {@code --plain} a 1.3 report is a
+ * 1.2 report with a new version string.
+ *
  * <p>A validated recommendation appears twice by design: once under its query ({@link
  * QueryReport#recommendations()}, the full per-query story) and once, ranked and scored, in {@link
  * #topRecommendations()} (the cross-query "indexes to create" summary).
@@ -36,7 +41,7 @@ public record ScanReport(
    * The frozen {@code --json} contract version. Bump on any breaking field change (Phase 2 reads
    * it).
    */
-  public static final String SCHEMA_VERSION = "1.2";
+  public static final String SCHEMA_VERSION = "1.3";
 
   public ScanReport {
     queries = queries == null ? List.of() : List.copyOf(queries);
