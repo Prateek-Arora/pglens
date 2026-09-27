@@ -14,8 +14,8 @@ Open-source, self-hosted **Postgres slow-query & index advisor** with **LLM-expl
 - **`docs/workflows/plan-verification.md`** — how we turn a user-provided phase plan into a thorough, verified plan
 - **`docs/glossary.md`** — domain terms (HypoPG, pg_stat_statements, EXPLAIN, RAG, etc.)
 
-## Tech stack (confirm/pin exact versions in Phase 0, then update `docs/architecture.md`)
-- Collector agent + server: **Java 21 + Spring Boot** `[ASSUMPTION: Java 21 until Phase 0 pins it]`
+## Tech stack (exact versions: `docs/architecture.md` and `gradle/libs.versions.toml`)
+- Collector agent + server: **Java 21 + Spring Boot**
 - Ingest: **gRPC / Protobuf** (server-streaming). API: **REST** (+ optional **GraphQL** read track, Phase 4)
 - Metadata store: **Postgres + pgvector** (separate from the monitored DB — never one instance)
 - LLM: **Ollama** (local), **RAG** over Postgres docs
@@ -45,7 +45,7 @@ Open-source, self-hosted **Postgres slow-query & index advisor** with **LLM-expl
 6. The user maintains a **teacher skill** that draws on `docs/decisions.md` and `docs/architecture.md` — so keep the *why* in those files rich and current.
 
 ## Boundaries
-- **Do not** commit or push unless asked. (Repo is not yet git-init'd — flag when appropriate.)
+- **Do not** commit or push unless asked.
 - **Do not** run destructive commands against any database. The monitored DB is **read-only, always**.
 - **Do not** inline large context into this file — link to `docs/`.
 - **Do not** add gratuitous tech (Kafka, Cassandra/DynamoDB, ElasticSearch) — explicitly out of scope.

@@ -1,6 +1,6 @@
 # The HTTP API
 
-Everything the server knows is served as JSON under `http://127.0.0.1:8080/api/v1` (Phase 4A, ADR-0044) — the leaderboard, one query's plan and findings, trends, recommendations, index hygiene, explanations. The OpenAPI description is at [`/api/v1/openapi.json`](http://127.0.0.1:8080/api/v1/openapi.json) (public; everything else needs a token).
+Everything the server knows is served as JSON under `http://127.0.0.1:8080/api/v1`: the leaderboard, one query's plan and findings, trends, recommendations, index hygiene, explanations. The OpenAPI description is at [`/api/v1/openapi.json`](http://127.0.0.1:8080/api/v1/openapi.json) (public; everything else needs a token).
 
 | Endpoint | What it returns |
 |---|---|

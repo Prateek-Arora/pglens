@@ -15,7 +15,7 @@ paths:
 - All monitored-DB access goes through the read-only connection pool; never open a writable connection here.
 ```
 
-## When to add rules (not yet — no code exists)
+## When to add rules
 Add them as modules land, e.g.:
 - `agent.md` → collector conventions (read-only pool, gRPC stubs).
 - `server.md` → server conventions (analysis core boundary, HypoPG validator).
