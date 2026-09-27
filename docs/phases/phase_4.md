@@ -274,6 +274,18 @@ Not in this step:
 - **Expression indexes** (`lower(email)`, backlog B9): only the copy says so.
 - **Next 16.3.7:** its security release is due 30 Sep and is still a gate for the tag.
 
+**Step 12 — Release hardening: close the loop, sell the impact (added 2026-09-27, ADR-0051–0053).**
+From the pre-release review: (a) retire advice the engine no longer proposes; mark it *applied* when
+a serving index appears after it; show the query's measured mean before/after; re-capture plans when
+indexes change. (b) Guards as connection startup options; refuse a transaction-mode pooler (real
+PgBouncer IT). (c) Overview-first dashboard, charts on slow queries and trends, est. saved per row,
+LLM status + versions in Settings. (d) `demo` compose profile + `make up-no-demo`; 35-day raw
+retention; `agent_hours`; no catalog-table advice; embedding-size guard. (e) README around
+screenshots; `docs/operations.md`, `docs/cli.md`, `docs/api.md`; GitHub templates; code of conduct.
+**Verification:** unit + IT for the lifecycle, measurement, pooler, plan refresh; PG17/18 compat;
+`make bench-api`; e2e; screenshots of every page (1440/390, both themes, axe); the stranger path on
+a TLS-only database with an app-style schema, through to *applied*; LLM mode end to end.
+
 **Step 10 (optional, cut first) — GraphQL read layer.** Spring for GraphQL over the same service
 methods, read-only, one schema. Only claimed as a skill if completed (ADR-0037).
 

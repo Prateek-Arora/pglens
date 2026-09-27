@@ -13,11 +13,13 @@ paths:
   the analyzer only trusts `guarded()`. "Unused" comes from a persisted scan **window**, never a
   single `idx_scan` read — a backwards delta is a reset, so it's inconclusive, not "unused".
 - **One connection per scan.** HypoPG hypothetical indexes are session-local, so the whole
-  scan runs on a single `SingleConnectionDataSource` (`DataSources.forScan`). Don't open a second
-  connection in the scan path.
-- **Read-only is enforced at the DB.** `DataSources.applySessionGuards` issues
-  `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` (+ statement/lock timeouts) on that one
-  connection; the target rejects any write. Never rely on a framework `readOnly` flag, and never
+  scan runs on a single `SingleConnectionDataSource` (`DataSources.guarded`). Don't open a second
+  connection in the scan path. `DataSources.forScan` is unguarded — test setup only.
+- **Read-only is enforced at the DB.** `DataSources.guarded` passes
+  `default_transaction_read_only=on` (+ statement/lock timeouts) as connection **startup options**,
+  and `verifySessionGuards` checks them (and one session) before use; the target rejects any write.
+  Never `SET` session state on a monitored DB — through a transaction-mode pooler it would leak
+  onto the application's connections (ADR-0053). Never rely on a framework `readOnly` flag, and never
   add a code path that writes to the monitored DB.
 - **HypoPG cleanliness.** The validator resets after **every** candidate; assert
   `SELECT count(*) FROM hypopg() = 0` after a run. Nothing is ever built on the real database.

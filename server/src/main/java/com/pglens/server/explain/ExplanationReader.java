@@ -74,6 +74,7 @@ public class ExplanationReader {
         jdbc.queryForList(
             "SELECT ddl FROM recommendations WHERE db_id = ? AND queryid = ? "
                 + "AND status IN ('PLANNER_VALIDATED', 'NOT_PLANNER_VALIDATED') "
+                + "AND applied_at IS NULL "
                 + "ORDER BY status = 'PLANNER_VALIDATED' DESC, estimated_ms_saved DESC NULLS LAST, "
                 + "ddl",
             String.class,

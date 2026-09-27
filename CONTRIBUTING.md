@@ -10,7 +10,7 @@ Thanks for your interest! PgLens is a release candidate (`v0.1.0-rc`); see
 Gradle wrapper provisions JDK 21) for the Java tests; Node 24 + pnpm for the dashboard.
 
 ```bash
-make up          # build + start everything (databases, server, agent, dashboard)
+make up          # build + start everything, demo included (make up-no-demo: PgLens alone)
 make register    # register the demo database and give its agent a token
 make seed        # load demo data
 make warmup      # accumulate pg_stat_statements
@@ -43,5 +43,5 @@ when you add a rule.
 - **Safe by default** — the monitored database is read-only; never write to it.
 - **Deterministic core, optional AI** — analysis must be correct with the LLM off.
 
-By contributing you agree your contributions are licensed under the
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). By contributing you agree your contributions are licensed under the
 [Apache-2.0 License](LICENSE).

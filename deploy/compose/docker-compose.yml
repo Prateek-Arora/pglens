@@ -1,18 +1,17 @@
-# PgLens dev environment (Phase 0).
+# PgLens: its own store (metadata-db), the server and the dashboard — plus, in the `demo` profile, a
+# deliberately slow demo database (monitored-db) and the agent that watches it.
 #
-#   monitored-db : the "customer" database PgLens observes. Enables
-#                  pg_stat_statements + hypopg; seeded with deliberately slow
-#                  data (see demo/). Touched READ-ONLY by PgLens from Phase 2 on.
-#   metadata-db  : PgLens's own store (pgvector). Stands up now so the env is
-#                  complete; first used in Phase 2+.
+#   make up                                   everything, built from source, demo included
+#   make up-no-demo                           PgLens only, for your own databases (ADR-0053)
+#   docker compose up -d                      PgLens only, pulling the released images
+#   docker compose --profile demo up -d       … with the demo
 #
-# One command: `make up` (build from source + start + wait for health), or plain `docker compose up`,
-# which pulls the released images (ghcr.io/prateek-arora/pglens-*, version PGLENS_VERSION) and builds
-# any it can't pull (ADR-0050). Ports are exposed on non-default host ports so a local Postgres on
-# 5432 doesn't clash.
+# Released images: ghcr.io/prateek-arora/pglens-*, version PGLENS_VERSION; compose builds any it
+# can't pull (ADR-0050). Ports sit off the defaults so a local Postgres on 5432 doesn't clash.
 
 services:
   monitored-db:
+    profiles: ["demo"]
     build:
       context: ./monitored
     image: ghcr.io/prateek-arora/pglens-demo-db:${PGLENS_VERSION:-0.1.0-rc}
@@ -116,6 +115,8 @@ services:
       # (`docker compose logs server`). AUTH_MODE=none: one person on their own machine only.
       PGLENS_ADMIN_PASSWORD: ${PGLENS_ADMIN_PASSWORD:-}
       PGLENS_AUTH_MODE: ${PGLENS_AUTH_MODE:-required}
+      # Per-sample history kept this many days; the hourly rollup is kept (ADR-0053).
+      PGLENS_RETENTION_RAW_DAYS: ${PGLENS_RETENTION_RAW_DAYS:-35}
       # Plain-language explanations (Phase 3, ADR-0043) — off unless PGLENS_EXPLAIN_ENABLED=true.
       # Default endpoint: the `llm` profile below. Native Ollama on the host instead:
       # PGLENS_LLM_URL=http://host.docker.internal:11434/v1
@@ -146,6 +147,7 @@ services:
   # database through the API: `make register` after `make up` does that and writes the token into
   # deploy/compose/.env (until then the agent retries, logging UNAUTHENTICATED each cycle — non-fatal).
   agent:
+    profiles: ["demo"]
     build:
       context: ../..
       dockerfile: deploy/compose/java/Dockerfile
@@ -207,7 +209,8 @@ services:
     profiles: ["llm"]
     image: ollama/ollama:0.34.4
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      # This machine only: the model endpoint takes query text and has no login.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - llm-models:/root/.ollama
     healthcheck:

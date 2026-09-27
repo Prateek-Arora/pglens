@@ -36,9 +36,15 @@ public class KnowledgeStore {
   /** One passage of the bundled corpus. */
   record Chunk(String id, String url, String title, String text) {}
 
+  /** The vector size {@code knowledge_chunks.embedding} holds (V8): nomic-embed-text's. */
+  static final int DIMENSIONS = 768;
+
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
   private final OpenAiCompatibleClient client;
+  // An embedding model found to return vectors of another size: never embedded with again, so a
+  // paid hosted API isn't asked to embed the whole corpus every pass only for the insert to fail.
+  private volatile String unsupportedModel;
 
   public KnowledgeStore(JdbcTemplate jdbc, TransactionTemplate tx, OpenAiCompatibleClient client) {
     this.jdbc = jdbc;
@@ -48,6 +54,15 @@ public class KnowledgeStore {
 
   private String model() {
     return client.settings().embeddingModel();
+  }
+
+  private static String unsupported(String model) {
+    return "embedding model '"
+        + model
+        + "' doesn't return "
+        + DIMENSIONS
+        + "-dimension vectors, so the docs links are off; explanations still work. "
+        + "Set PGLENS_LLM_EMBEDDING_MODEL to nomic-embed-text (Ollama) to enable them";
   }
 
   /** True when every bundled passage is embedded for this corpus version and model. */
@@ -66,7 +81,15 @@ public class KnowledgeStore {
     if (loaded()) {
       return 0;
     }
+    if (model().equals(unsupportedModel)) {
+      throw new IllegalStateException(unsupported(model()));
+    }
     List<Chunk> chunks = corpus();
+    int size = client.embed(List.of("search_document: " + chunks.get(0).title())).get(0).length;
+    if (size != DIMENSIONS) {
+      unsupportedModel = model();
+      throw new IllegalStateException(unsupported(model()) + " (it returned " + size + ")");
+    }
     List<float[]> vectors = new ArrayList<>();
     for (int i = 0; i < chunks.size(); i += EMBED_BATCH) {
       List<String> batch = new ArrayList<>();

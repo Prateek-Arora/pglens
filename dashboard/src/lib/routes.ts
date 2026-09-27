@@ -14,6 +14,7 @@ function withQuery(path: string, query?: Record<string, string | undefined>): Ro
 }
 
 export const routes = {
+  overview: (query?: Record<string, string | undefined>) => withQuery("/", query),
   database: (db: string, query?: Record<string, string | undefined>) =>
     withQuery(`/db/${seg(db)}`, query),
   trends: (db: string, query?: Record<string, string | undefined>) =>

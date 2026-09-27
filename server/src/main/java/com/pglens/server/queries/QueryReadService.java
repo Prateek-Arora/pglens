@@ -4,9 +4,13 @@ import com.pglens.engine.detect.AntiPatternDetector;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.parse.PlanParser;
+import com.pglens.engine.rank.RankingScore;
 import com.pglens.server.advice.Confirm;
 import com.pglens.server.errors.Errors.NotFound;
+import com.pglens.server.impact.AppliedReadService;
+import com.pglens.server.impact.AppliedReadService.AppliedIndex;
 import com.pglens.server.persistence.CatalogRepository;
+import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.queries.QueryReadRepository.Row;
 import com.pglens.server.queries.QueryReadRepository.Sort;
 import com.pglens.server.queries.QueryReadRepository.StoredQuery;
@@ -45,7 +49,9 @@ public class QueryReadService {
   /**
    * One row of the leaderboard: a query's summed activity in the window. {@code recommendation} is
    * the best verdict among the indexes suggested for it — {@code PLANNER_VALIDATED}, {@code
-   * NOT_PLANNER_VALIDATED} (GIN/GiST: surfaced, not checkable by HypoPG) — or null for none.
+   * NOT_PLANNER_VALIDATED} (GIN/GiST: surfaced, not checkable by HypoPG) — or null for none. {@code
+   * estimatedMsSaved} is the window's measured time × the planner's cost drop for its best
+   * planner-validated index (an estimate; null without one).
    */
   public record LeaderboardEntry(
       String queryid,
@@ -58,7 +64,8 @@ public class QueryReadService {
       long sharedBlksHit,
       long sharedBlksRead,
       boolean planCaptured,
-      @Nullable String recommendation) {}
+      @Nullable String recommendation,
+      @Nullable Double estimatedMsSaved) {}
 
   public record Leaderboard(
       String window,
@@ -147,6 +154,7 @@ public class QueryReadService {
       @Nullable String planUnavailableReason,
       List<FindingView> findings,
       List<QueryRecommendation> recommendations,
+      List<AppliedIndex> applied,
       Confirm confirm) {}
 
   /**
@@ -163,15 +171,21 @@ public class QueryReadService {
   private final QueryReadRepository repo;
   private final CatalogRepository catalogs;
   private final TrendService trends;
+  private final AppliedReadService applied;
   private final Clock clock;
   private final PlanParser planParser = new PlanParser();
   private final AntiPatternDetector detector = new AntiPatternDetector();
 
   public QueryReadService(
-      QueryReadRepository repo, CatalogRepository catalogs, TrendService trends, Clock clock) {
+      QueryReadRepository repo,
+      CatalogRepository catalogs,
+      TrendService trends,
+      AppliedReadService applied,
+      Clock clock) {
     this.repo = repo;
     this.catalogs = catalogs;
     this.trends = trends;
+    this.applied = applied;
     this.clock = clock;
   }
 
@@ -219,6 +233,7 @@ public class QueryReadService {
         root == null ? planUnavailable(q) : null,
         findings,
         repo.recommendations(dbId, queryid).stream().map(QueryReadService::recommendation).toList(),
+        applied.forQuery(new MonitoredDb(dbId, database), queryid),
         Confirm.INSTANCE);
   }
 
@@ -328,7 +343,8 @@ public class QueryReadService {
         r.sharedBlksHit(),
         r.sharedBlksRead(),
         r.planCaptured(),
-        r.recommendation());
+        r.recommendation(),
+        r.bestDrop() == null ? null : RankingScore.drop(r.bestDrop()).value() * r.totalMs());
   }
 
   private static MeasuredTotals totals(Totals t) {

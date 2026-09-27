@@ -10,6 +10,24 @@ The first release candidate of the complete self-hosted tool: the web dashboard 
 agent, server, API and CLI.
 
 ### Added
+- **Overview** — the dashboard now opens on the impact across every database: measured query time,
+  how much of it is in queries with an index to try, the planner-estimated saving (hatched, marked
+  *est.*), what to fix first, an hourly chart, and indexes that were built with their measured
+  result. Charts on each database's slow-query and trends pages, with the busiest queries hour by
+  hour; each leaderboard row shows its estimated saving. API: `GET /overview`,
+  `/databases/{db}/timeline`, `/databases/{db}/applied`, `/system`.
+- **Built and measured** — when an index PgLens recommended appears on the database (any name, as
+  long as it serves the recommendation), the advice retires and PgLens compares each query's
+  **measured** mean time per call in the 7 days before against the time since, split at the sample
+  the index appeared in, once both sides have 10 calls (ADR-0051).
+- **Settings → Plain-language explanations** shows whether the template or a model writes them, the
+  model and its host, and how its last pass went; *About* shows the server's version.
+- **`make up-no-demo`** and the compose profile `demo`: plain `docker compose up` now starts PgLens
+  alone, for your own databases. [docs/operations.md](docs/operations.md) covers managed Postgres,
+  poolers, TLS, your own LLM, disk, backups and upgrades.
+- **Materialized views** are analysed like tables, with their existing indexes.
+- **Retention**: per-sample rows older than 35 days (`PGLENS_RETENTION_RAW_DAYS`) are deleted
+  hourly; the hourly rollup is kept (B26).
 - **Web dashboard** (Next.js): slow queries by measured time, a query page with the suggested
   index, how to measure it on a copy, the redlined plan, a plain-language explanation and the
   measured trend; recommendations across databases with index hygiene; trends; settings for
@@ -35,7 +53,22 @@ agent, server, API and CLI.
 - The dashboard said "nothing an index would fix" when PgLens's rules simply didn't match; it now
   says which patterns it checks and that expression and partial indexes aren't suggested yet.
 
+- **PgLens could make an application's writes fail behind a connection pooler.** Its read-only guard
+  was a session `SET`; through a transaction-mode pooler (PgBouncer, Supabase port 6543, Neon
+  `-pooler`) it stayed on a shared server connection and made the next client's transactions
+  read-only (reproduced on PgBouncer 1.24). The guards are now connection startup options, which a
+  pooler refuses, and PgLens stops with a message saying to connect directly (ADR-0053).
+- **Advice never went away.** Recommendations were only ever added: an index you built, a changed
+  plan, or an older engine's format stayed on the dashboard for good (it showed the same index
+  twice, and indexes on system catalogs). The analysis now retires advice the engine no longer
+  proposes, and plans are captured again when the database's indexes change (and hourly).
+- **Indexes on system catalogs** (from `pg_dump`'s own queries) are no longer proposed (B27).
+- A hosted embedding model with vectors of another size re-embedded the whole docs corpus every
+  pass; it is now detected once and the docs links are turned off.
+
 ### Changed
+- The dashboard's home page is the overview; the header's first link is *Overview*.
+- The Ollama service's port listens on `127.0.0.1` only.
 - The demo and metadata databases listen on `127.0.0.1` only (they use a default password).
 - The dev TLS certificate also names `host.docker.internal`, and is re-issued when the requested
   names change — an agent on another machine then needs the new `ca.pem`.
@@ -44,8 +77,10 @@ agent, server, API and CLI.
 - One version everywhere (`0.1.0-rc`), checked in CI.
 
 ### Upgrading from 0.0.7
-Run `make up`: history carries over (migration V11). Copy the re-issued `ca.pem` to any agent on
-another machine.
+Run `make up`: history carries over (migrations V11–V14; the first analysis pass then removes
+stale and system-catalog advice). Copy the re-issued `ca.pem` to any agent on another machine.
+Plain `docker compose up` no longer starts the demo database and agent — add `--profile demo`, or
+use `make up`.
 
 ## [0.0.7] — 2026-09-26
 Spring Boot 4.1; TLS between agent and server; the HTTP API with logins, read-only API tokens and

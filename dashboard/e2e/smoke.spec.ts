@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill(password!);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Databases", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
 }
 
 async function expectAccessible(page: Page) {
@@ -34,6 +34,7 @@ test("an admin adds a database, gets its agent token once, and deletes it", asyn
   await signIn(page);
   await expectAccessible(page);
 
+  await page.locator("summary", { hasText: "Add a database" }).click();
   await page.getByLabel("Name").fill(name);
   await page.getByRole("button", { name: "Add database" }).click();
   const created = page.getByRole("status").filter({ hasText: `Registered ${name}` });
@@ -78,6 +79,16 @@ test("the demo database's data appears, down to a query and its index", async ({
   }).toPass({ timeout: 240_000, intervals: [10_000] });
   await expect(page.getByRole("table").locator('[data-kind="measured"]').first()).toBeVisible();
   await expectAccessible(page);
+
+  // The overview leads with the impact: measured time, the estimate beside it, what to fix first.
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Where the time went" })).toBeVisible();
+  await expect(page.getByText("Planner-estimated saving", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "What to fix first" }).getByRole("listitem").first(),
+  ).toContainText("CREATE INDEX");
+  await expectAccessible(page);
+  await page.goto(`/db/${demo}?window=24h`);
 
   await validated.first().getByRole("link").click();
   await expect(page.getByRole("heading", { name: "Suggested index" })).toBeVisible();

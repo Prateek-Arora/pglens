@@ -2,7 +2,7 @@
 
 > **Living status doc — the external memory that lets any session recover context fast.** Update the *Current focus* and *Phase tracker* after every meaningful change. This is the first file to read at session start.
 
-_Last updated: 2026-09-26_
+_Last updated: 2026-09-27_
 
 ## Current focus
 **Phases 0–2.6 ✅ SHIPPED** — `v0.0.1` (CLI engine), `v0.0.2` (gRPC agent → server → history), `v0.0.3` (Phase-2 hardening, ADR-0035; PR #6 merged, tagged), `v0.0.4` (Phase 2.5 accuracy sprint + the plan-review fixes; merged, tagged), `v0.0.5` (JOB benchmark follow-ups + Phase 2.6 `pglens confirm`; PR #8 merged, tagged). Full detail per step is in the session log below and `docs/phases/phase_{0,1,2}.md`.
@@ -46,10 +46,15 @@ _Last updated: 2026-09-26_
   - A revoked schema showed its reason in the API, and the plan arrived 49 s after the GRANT with no restart. The server listed 7 correct recommendations.
 - **Fresh-copy quickstart (Docker only, warm build cache):** dashboard at 46 s, data and recommendations at 85 s; a cold Java image build adds ~95 s.
 
-**Next:** the user reviews → commit/PR (CI runs the dashboard, e2e and new Java-image jobs for the first time). **Before tagging `v0.1.0-rc`:**
-- Pin Next **16.3.7**; the security release is due 2026-09-30.
-- Enable GitHub private vulnerability reporting (`SECURITY.md` points to it).
-- After the first tag: make the five GHCR packages public, then publish the drafted release by hand.
+**2026-09-27 — pre-release review → Step 12 "release hardening" (ADR-0051, ADR-0052, ADR-0053).** A second release check found the loop broken at its last step and a safety bug:
+- **Advice never retired:** a built index stayed recommended forever (and old-format / `pg_catalog` advice showed twice). Now the analysis pass retires what the engine no longer proposes, keeps it as **applied** when a serving index appeared after it, and the dashboard shows the query's **measured** mean before and after (split exactly at the sample the index appeared in; hourly past raw retention; a rebuilt index's before starts at `active_since`, V14; ≥ 10 calls a side). Plans are re-captured when indexes change (and hourly). Live on the demo: drop → re-advised in 7 s; rebuild → applied in 16 s; `orders(customer_id)` measured **7.66 → 3.29 ms (−57 %)** on its query, no clear change on the two joins — matching `pglens confirm`.
+- **Pooler leak (safety):** the session `SET … READ ONLY` leaked through PgBouncer transaction mode and made the next client's writes fail (reproduced). Guards are now connection startup options; a pooler is refused with a clear message (`ConnectionPoolerIntegrationTest`, real PgBouncer).
+- **Sells itself:** `/` is an impact **Overview** (measured time, share with an index to try, hatched planner estimate, what to fix first, built and measured, hourly columns); charts on slow queries and trends (sparklines); est. saved per leaderboard row; Settings shows LLM status and versions. README rewritten around screenshots; `docs/operations.md`, `docs/cli.md`, `docs/api.md`; issue/PR templates, code of conduct.
+- **Ops:** compose profile `demo` + `make up-no-demo`; 35-day raw retention (B26); `agent_hours` (V13) tells zero load from a gap; no catalog-table advice (B27); embedding-size guard; Ollama on 127.0.0.1; LLM + retention settings in `.env.example`.
+
+**Verified (2026-09-27):** Java full forced run **486 tests, 0 failures** (engine 165 + 45 IT, server 41 + 82 IT, agent 24, CLI 11, explain 118); PG17 and PG18 integration **124/124** each; dashboard format/lint/typecheck clean, 31 unit tests, production build, audit clean; **e2e 5/5** (overview included); every page screenshotted at 1440/390 px in both themes, axe clean. `make bench-api`: every endpoint < 60 ms p95 (overview 30 d 53.6 ms). Stranger path on a copy of the tree: `make up-no-demo` → TLS-only Postgres (hostssl only) with an app-style schema prepared by the documented SQL → registered via the API → agent started with the dashboard's exact commands (`sslmode=require`) → schema-qualified quoted advice → pasted DDL built → marked applied; LLM mode (Ollama `qwen3.5:4b`) wrote checked explanations, shown in Settings. Upgrade path V11 → V13 on the dev stack's real history.
+
+**Next (all external — drafted, not taken, principle 5):** commit + push to PR #11; after merge, when Next **16.3.7** is published (due 2026-09-30) pin it; enable GitHub private vulnerability reporting (+ Dependabot alerts, secret scanning, branch protection, repo description/topics); tag `v0.1.0-rc` → `release.yml` pushes images and drafts the release → make the five GHCR packages public → publish the draft by hand. Then announce.
 
 GraphQL (Step 10) is optional and cut first. **Pre-commitment (flexibility, 2026-09-26):** the dashboard must show a full explanation with **no LLM configured** — compute the template on read (`TemplateExplainer` is pure; `ExplanationInputs` is always on) and use a cached LLM row only when one exists, labeled with its source; every page works with the explain job off. Teach-back deferred to the end of Phase 4 (4A + 4B together). Optional: the user spot-checks 6 of Claude's M3/M4 gradings (`docs/llm-eval.md`).
 
@@ -82,7 +87,7 @@ OSS, self-hosted Postgres slow-query & index advisor with HypoPG-validated index
 | 2.5 | Recommendation Accuracy Sprint | ✅ done | Value-range floors, footprint + write load, overlap cross-validation, TPC-H accuracy benchmark (11/14 pinned → 6/14 under server settings, ADR-0041) | `v0.0.4` ✅ |
 | 2.6 | Confirm on a Copy (measured index checks) | ✅ done (ADR-0042) | `pglens confirm`: build recommended indexes on a user-marked scratch copy, run real statements, report measured verdicts | `v0.0.5` ✅ |
 | 3 | Plain-Language Explanations (local LLM, grounded + checked) | ✅ shipped `v0.0.6` | Grounded plain-language explanations (local LLM, guardrailed) | `v0.0.6` (was `v0.0.5`; moved by Phase 2.6) |
-| 4 | Dashboard (Next.js) | 🚧 4A shipped (`v0.0.7`); 4B built + release-readiness Step 11 done (ADR-0049/0050), uncommitted | Leaderboard, plan viewer, recs, trends (+opt GraphQL) | `v0.1.0-rc` ← **ship here** |
+| 4 | Dashboard (Next.js) | 🚧 4A shipped (`v0.0.7`); 4B built + Step 11 (ADR-0049/0050) + Step 12 release hardening (ADR-0051–0053) done — on PR #11, Step 12 uncommitted | Leaderboard, plan viewer, recs, trends (+opt GraphQL) | `v0.1.0-rc` ← **ship here** |
 | 5 | Containerize + Kubernetes + Helm | ⬜ (v0.2) | `helm install pglens` on kind/k3d | — |
 | 6 | IaC + Cloud Deploy + Hardening | ⬜ (v0.2) | Terraform → free-tier + Neon; self-observability; opt OIDC | — |
 | 7 | Launch & Community | ⬜ (v0.2) | README, benchmarks, demo, `v0.1.0`, launch drafts | `v0.1.0` |

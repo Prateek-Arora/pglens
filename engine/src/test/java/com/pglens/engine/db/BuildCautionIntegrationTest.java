@@ -59,9 +59,9 @@ class BuildCautionIntegrationTest {
 
     jdbc =
         new JdbcTemplate(
-            DataSources.forScan(
+            DataSources.guarded(
                 new ConnectionTarget(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword(), "t")));
-    DataSources.applySessionGuards(jdbc);
+    DataSources.verifySessionGuards(jdbc);
   }
 
   private static ValidationResult validate(String sql, String table, String column) {

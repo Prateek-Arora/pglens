@@ -34,16 +34,19 @@ public final class AntiPatternDetector {
     this.rules = List.copyOf(rules);
   }
 
-  /** Every finding across all rules, in rule order. */
+  /** Every finding across all rules, in rule order, on tables an index can be built on. */
   public List<Finding> detect(PlanNode plan, CatalogSnapshot catalog) {
     if (plan == null) {
       return List.of();
     }
-    PlanContext ctx = new PlanContext(plan, catalog == null ? CatalogSnapshot.empty() : catalog);
+    CatalogSnapshot snapshot = catalog == null ? CatalogSnapshot.empty() : catalog;
+    PlanContext ctx = new PlanContext(plan, snapshot);
     List<Finding> all = new ArrayList<>();
     for (Rule rule : rules) {
       all.addAll(rule.evaluate(ctx));
     }
+    // Only tables an index can be built on: never system catalogs (B27).
+    all.removeIf(f -> !snapshot.indexable(f.table()));
     return all;
   }
 }

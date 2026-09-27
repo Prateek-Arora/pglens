@@ -2,6 +2,12 @@
 
 Human- and agent-facing project docs. Start here:
 
+**Using PgLens:** [operations.md](operations.md) (running it for your own databases) ·
+[cli.md](cli.md) (`pglens scan` / `confirm` / `--plain`) · [api.md](api.md) (the HTTP API) ·
+[benchmarks.md](benchmarks.md) (how accurate and how fast, measured).
+
+**Building PgLens:**
+
 - **[project.md](project.md)** — status, scope, phase tracker, current focus (read first).
 - **[architecture.md](architecture.md)** — end-state architecture & design choices.
 - **[decisions.md](decisions.md)** — decision log (ADRs) — the *why*.

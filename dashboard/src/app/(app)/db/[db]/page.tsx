@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-import { Count, Measured } from "@/components/numbers";
+import { ChartLegend, dbPoints } from "@/components/impact/impact";
+import { TimeChart } from "@/components/impact/time-chart";
+import { Count, Estimate, Measured } from "@/components/numbers";
 import { StatusBadge } from "@/components/recommendations";
 import { METRIC_INK, ScaleBar, ScaleRuler, type Metric } from "@/components/scale-bar";
 import { SqlInline } from "@/components/sql";
@@ -49,14 +51,22 @@ export default async function LeaderboardPage({ params, searchParams }: PageProp
   const sort: Sort = SORTS.find((s) => s.value === sp.sort)?.value ?? "total";
   const page = Math.max(1, Number.parseInt(String(sp.page ?? "1"), 10) || 1);
 
-  const board = await read(
-    (await api()).GET("/api/v1/databases/{db}/queries", {
-      params: {
-        path: { db },
-        query: { window, sort, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE },
-      },
-    }),
-  );
+  const client = await api();
+  const [board, timeline] = await Promise.all([
+    read(
+      client.GET("/api/v1/databases/{db}/queries", {
+        params: {
+          path: { db },
+          query: { window, sort, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE },
+        },
+      }),
+    ),
+    read(
+      client.GET("/api/v1/databases/{db}/timeline", {
+        params: { path: { db }, query: { window, series: 1 } },
+      }),
+    ),
+  ]);
   // Changing the window or sort starts again at page 1 (no `page` parameter).
   const href = (change: Record<string, string>) => {
     const next: Record<string, string | undefined> = { window, sort, ...change };
@@ -116,6 +126,12 @@ export default async function LeaderboardPage({ params, searchParams }: PageProp
           <code className="font-mono text-[0.92em]">pg_stat_statements</code>, measured
         </Field>
       </dl>
+      {timeline.points.some((p) => p.sampled && p.measuredTotalMs > 0) && (
+        <div className="sheet space-y-2 px-5 pt-4 pb-2">
+          <ChartLegend />
+          <TimeChart points={dbPoints(timeline.points)} height={200} />
+        </div>
+      )}
       {board.items.length === 0 ? (
         <div className="sheet p-6 text-sm">
           <p className="font-medium">No query activity in this window yet.</p>
@@ -180,8 +196,9 @@ export default async function LeaderboardPage({ params, searchParams }: PageProp
                   </div>
                 </dl>
                 {q.recommendation ? (
-                  <div className="ml-8">
+                  <div className="ml-8 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                     <StatusBadge status={q.recommendation} />
+                    {q.estimatedMsSaved !== null && <Saved ms={q.estimatedMsSaved} />}
                   </div>
                 ) : null}
               </li>
@@ -258,7 +275,12 @@ export default async function LeaderboardPage({ params, searchParams }: PageProp
                       <Count value={q.rows} what="Rows returned or affected in this window" />
                     </TableCell>
                     <TableCell className="pr-4 align-top">
-                      {q.recommendation ? <StatusBadge status={q.recommendation} /> : null}
+                      {q.recommendation ? (
+                        <div className="flex flex-col items-start gap-1 text-sm">
+                          <StatusBadge status={q.recommendation} />
+                          {q.estimatedMsSaved !== null && <Saved ms={q.estimatedMsSaved} />}
+                        </div>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -286,6 +308,22 @@ export default async function LeaderboardPage({ params, searchParams }: PageProp
         </nav>
       )}
     </section>
+  );
+}
+
+/** The window's measured time × the planner's drop for the query's best index. */
+function Saved({ ms }: { ms: number }) {
+  return (
+    <span className="text-muted-foreground whitespace-nowrap">
+      <span className="text-foreground">
+        <Estimate
+          value={ms}
+          unit="ms"
+          what="This window's measured time scaled by the planner's cost drop for the best index — not a measured speedup"
+        />
+      </span>{" "}
+      saved
+    </span>
   );
 }
 

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in PgLens is wrong or broken.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! A security problem? Please don't file it here — see SECURITY.md.
+        **Redact anything private** before posting: query text, table names, hosts, tokens.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      placeholder: "1. … 2. … 3. …"
+  - type: input
+    id: version
+    attributes:
+      label: PgLens version
+      description: "Dashboard → Settings → About shows the dashboard's and the server's."
+      placeholder: "0.1.0-rc"
+    validations:
+      required: true
+  - type: input
+    id: postgres
+    attributes:
+      label: Monitored PostgreSQL
+      description: "Major version and where it runs (self-hosted, RDS, Cloud SQL, Neon, Supabase…), and whether hypopg is installed."
+      placeholder: "17.6 on RDS, hypopg 1.4.1"
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Dashboard, Server / API, Agent, CLI (scan / confirm / explain), Explanations (LLM), Install / compose, Docs]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "e.g. `docker compose -f deploy/compose/docker-compose.yml logs server agent --tail 200` — redacted."
+      render: text

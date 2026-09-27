@@ -12,6 +12,7 @@ import com.pglens.engine.parse.PlanParser;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -288,6 +289,21 @@ class AntiPatternDetectorTest {
                 .generate(findings).stream().map(c -> c.ddl()).toList())
         .containsExactly(
             "CREATE INDEX idx_inv_d ON inv (d);", "CREATE INDEX idx_inv_acct ON inv (acct);");
+  }
+
+  @Test
+  void neverFindsAnythingOnSystemCatalogs() {
+    // pg_dump's security-label query (B27): its seq scans and joins are all on pg_catalog.
+    PlanNode plan = parse("pg_dump_seclabels.json");
+    CatalogSnapshot userTables = catalog(table("orders", 400_000, pk("orders", "id")));
+    List<Finding> raw = new ArrayList<>();
+    for (Rule rule : List.of(new SelectiveSeqScanRule(), new UnindexedJoinRule())) {
+      raw.addAll(rule.evaluate(new PlanContext(plan, CatalogSnapshot.empty())));
+    }
+    assertThat(raw).as("the rules alone flag catalog tables").isNotEmpty();
+
+    assertThat(new AntiPatternDetector().detect(plan, userTables)).isEmpty();
+    assertThat(new AntiPatternDetector().detect(plan, CatalogSnapshot.empty())).isEmpty();
   }
 
   private List<Finding> only(Rule rule, PlanNode plan, CatalogSnapshot catalog) {

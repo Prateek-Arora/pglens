@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { CheckIcon } from "lucide-react";
+import { AppliedIndexCard } from "@/components/impact/impact";
 import type { ReactNode } from "react";
 
 import { ConfirmBox } from "@/components/confirm-box";
@@ -103,13 +105,34 @@ export default async function QueryPage({
           <ConfirmBox confirm={q.confirm} />
         </div>
       )}
+      {q.applied.length > 0 && (
+        <section aria-labelledby="built" className="sheet border-success/40 space-y-4 p-5">
+          <h2 id="built" className="flex items-center gap-2 text-base font-semibold">
+            <CheckIcon aria-hidden className="text-success size-4" />
+            Built and measured
+          </h2>
+          {q.applied.map((a) => (
+            <AppliedIndexCard key={a.ddl} applied={a} />
+          ))}
+          <p className="text-muted-foreground text-[13px]">
+            Measured by pg_stat_statements before and after PgLens first saw the index — a
+            before/after comparison, not a controlled experiment.
+          </p>
+        </section>
+      )}
 
       <section aria-labelledby="plan" id="plan-section" className="scroll-mt-4 space-y-2">
         <h3 id="plan" className="text-base font-semibold">
           Plan
         </h3>
         {q.plan ? (
-          <div className="sheet overflow-x-auto p-4">
+          <div
+            // Focusable and named, so keyboard users can scroll a deep plan on a narrow screen.
+            tabIndex={0}
+            role="region"
+            aria-label="Estimated plan, scrollable"
+            className="sheet overflow-x-auto p-4"
+          >
             <PlanTree plan={q.plan} findings={q.findings} />
           </div>
         ) : (
@@ -372,7 +395,12 @@ function TotalsTable({
     { label: "Rows", cell: (t) => <Count value={t.rows} what="Rows returned or affected" /> },
   ];
   return (
-    <div className="sheet max-w-2xl overflow-x-auto">
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Measured totals, scrollable"
+      className="sheet max-w-2xl overflow-x-auto"
+    >
       <table className="w-full text-sm">
         <thead className="bg-muted/60">
           <tr>

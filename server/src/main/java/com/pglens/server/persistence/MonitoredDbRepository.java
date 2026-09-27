@@ -108,10 +108,14 @@ public class MonitoredDbRepository {
 
   /** Called once per accepted ingest batch, in the batch's transaction. */
   public void recordIngest(long dbId, Instant at) {
+    OffsetDateTime utc = OffsetDateTime.ofInstant(at, ZoneOffset.UTC);
+    jdbc.update("UPDATE monitored_dbs SET last_ingest_at = ? WHERE id = ?", utc, dbId);
+    // The hour counts as reported: no query rows in it then mean zero load, not a gap (V13).
     jdbc.update(
-        "UPDATE monitored_dbs SET last_ingest_at = ? WHERE id = ?",
-        OffsetDateTime.ofInstant(at, ZoneOffset.UTC),
-        dbId);
+        "INSERT INTO agent_hours (db_id, hour) VALUES (?, date_trunc('hour', ?::timestamptz, 'UTC')) "
+            + "ON CONFLICT DO NOTHING",
+        dbId,
+        utc);
   }
 
   private static Registration registration(java.sql.ResultSet rs) throws java.sql.SQLException {

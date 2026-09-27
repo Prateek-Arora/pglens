@@ -38,6 +38,7 @@ import io.grpc.ManagedChannel;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -150,7 +151,7 @@ class ReadApiIntegrationTest {
     su.execute("SELECT pg_stat_statements_reset()");
 
     monitoredDbs.register(DB, "monitored-db", Tokens.sha256Hex(TOKEN));
-    agentDs = DataSources.forScan(target);
+    agentDs = DataSources.guarded(target); // the agent's real, guarded connection
     JdbcTemplate agentJdbc = new JdbcTemplate(agentDs);
     PglensAgentProperties props = new PglensAgentProperties();
     props.setDbName(DB);
@@ -242,6 +243,61 @@ class ReadApiIntegrationTest {
           .andExpect(status().isBadRequest())
           .andExpect(jsonPath("$.detail").isNotEmpty());
     }
+  }
+
+  @Test
+  void theOverviewTimelineAppliedAndSystemStatusRead() throws Exception {
+    String q = Long.toString(ordersQueryId);
+    // Leaderboard: the window's measured time × the planner's drop, only where an index validated.
+    String board = body(authed(get(API + "/queries?window=24h"), admin));
+    assertThat(
+            JsonPath.<List<Double>>read(
+                board, "$.items[?(@.queryid == '" + q + "')].estimatedMsSaved"))
+        .singleElement()
+        .satisfies(ms -> assertThat(ms).isPositive());
+
+    String overview =
+        body(
+            authed(get("/api/v1/overview?window=24h"), admin),
+            jsonPath("$.window").value("24h"),
+            jsonPath("$.databases[0].name").value(DB),
+            jsonPath("$.databases[0].agent").value("CONNECTED"),
+            jsonPath("$.measuredTotalMs").value(greaterThan(0.0), Double.class),
+            jsonPath("$.estimatedMsSaved").value(greaterThan(0.0), Double.class),
+            jsonPath("$.indexesToConsider").value(greaterThan(0)),
+            jsonPath("$.notPlannerValidated").value(greaterThan(0)),
+            jsonPath("$.topRecommendations").isNotEmpty(),
+            jsonPath("$.applied").isEmpty(),
+            jsonPath("$.appliedCaveat").value(containsString("not a controlled experiment")),
+            jsonPath("$.confirm.caveat").isNotEmpty());
+    double total = JsonPath.read(overview, "$.measuredTotalMs");
+    double advised = JsonPath.read(overview, "$.measuredMsWithAdvice");
+    double saved = JsonPath.read(overview, "$.estimatedMsSaved");
+    assertThat(advised).isPositive().isLessThanOrEqualTo(total);
+    assertThat(saved).isPositive().isLessThanOrEqualTo(advised);
+    List<Object> timeline = JsonPath.read(overview, "$.timeline");
+    assertThat(timeline).hasSizeBetween(24, 26); // one point per UTC hour in the window
+    List<Number> hourly = JsonPath.read(overview, "$.timeline[*].measuredTotalMs");
+    assertThat(hourly.stream().filter(Objects::nonNull).mapToDouble(Number::doubleValue).sum())
+        .isCloseTo(total, org.assertj.core.api.Assertions.within(0.001));
+
+    String series =
+        body(
+            authed(get(API + "/timeline?window=24h&series=2"), admin),
+            jsonPath("$.series.length()").value(2),
+            jsonPath("$.series[0].measuredTotalMs").value(greaterThan(0.0), Double.class));
+    List<Boolean> sampled = JsonPath.read(series, "$.points[*].sampled");
+    assertThat(sampled).contains(true);
+
+    mvc.perform(authed(get(API + "/applied"), admin))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.items").isEmpty())
+        .andExpect(jsonPath("$.caveat").isNotEmpty());
+    mvc.perform(authed(get("/api/v1/system"), admin))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.version").isNotEmpty())
+        .andExpect(jsonPath("$.explanations.mode").value("TEMPLATE"));
+    mvc.perform(get("/api/v1/overview")).andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -417,7 +473,11 @@ class ReadApiIntegrationTest {
             API + "/queries",
             API + "/queries/" + ordersQueryId,
             API + "/recommendations",
-            "/api/v1/recommendations")) {
+            API + "/timeline",
+            API + "/applied",
+            "/api/v1/recommendations",
+            "/api/v1/overview",
+            "/api/v1/system")) {
       mvc.perform(authed(get(path), apiToken)).andExpect(status().isOk());
     }
     mvc.perform(get(API + "/queries")).andExpect(status().isUnauthorized());

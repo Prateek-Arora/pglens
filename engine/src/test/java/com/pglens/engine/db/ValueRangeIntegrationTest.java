@@ -63,10 +63,10 @@ class ValueRangeIntegrationTest {
     // The validator itself runs the way PgLens always does: read-only session guards.
     jdbc =
         new JdbcTemplate(
-            DataSources.forScan(
+            DataSources.guarded(
                 new ConnectionTarget(
                     DB.getJdbcUrl(), DB.getUsername(), DB.getPassword(), "pglens_demo")));
-    DataSources.applySessionGuards(jdbc);
+    DataSources.verifySessionGuards(jdbc);
   }
 
   private static ValidationResult validate(String sql, String table, String column) {

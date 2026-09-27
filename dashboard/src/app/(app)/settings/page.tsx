@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { api, currentUser, read } from "@/lib/api/server";
 import { formatUtc } from "@/lib/format";
+import { PGLENS_VERSION } from "@/lib/release";
 import {
   changePassword,
   createApiToken,
@@ -24,11 +25,13 @@ export default async function SettingsPage() {
   const client = await api();
   const signedIn = me.via === "SESSION";
   const admin = me.role === "ADMIN";
-  const [tokens, users, databases] = await Promise.all([
+  const [tokens, users, databases, system] = await Promise.all([
     signedIn ? read(client.GET("/api/v1/api-tokens")) : Promise.resolve([]),
     admin && signedIn ? read(client.GET("/api/v1/users")) : Promise.resolve([]),
     admin ? read(client.GET("/api/v1/databases")) : Promise.resolve([]),
+    read(client.GET("/api/v1/system")),
   ]);
+  const ex = system.explanations;
 
   return (
     <div className="max-w-5xl space-y-5">
@@ -184,6 +187,100 @@ export default async function SettingsPage() {
           )}
         </Section>
       )}
+      <Section
+        id="explanations"
+        title="Plain-language explanations"
+        intro="How the “In plain language” text on each query is written. The analysis never depends on it."
+      >
+        {ex.mode === "TEMPLATE" ? (
+          <div className="space-y-2 text-sm">
+            <p>
+              <span className="font-medium">PgLens&apos;s own template</span> — no model is
+              configured, so every explanation is PgLens&apos;s fixed wording and every number in it
+              is exact.
+            </p>
+            <p className="text-muted-foreground">
+              To let a model rewrite them, set{" "}
+              <code className="font-mono">PGLENS_EXPLAIN_ENABLED=true</code> and{" "}
+              <code className="font-mono">PGLENS_LLM_URL</code> /{" "}
+              <code className="font-mono">PGLENS_LLM_MODEL</code> for any OpenAI-compatible endpoint
+              (Ollama, llama.cpp, vLLM, LM Studio; a hosted API also needs{" "}
+              <code className="font-mono">PGLENS_LLM_API_KEY</code> and{" "}
+              <code className="font-mono">PGLENS_LLM_ALLOW_REMOTE=true</code>) in{" "}
+              <code className="font-mono">deploy/compose/.env</code>, then restart the server.
+              PgLens checks every answer and falls back to the template.
+            </p>
+          </div>
+        ) : (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+            <dt className="text-muted-foreground">Model</dt>
+            <dd className="font-mono text-[13px]">{ex.model}</dd>
+            <dt className="text-muted-foreground">Endpoint</dt>
+            <dd>
+              <span className="font-mono text-[13px]">{ex.endpointHost}</span>{" "}
+              <span className="text-muted-foreground">
+                {ex.remote
+                  ? "— outside this network: query text is sent to it"
+                  : "— on this machine or private network"}
+              </span>
+            </dd>
+            <dt className="text-muted-foreground">Last pass</dt>
+            <dd>
+              {ex.lastPassAt ? (
+                <>
+                  {formatUtc(ex.lastPassAt)}: {ex.lastPassWritten} written,{" "}
+                  {ex.lastPassTemplateFallbacks} fell back to the template
+                  {ex.lastFallbackReason && (
+                    <span className="text-muted-foreground"> (last: {ex.lastFallbackReason})</span>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  not run yet (the first runs a minute after start)
+                </span>
+              )}
+            </dd>
+            <dt className="text-muted-foreground">Written so far</dt>
+            <dd>
+              {ex.writtenByModel} by the model, {ex.writtenByTemplate} by the template
+            </dd>
+            {ex.docsProblem && (
+              <>
+                <dt className="text-muted-foreground">Docs links</dt>
+                <dd className="text-muted-foreground">{ex.docsProblem}</dd>
+              </>
+            )}
+          </dl>
+        )}
+      </Section>
+
+      <Section id="about" title="About">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">Dashboard</dt>
+          <dd className="font-mono text-[13px]">{PGLENS_VERSION}</dd>
+          <dt className="text-muted-foreground">Server</dt>
+          <dd className="font-mono text-[13px]">
+            {system.version ?? "unknown"}
+            {system.version && system.version !== PGLENS_VERSION && (
+              <span className="text-destructive ml-2 font-sans">
+                differs from the dashboard — run the same release of both
+              </span>
+            )}
+          </dd>
+          <dt className="text-muted-foreground">Source</dt>
+          <dd>
+            <a
+              href="https://github.com/Prateek-Arora/pglens"
+              className="underline underline-offset-4"
+              target="_blank"
+              rel="noreferrer"
+            >
+              github.com/Prateek-Arora/pglens
+            </a>{" "}
+            <span className="text-muted-foreground">· Apache-2.0</span>
+          </dd>
+        </dl>
+      </Section>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { CopyButton } from "@/components/copy-button";
 import { AGENT_IMAGE } from "@/lib/release";
 
-const README = "https://github.com/Prateek-Arora/pglens#monitor-your-own-database";
+const README =
+  "https://github.com/Prateek-Arora/pglens/blob/main/docs/operations.md#2-prepare-each-database";
 
 /**
  * How to start an agent for a newly registered database. The token appears here once; PgLens only
@@ -17,7 +18,7 @@ export function AgentSnippet({ name, token }: { name: string; token: string }) {
     "PGLENS_SERVER_CA_CERT=/certs/ca.pem",
   ].join("\n");
   const ca =
-    "docker compose -f deploy/compose/docker-compose.yml exec agent cat /certs/ca.pem > ca.pem";
+    "docker compose -f deploy/compose/docker-compose.yml run --rm --no-deps --entrypoint cat certs /certs/ca/ca.pem > ca.pem";
   const run = `docker run -d --name pglens-agent-${name} --restart unless-stopped --add-host=host.docker.internal:host-gateway --env-file agent.env -v "$PWD/ca.pem:/certs/ca.pem:ro" ${AGENT_IMAGE}`;
   return (
     <div className="space-y-3 text-sm">
@@ -31,7 +32,7 @@ export function AgentSnippet({ name, token }: { name: string; token: string }) {
         <code>hypopg</code> to check indexes), and the role needs <code>pg_read_all_stats</code>,{" "}
         <code>USAGE</code> on each schema and <code>SELECT</code> on its tables —{" "}
         <a href={README} className="underline underline-offset-4" target="_blank" rel="noreferrer">
-          the README has the grants
+          the grants are in the operations guide
         </a>
         . On the same machine as PgLens, use <code>host.docker.internal</code> for a host.
       </p>

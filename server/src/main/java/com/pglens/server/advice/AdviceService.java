@@ -33,7 +33,7 @@ public class AdviceService {
         jdbc.query(
             "SELECT ddl, access_method, queryid, estimated_ms_saved, score_basis, relative_drop, "
                 + "range_label, footprint_label, build_caution FROM recommendations "
-                + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED'",
+                + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED' AND applied_at IS NULL",
             (rs, n) ->
                 new AdviceAssembler.ValidatedRow(
                     rs.getString("ddl"),

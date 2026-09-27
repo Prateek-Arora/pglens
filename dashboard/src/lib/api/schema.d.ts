@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/databases/{db}/applied": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["applied"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/databases/{db}/hygiene": {
         parameters: {
             query?: never;
@@ -196,6 +212,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/databases/{db}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["timeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/databases/{db}/top-movers": {
         parameters: {
             query?: never;
@@ -292,6 +324,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recommendations": {
         parameters: {
             query?: never;
@@ -300,6 +348,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["acrossDatabases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["system"];
         put?: never;
         post?: never;
         delete?: never;
@@ -377,6 +441,37 @@ export interface components {
             lastUsedAt: string | null;
             name: string;
         };
+        Applied: {
+            caveat: string;
+            database: string;
+            items: components["schemas"]["AppliedIndex"][];
+        };
+        AppliedIndex: {
+            /** Format: date-time */
+            appliedAt: string;
+            database: string;
+            ddl: string;
+            index: string;
+            queries: components["schemas"]["AppliedQuery"][];
+            table: string | null;
+        };
+        AppliedQuery: {
+            /** Format: int64 */
+            callsAfter: number;
+            /** Format: int64 */
+            callsBefore: number;
+            /** Format: double */
+            measuredChangeFraction: number | null;
+            /** Format: double */
+            measuredMeanMsAfter: number | null;
+            /** Format: double */
+            measuredMeanMsBefore: number | null;
+            /** Format: double */
+            plannerCostDropFraction: number | null;
+            queryid: string;
+            sqlPreview: string | null;
+            status: string;
+        };
         Confirm: {
             caveat: string;
             command: string;
@@ -394,6 +489,67 @@ export interface components {
             /** Format: date-time */
             lastIngestAt: string | null;
             name: string;
+        };
+        DatabaseSummary: {
+            /** @enum {string} */
+            agent: "NEVER_CONNECTED" | "CONNECTED" | "STALE";
+            /** Format: int32 */
+            appliedIndexes: number;
+            /** Format: int64 */
+            calls: number;
+            /** Format: double */
+            estimatedMsSaved: number;
+            /** Format: int32 */
+            indexesToConsider: number;
+            /** Format: date-time */
+            lastSampleAt: string | null;
+            /** Format: double */
+            measuredMsWithAdvice: number;
+            /** Format: double */
+            measuredTotalMs: number;
+            name: string;
+            /** Format: int64 */
+            queries: number;
+        };
+        DbTimeline: {
+            database: string;
+            /** Format: date-time */
+            from: string;
+            points: components["schemas"]["DbTimelinePoint"][];
+            series: components["schemas"]["Series"][];
+            /** Format: date-time */
+            to: string;
+            window: string;
+        };
+        DbTimelinePoint: {
+            /** Format: double */
+            estimatedMsSaved: number;
+            /** Format: date-time */
+            hour: string;
+            measuredMsBySeries: number[];
+            /** Format: double */
+            measuredMsWithAdvice: number;
+            /** Format: double */
+            measuredTotalMs: number;
+            sampled: boolean;
+        };
+        ExplanationSetup: {
+            docsProblem: string | null;
+            endpointHost: string | null;
+            lastFallbackReason: string | null;
+            /** Format: date-time */
+            lastPassAt: string | null;
+            /** Format: int32 */
+            lastPassTemplateFallbacks: number | null;
+            /** Format: int32 */
+            lastPassWritten: number | null;
+            mode: string;
+            model: string | null;
+            remote: boolean;
+            /** Format: int64 */
+            writtenByModel: number;
+            /** Format: int64 */
+            writtenByTemplate: number;
         };
         ExplanationView: {
             ddl: string;
@@ -471,6 +627,8 @@ export interface components {
         LeaderboardEntry: {
             /** Format: int64 */
             calls: number;
+            /** Format: double */
+            estimatedMsSaved: number | null;
             /** Format: double */
             measuredMeanMs: number | null;
             /** Format: double */
@@ -561,6 +719,33 @@ export interface components {
             queryids: string[];
             reason: string | null;
         };
+        Overview: {
+            applied: components["schemas"]["AppliedIndex"][];
+            appliedCaveat: string;
+            /** Format: int64 */
+            calls: number;
+            confirm: components["schemas"]["Confirm"];
+            databases: components["schemas"]["DatabaseSummary"][];
+            /** Format: double */
+            estimatedMsSaved: number;
+            /** Format: date-time */
+            from: string;
+            /** Format: int32 */
+            indexesToConsider: number;
+            /** Format: double */
+            measuredMsWithAdvice: number;
+            /** Format: double */
+            measuredTotalMs: number;
+            /** Format: int32 */
+            notPlannerValidated: number;
+            /** Format: int64 */
+            queries: number;
+            timeline: components["schemas"]["TimelinePoint"][];
+            /** Format: date-time */
+            to: string;
+            topRecommendations: components["schemas"]["IndexRecommendation"][];
+            window: string;
+        };
         PasswordChange: {
             currentPassword: string;
             newPassword: string;
@@ -599,6 +784,7 @@ export interface components {
             root: components["schemas"]["PlanNodeView"];
         };
         QueryDetail: {
+            applied: components["schemas"]["AppliedIndex"][];
             confirm: components["schemas"]["Confirm"];
             database: string;
             findings: components["schemas"]["FindingView"][];
@@ -653,6 +839,18 @@ export interface components {
             notPlannerValidated: components["schemas"]["NotPlannerValidated"][];
             recommended: components["schemas"]["IndexRecommendation"][];
         };
+        Series: {
+            /** Format: double */
+            estimatedMsSaved: number | null;
+            /** Format: double */
+            measuredTotalMs: number;
+            queryid: string;
+            sqlPreview: string | null;
+        };
+        SystemStatus: {
+            explanations: components["schemas"]["ExplanationSetup"];
+            version: string | null;
+        };
         TableActivity: {
             /** Format: int64 */
             deleted: number;
@@ -670,6 +868,16 @@ export interface components {
             level: "WRITE_DOMINANT" | "READ_DOMINANT" | "NO_ACTIVITY";
             table: string;
             window: string;
+        };
+        TimelinePoint: {
+            /** Format: double */
+            estimatedMsSaved: number | null;
+            /** Format: date-time */
+            hour: string;
+            /** Format: double */
+            measuredMsWithAdvice: number | null;
+            /** Format: double */
+            measuredTotalMs: number | null;
         };
         TopMoverView: {
             /** Format: double */
@@ -877,6 +1085,28 @@ export interface operations {
             };
         };
     };
+    applied: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                db: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Applied"];
+                };
+            };
+        };
+    };
     hygiene: {
         parameters: {
             query?: never;
@@ -1049,6 +1279,31 @@ export interface operations {
             };
         };
     };
+    timeline: {
+        parameters: {
+            query?: {
+                window?: string;
+                series?: number;
+            };
+            header?: never;
+            path: {
+                db: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DbTimeline"];
+                };
+            };
+        };
+    };
     topMovers: {
         parameters: {
             query?: {
@@ -1202,6 +1457,28 @@ export interface operations {
             };
         };
     };
+    overview: {
+        parameters: {
+            query?: {
+                window?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+        };
+    };
     acrossDatabases: {
         parameters: {
             query?: {
@@ -1220,6 +1497,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AcrossDatabases"];
+                };
+            };
+        };
+    };
+    system: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatus"];
                 };
             };
         };

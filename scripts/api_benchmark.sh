@@ -106,6 +106,9 @@ INSERT INTO query_cumulative (db_id, queryid, calls, total_exec_time_ms, rows, s
                               shared_blks_read, captured_at)
 SELECT 1, queryid, sum(calls_delta), sum(total_exec_time_delta_ms), sum(rows_delta), 0, 0, now()
 FROM query_stats GROUP BY queryid;
+-- The hours the agent reported (V13): every hour of the backfill.
+INSERT INTO agent_hours (db_id, hour)
+SELECT DISTINCT 1, date_trunc('hour', captured_at, 'UTC') FROM query_stats;
 -- A validated recommendation for every tenth query, so the leaderboard's verdict lookup has work.
 INSERT INTO recommendations (db_id, queryid, ddl, access_method, status, before_cost, after_cost,
                              relative_drop, used, reason, estimated_ms_saved, score_basis)
@@ -150,6 +153,10 @@ measure "trend, 30 days" "/databases/bench/queries/$QID/trend?from=$(date -u -v-
 measure "top movers 7d" "/databases/bench/top-movers?window=7d"
 measure "new slow 24h" "/databases/bench/new-slow?window=24h"
 measure "recommendations" "/databases/bench/recommendations"
+measure "overview 24h" "/overview?window=24h"
+measure "overview 30d" "/overview?window=30d"
+measure "timeline 30d (5 series)" "/databases/bench/timeline?window=30d"
+measure "applied" "/databases/bench/applied"
 
 echo
 echo "==> EXPLAIN (ANALYZE, BUFFERS, TIMING OFF): the 30-day leaderboard's aggregation (as the API runs it)"

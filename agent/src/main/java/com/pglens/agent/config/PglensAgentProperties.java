@@ -139,6 +139,19 @@ public class PglensAgentProperties {
     /** Minimum cumulative calls for a statement to be sampled at all. */
     private long minCalls = 1;
 
+    /**
+     * A known query's plan is captured again at least this often (and whenever the indexes change).
+     */
+    private long planRefreshMs = 3_600_000;
+
+    public long getPlanRefreshMs() {
+      return planRefreshMs;
+    }
+
+    public void setPlanRefreshMs(long planRefreshMs) {
+      this.planRefreshMs = planRefreshMs;
+    }
+
     public long getIntervalMs() {
       return intervalMs;
     }

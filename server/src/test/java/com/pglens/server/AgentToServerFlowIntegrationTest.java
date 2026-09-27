@@ -142,7 +142,7 @@ class AgentToServerFlowIntegrationTest {
 
     // The agent's own monitored connection (separate from su), and the engine db-half readers over
     // it.
-    agentDs = DataSources.forScan(target);
+    agentDs = DataSources.guarded(target); // the agent's real, guarded connection
     agentJdbc = new JdbcTemplate(agentDs);
     statsReader = new StatsReader(agentJdbc);
     catalogReader = new CatalogReader(agentJdbc);

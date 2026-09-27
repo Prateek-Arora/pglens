@@ -76,8 +76,8 @@ class ReadOnlyRoleIntegrationTest {
     // Create the read-only role AFTER the schema exists, then open the agent's guarded connection.
     MonitoredDbContainer.initReadOnlyRole(DB);
     ConnectionTarget ro = new ConnectionTarget(DB.getJdbcUrl(), "pglens_ro", "pglens_ro", DB_NAME);
-    roGuarded = new JdbcTemplate(DataSources.forScan(ro));
-    DataSources.applySessionGuards(roGuarded);
+    roGuarded = new JdbcTemplate(DataSources.guarded(ro));
+    DataSources.verifySessionGuards(roGuarded);
   }
 
   @Test

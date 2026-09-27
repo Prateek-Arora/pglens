@@ -9,10 +9,12 @@ import com.pglens.explain.FactsHash;
 import com.pglens.explain.PromptBuilder;
 import com.pglens.explain.ReferenceSource;
 import com.pglens.explain.llm.LlmException;
+import com.pglens.explain.llm.LlmSettings;
 import com.pglens.explain.llm.OpenAiCompatibleClient;
 import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import java.time.Instant;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,6 +49,18 @@ public class ExplanationService {
   private final int maxPerPass;
   private final long retryAfterMs;
   private final boolean docsInPrompt;
+  private volatile PassStatus lastPass;
+
+  /**
+   * The last pass, for the status API: when it ran, what it wrote, how many answers fell back to
+   * the template, the last reason one did, and whether docs retrieval was available.
+   */
+  public record PassStatus(
+      Instant at,
+      int written,
+      int templateFallbacks,
+      @Nullable String lastFallbackReason,
+      @Nullable String docsProblem) {}
 
   public ExplanationService(
       MonitoredDbRepository monitoredDbs,
@@ -84,6 +98,7 @@ public class ExplanationService {
   /** One pass over every db; returns how many explanations were written. */
   public int run() {
     ReferenceSource refs = ReferenceSource.NONE;
+    String docsProblem = null;
     try {
       int embedded = knowledge.ensureLoaded();
       if (embedded > 0) {
@@ -91,7 +106,8 @@ public class ExplanationService {
       }
       refs = new PgvectorReferenceSource(knowledge);
     } catch (LlmException | RuntimeException e) {
-      log.info("docs retrieval unavailable this pass: {}", e.getMessage());
+      docsProblem = e.getMessage();
+      log.info("docs retrieval unavailable this pass: {}", docsProblem);
     }
     // A fresh explainer per pass: its "model is down" shortcut must not outlive the pass.
     Explainer explainer = new Explainer(client, refs, docsInPrompt);
@@ -99,10 +115,13 @@ public class ExplanationService {
         PromptBuilder.VERSION + (docsInPrompt ? "+" + KnowledgeStore.CORPUS_VERSION : "");
     Instant now = Instant.now();
     int written = 0;
+    int fallbacks = 0;
+    String lastReason = null;
+    passes:
     for (MonitoredDb db : monitoredDbs.findAll()) {
       for (ExplanationTarget target : inputs.targets(db.id(), topN)) {
         if (written >= maxPerPass) {
-          return written;
+          break passes;
         }
         ExplanationFacts facts = FactsBuilder.build(target);
         ExplanationRepository.Key key =
@@ -122,6 +141,10 @@ public class ExplanationService {
         Instant retryAfter = trace.failure() == null ? null : now.plusMillis(retryAfterMs);
         cache.put(key, e, retryAfter);
         written++;
+        if (e.fallbackReason() != null) {
+          fallbacks++;
+          lastReason = e.fallbackReason();
+        }
         log.info(
             "explained {} for db '{}' ({}{})",
             key.ddl(),
@@ -130,6 +153,17 @@ public class ExplanationService {
             e.fallbackReason() == null ? "" : ": " + e.fallbackReason());
       }
     }
+    lastPass = new PassStatus(now, written, fallbacks, lastReason, docsProblem);
     return written;
+  }
+
+  /** The last pass, or null before the first one. */
+  public @Nullable PassStatus lastPass() {
+    return lastPass;
+  }
+
+  /** The model this service asks. */
+  public LlmSettings settings() {
+    return client.settings();
   }
 }

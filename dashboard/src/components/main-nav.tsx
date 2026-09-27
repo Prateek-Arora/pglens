@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const LINKS: { href: Route; text: string; current: (path: string) => boolean }[] = [
-  { href: "/", text: "Databases", current: (p) => p === "/" || p.startsWith("/db/") },
+  { href: "/", text: "Overview", current: (p) => p === "/" || p.startsWith("/db/") },
   {
     href: "/recommendations",
     text: "Recommendations",

@@ -13,7 +13,9 @@ as soon as one is ready, and the report is credited unless you'd rather not.
 ## What PgLens promises (and where to look first)
 
 - **The monitored database is never written to.** The agent and the CLI connect as a read-only
-  role and set `READ ONLY` on the session; HypoPG indexes are hypothetical and session-local.
+  role, on a connection that is read-only from startup (`default_transaction_read_only` as a
+  connection option — never a session `SET`, which a transaction-mode pooler could leak onto other
+  clients; such a pooler is refused). HypoPG indexes are hypothetical and session-local.
   Only `pglens confirm` writes, and only `CREATE`/`DROP INDEX` on a copy its owner marked with
   `ALTER DATABASE … SET pglens.scratch = 'on'`.
 - **No query values leave your database session.** `pg_stat_statements` text is normalized
@@ -21,6 +23,6 @@ as soon as one is ready, and the report is credited unless you'd rather not.
   machine or private network is refused unless explicitly allowed.
 - **Logins by default.** Passwords are bcrypt hashes, tokens SHA-256 hashes; agent ↔ server gRPC is
   TLS; the dashboard, the HTTP API and both databases listen on `127.0.0.1` in the compose setup —
-  put HTTPS in front before sharing it (see the README's *Security defaults*).
+  put HTTPS in front before sharing it ([docs/operations.md](docs/operations.md#5-security-tls-logins-and-https)).
 
 A report that breaks any of these is exactly what we want to hear about.

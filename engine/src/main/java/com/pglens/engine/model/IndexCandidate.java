@@ -147,6 +147,27 @@ public record IndexCandidate(
   }
 
   /**
+   * True if {@code existing} — an index already on the database — serves this candidate: same table
+   * and access method, not partial, and its key starts with this candidate's columns. This is how
+   * PgLens recognises that a recommendation was applied, whatever the index is called (ADR-0051).
+   */
+  public boolean servedBy(IndexInfo existing) {
+    if (existing == null
+        || existing.isPartial()
+        || !table.equalsIgnoreCase(existing.table())
+        || !accessMethod.sqlUsing().equalsIgnoreCase(String.valueOf(existing.method()))
+        || columns.size() > existing.columns().size()) {
+      return false;
+    }
+    for (int i = 0; i < columns.size(); i++) {
+      if (!columns.get(i).equalsIgnoreCase(existing.columns().get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * A deterministic index name for the rendered DDL (HypoPG assigns its own name internally):
    * {@code idx_<table>_<columns>}, lower case with anything but letters, digits and {@code _}
    * turned into {@code _}, so it never needs quoting; a name past Postgres's 63-byte limit is cut

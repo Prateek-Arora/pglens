@@ -49,7 +49,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/compose/docker-compose.yml down -v
+        run: docker compose -f deploy/compose/docker-compose.yml --profile demo down -v
 
   build:
     name: build (java — spotless, unit, integration)
@@ -158,7 +158,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose -f deploy/compose/docker-compose.yml down -v
+        run: docker compose -f deploy/compose/docker-compose.yml --profile demo down -v
 
   compat:
     name: compat (integration suite on PG ${{ matrix.pg }})

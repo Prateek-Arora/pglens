@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * A read-only snapshot of the catalog facts the pure analyzer needs — one {@link TableInfo} per
@@ -46,6 +47,35 @@ public record CatalogSnapshot(Map<String, TableInfo> tables) {
   public boolean hasIndexLeadingWith(String table, String column) {
     return table(table).map(t -> t.hasIndexLeadingWith(column)).orElse(false);
   }
+
+  /**
+   * True if PgLens can recommend an index on {@code table}: not a system relation ({@code
+   * pg_catalog}, {@code information_schema}, TOAST or temp schemas — Postgres refuses indexes on
+   * catalogs), and, when this snapshot lists the user tables, one of them. {@code pg_dump} and
+   * admin tools put catalog queries into {@code pg_stat_statements}; advice on those is noise
+   * (B27).
+   */
+  public boolean indexable(String table) {
+    if (table == null) {
+      return false;
+    }
+    String schema = SqlIdent.schemaName(table).toLowerCase(Locale.ROOT);
+    if (SYSTEM_SCHEMAS.contains(schema)
+        || schema.startsWith("pg_temp_")
+        || schema.startsWith("pg_toast_temp_")) {
+      return false;
+    }
+    // Unqualified catalog names (plans that carry no schema) are caught by name.
+    if (SqlIdent.DEFAULT_SCHEMA.equals(schema)
+        && SqlIdent.relationName(table).toLowerCase(Locale.ROOT).startsWith("pg_")
+        && table(table).isEmpty()) {
+      return false;
+    }
+    return tables.isEmpty() || table(table).isPresent();
+  }
+
+  private static final Set<String> SYSTEM_SCHEMAS =
+      Set.of("pg_catalog", "information_schema", "pg_toast");
 
   private static String key(String name) {
     return name.toLowerCase(Locale.ROOT);

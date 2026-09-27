@@ -48,7 +48,8 @@ class QueryReadRepository {
       String preview,
       boolean previewCut,
       boolean planCaptured,
-      String recommendation) {}
+      String recommendation,
+      Double bestDrop) {}
 
   record Page(List<Row> rows, long matched) {}
 
@@ -121,7 +122,11 @@ class QueryReadRepository {
                                    THEN 'NOT_PLANNER_VALIDATED'
                            END
                     FROM recommendations r
-                    WHERE r.db_id = ? AND r.queryid = page.queryid)               AS rec_status
+                    WHERE r.db_id = ? AND r.queryid = page.queryid
+                      AND r.applied_at IS NULL)                                   AS rec_status,
+                   (SELECT max(r.relative_drop) FROM recommendations r
+                    WHERE r.db_id = ? AND r.queryid = page.queryid
+                      AND r.status = 'PLANNER_VALIDATED' AND r.applied_at IS NULL) AS best_drop
             FROM page
             LEFT JOIN query_texts t ON t.db_id = ? AND t.queryid = page.queryid
             ORDER BY %s
@@ -140,13 +145,15 @@ class QueryReadRepository {
                   rs.getString("preview"),
                   Boolean.TRUE.equals(rs.getObject("preview_cut")),
                   rs.getBoolean("plan_captured"),
-                  rs.getString("rec_status"));
+                  rs.getString("rec_status"),
+                  (Double) rs.getObject("best_drop"));
             },
             dbId,
             utc(from),
             utc(to),
             limit,
             offset,
+            dbId,
             dbId,
             dbId);
     if (rows.isEmpty() && offset > 0) {
@@ -217,7 +224,7 @@ class QueryReadRepository {
         "SELECT ddl, access_method, status, before_cost, after_cost, relative_drop, used, reason, "
             + "estimated_ms_saved, score_basis, range_label, footprint_label, build_caution, "
             + "updated_at FROM recommendations WHERE db_id = ? AND queryid = ? "
-            + "ORDER BY estimated_ms_saved DESC NULLS LAST, ddl",
+            + "AND applied_at IS NULL ORDER BY estimated_ms_saved DESC NULLS LAST, ddl",
         (rs, n) ->
             new StoredRecommendation(
                 rs.getString(1),

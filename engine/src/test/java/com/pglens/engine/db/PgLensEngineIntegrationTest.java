@@ -252,8 +252,8 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void scanSessionGuardsEnforceReadOnlyAtTheDatabase() {
-    JdbcTemplate jdbc = new JdbcTemplate(DataSources.forScan(target));
-    DataSources.applySessionGuards(jdbc);
+    JdbcTemplate jdbc = new JdbcTemplate(DataSources.guarded(target));
+    DataSources.verifySessionGuards(jdbc);
 
     assertThat(jdbc.queryForObject("SHOW transaction_read_only", String.class)).isEqualTo("on");
     assertThatThrownBy(() -> jdbc.execute("UPDATE orders SET status = 'x' WHERE id = 1"))

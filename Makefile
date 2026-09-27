@@ -1,13 +1,14 @@
 # PgLens — Phase 0 task runner. `make help` lists targets.
 # One-command quickstart:  make up && make seed && make warmup && make test
 
-COMPOSE := docker compose -f deploy/compose/docker-compose.yml
+# The demo database and its agent are the `demo` compose profile; these targets include it.
+COMPOSE := docker compose -f deploy/compose/docker-compose.yml --profile demo
 DB_USER ?= pglens
 MON_DB  ?= pglens_demo
 META_DB ?= pglens_meta
 
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup register test smoke e2e bench bench-api openapi accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
+.PHONY: help up up-no-demo seed reseed warmup register test smoke e2e bench bench-api openapi accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -18,6 +19,11 @@ up: ## Build the images from source and start the full stack (dbs + server + age
 	@docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docker Desktop"; exit 1; }
 	bash scripts/dev_env.sh
 	$(COMPOSE) up -d --build --wait
+
+up-no-demo: ## Start PgLens only (store, server, dashboard) to monitor your own databases — no demo database or agent
+	@docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docker Desktop"; exit 1; }
+	bash scripts/dev_env.sh
+	docker compose -f deploy/compose/docker-compose.yml up -d --build --wait
 
 seed: ## Load demo data (idempotent; skips if already seeded)
 	$(COMPOSE) exec -T monitored-db psql -v ON_ERROR_STOP=1 -q -U $(DB_USER) -d $(MON_DB) < demo/seed.sql
@@ -87,7 +93,7 @@ psql-metadata: ## Open a psql shell on the metadata database
 	$(COMPOSE) exec metadata-db psql -U $(DB_USER) -d $(META_DB)
 
 down: ## Stop containers (keeps data volumes)
-	$(COMPOSE) down
+	$(COMPOSE) --profile llm down
 
 clean: ## Stop containers AND delete data volumes
-	$(COMPOSE) down -v
+	$(COMPOSE) --profile llm down -v

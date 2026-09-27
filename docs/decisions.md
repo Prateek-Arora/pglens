@@ -24,7 +24,7 @@
 | [ADR-0017](#adr-0017) | 2026-08-25 | Recommendation ranking = real total time × validated relative drop; btree-prefix dedupe (flag, don't sum) | Accepted |
 | [ADR-0018](#adr-0018) | 2026-08-25 | `--json` contract = the model records themselves (ScanReport v1.0), NON_NULL; scan is query-centric + a cross-query top-recs summary | Accepted |
 | [ADR-0019](#adr-0019) | 2026-08-26 | R7 GIN rule: containment/existence operators (`@>`/`?`/…) → GIN candidate, surfaced but not planner-validated; LIKE-trigram deferred | Accepted |
-| [ADR-0020](#adr-0020) | 2026-08-26 | Safety: enforce read-only at the DB via session characteristics on the one scan connection; prove it + the whole pipeline with an E2E Testcontainers test; add a Java CI job | Accepted |
+| [ADR-0020](#adr-0020) | 2026-08-26 | Safety: enforce read-only at the DB via session characteristics on the one scan connection; prove it + the whole pipeline with an E2E Testcontainers test; add a Java CI job | Accepted (the session `SET` became startup options: ADR-0053) |
 | [ADR-0021](#adr-0021) | 2026-08-26 | Verification hardening: rewrite typed-literal params so EXPLAIN can plan them (closes a silent-skip bug); R1 detects range/expression predicates; mark PgLens's own introspection so hygiene drops it; centralize rule thresholds | Accepted |
 | [ADR-0022](#adr-0022) | 2026-08-27 | Capture-robustness harness (shape-stressor pack + skip-rate assertion) guards the silent-skip class; start a deferred-work backlog; pre-commit index-hygiene to Phase 2 | Accepted |
 | [ADR-0023](#adr-0023) | 2026-08-29 | Phase 2 topology = `a-pull` (edge HypoPG validation via agent-lease; unary + client/server-streaming, no bidi) | Accepted |
@@ -55,6 +55,9 @@
 | [ADR-0048](#adr-0048) | 2026-09-26 | Dashboard visual world "Drafting Sheet": measured solid / estimate hatched, syntax-colored SQL, one ink per metric | Accepted |
 | [ADR-0049](#adr-0049) | 2026-09-27 | Real-schema identity: tables = schema-qualified-unless-public quoted identities, raw columns, partitions → root, `::text` relabel casts; capture failures carry their reason + access advice | Accepted |
 | [ADR-0050](#adr-0050) | 2026-09-27 | Distribution: one version, GHCR multi-arch images + a drafted release from a tag, Docker-only builds; databases on 127.0.0.1; dev cert names `host.docker.internal`, re-issued on change | Accepted |
+| [ADR-0051](#adr-0051) | 2026-09-27 | Recommendation lifecycle: retire advice the engine no longer proposes; keep it as *applied* when a serving index appears after it; measured before/after from the hourly rollup; re-capture plans when indexes change | Accepted |
+| [ADR-0052](#adr-0052) | 2026-09-27 | The dashboard opens on an impact overview (measured time, share with an index to try, hatched planner estimate, what to fix first, built-and-measured); charts only in existing role inks; `/system` status | Accepted |
+| [ADR-0053](#adr-0053) | 2026-09-27 | Monitored-DB guards as connection startup options (never session `SET`) and a transaction-mode pooler refused; `demo` compose profile; 35-day raw retention; no catalog-table candidates | Accepted |
 
 ---
 
@@ -777,3 +780,119 @@
   persists in a BuildKit cache mount). Upgrading from 0.0.7 re-issues the dev certificates once, so
   remote agents need the new `ca.pem` (CHANGELOG). Pulling released images needs the GHCR packages
   made public; until the first tag is pushed, compose builds from source.
+
+## ADR-0051
+**Recommendation lifecycle: retire, apply, measure** · 2026-09-27 · Accepted
+- **Context:** the pre-release review built a recommended index on a fresh-clone demo
+  (`orders(customer_id)`): five minutes later the dashboard still recommended it, "≈410 ms est.
+  saved". `recommendations` rows were only ever upserted — nothing removed advice the engine had
+  stopped proposing — so a built index, a changed plan, or an older engine's DDL format (which
+  showed every index twice, plus indexes on `pg_catalog` tables) stayed forever. Plans were also
+  captured once per query per agent, so the query page kept showing the old sequential scan.
+  Meanwhile PgLens *had* the evidence of the fix: the query's measured mean fell 7.0 ms → 3–4.6 ms in
+  its own time-series. The loop the product exists for — see advice, measure, build, confirm — was
+  broken at its last step, and its most persuasive number was never shown.
+- **Decision:** (a) Each analysis pass collects the (query, DDL) pairs the engine proposes — its
+  candidates plus the coverage checks among still-proposed indexes — and retires every stored
+  recommendation outside that set (`RecommendationLifecycle`, pure): **applied** when an existing
+  index *serves* it (`IndexCandidate.servedBy`: same table and method, not partial, key starts
+  with the candidate's columns — any name) **and** PgLens first saw that index after the advice
+  was recorded (`min(index_stats.captured_at)` > `created_at`, so an index the user already had is
+  never credited); otherwise **deleted**. A query whose plan didn't parse this pass keeps its
+  advice. Proposed again (the index was dropped) → un-applied. (b) V12 adds `applied_index`,
+  `applied_at`; every "to do" read (advice, leaderboard verdict, query recommendations,
+  explanations, coverage input) excludes applied rows. (c) **Measured before/after**
+  (`AppliedReadService`, `ImpactMath`): mean time per call = Σ total / Σ calls, up to 7 days each
+  side of `applied_at`, split **exactly at the sample the index appeared in** (that batch's
+  `captured_at` equals `applied_at`; it belongs to neither side) while per-sample rows are kept, so
+  a result shows minutes after the build; past raw retention (ADR-0053) the hourly rollup is used,
+  leaving out the whole hour. "Before" never starts earlier than `active_since` (V14: set when an
+  applied recommendation became advice again), so a rebuilt index's earlier life never counts as
+  before. Reported only when both sides have ≥ 10 calls (`MEASURED`), else `MEASURING` /
+  `NO_BASELINE`. Every response carries the caveat: a before/after comparison, not a
+  controlled experiment. (d) The agent re-captures a known query's plan when the catalog's index
+  fingerprint changes (all plans stay due until the server has them) and at least every
+  `plan-refresh-ms` (1 h); a failed re-capture keeps the stored plan and waits the full period.
+- **Alternatives:** *timestamp-based expiry* (`last_proposed_at` older than N passes → delete:
+  simpler, but a transient parse failure or restart would drop live advice, and it can't tell
+  "built" from "gone") · *credit any matching index* (would claim indexes the user had long before
+  PgLens said anything) · *hourly-only before/after* (tried first: survives retention, but a
+  user waited up to two hours to see a result, and one noisy hour dominated it) · *re-capture every plan every
+  cycle* (200 generic EXPLAINs a minute for nothing) · *record `confirm` results as the "after"*
+  (B24: a copy isn't production; the time-series is the real after).
+- **Consequences:** the first pass after upgrading removed 110 stale rows on the dev stack (catalog
+  advice from `pg_dump`, superseded formats) and kept the 8 live indexes. Live check: an index built
+  at 08:55:02 was marked applied at 08:55:09. The before/after is honest in both directions — on
+  the demo's skewed data some queries got *slower* with the recommended index, and the card says
+  so in the redline ink. A dropped-then-rebuilt index gets a new `applied_at`.
+
+## ADR-0052
+**The dashboard opens on the impact** · 2026-09-27 · Accepted
+- **Context:** the review found the home page was a list of database names and the Trends page had
+  no chart; the one chart sat at the bottom of the query page; the leaderboard hid the estimated
+  saving on other pages. The user asked that the product "sell itself": metrics, diagrams and
+  charts first, showing the best impact — without breaking principle 1 (no fabricated evidence) or
+  the design system (one job per hue, ADR-0048).
+- **Decision:** (a) `/` is an **Overview** across databases (`GET /api/v1/overview`): measured
+  query time, calls and queries; the measured time *in queries with an index to try* and its share;
+  the **planner-estimated saving** — per query, the window's measured time × the ranking drop
+  (`RankingScore.drop`) of its best active index, summed (so one query's time is never counted
+  twice), always an `<Estimate>`; indexes to consider; an hourly chart; *What to fix first* (top 3
+  across databases, with the measure-first caveat); *Built and measured* (ADR-0051); the
+  databases with their own totals; *Add a database* folded away. With no database it is an
+  onboarding page. (b) **Charts only in existing inks:** measured time is a solid area in the
+  total-time ink, the estimate a hatched area of the same ink (the drafting convention); the busiest
+  queries are small multiples (sparklines), not a stacked chart that would need five new hues;
+  before/after bars use green for faster and the redline for slower — the roles DESIGN.md already
+  gives them. (c) **Zero vs gap:** `query_stats` has no row for a query that didn't run, so an hour is
+  a *gap* only when the agent sent no batch (no `table_stats` snapshot that hour); a reported hour
+  with no query rows is a real zero. (d) `GET /databases/{db}/timeline` (hourly totals, estimate,
+  top-N series) feeds the slow-query and trends charts; leaderboard rows carry `estimatedMsSaved`.
+  (e) `GET /system`: the server version (Spring Boot build info, no timestamp) and how explanations
+  are written — template, or model, host, remote or not, the last pass — shown in *Settings*, with
+  a version-mismatch warning under *About*.
+- **Alternatives:** *a stacked area by query* (the classic "where the time goes" picture, but a
+  categorical palette the design system forbids, and hard to read past 3 bands) · *"X% faster"
+  headline from estimates* (the number that sells best and the one PgLens must never print) ·
+  *sum per-index savings* (double-counts a query two indexes help) · *client-side aggregation of the
+  hourly rows* (up to 144 k rows for 30 days × 200 queries; SQL `unnest` of the drop map instead).
+- **Consequences:** five new read endpoints and an OpenAPI schema-name clash caught in type
+  generation (`Explanations` → `ExplanationSetup`). README screenshots come from the live demo.
+
+## ADR-0053
+**Pooler-safe guards, a demo profile, and bounded storage** · 2026-09-27 · Accepted
+- **Context:** (a) the guard of ADR-0020 was `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`
+  plus timeouts on the scan connection. Reproduced on PgBouncer 1.24 in transaction mode: after
+  PgLens connected through it, the next client got the same server connection and `CREATE TABLE`
+  failed with "cannot execute … in a read-only transaction" — pointing PgLens at a pooled Supabase
+  (6543) or Neon (`-pooler`) URL could break the application's writes, and HypoPG's session-local
+  indexes would land on one backend and the EXPLAIN on another. (b) `docker compose up` always
+  started the demo database and a demo agent that logs `UNAUTHENTICATED` until registered. (c)
+  `query_stats`, `index_stats` and `table_stats` grew per sample forever (B26); `index_stats` alone
+  is a row per index per minute. (d) `pg_dump`'s catalog queries produced index advice on
+  `pg_catalog` tables (B27), and a hosted embedding model of another vector size re-embedded the
+  corpus every pass only for the insert to fail.
+- **Decision:** (a) `DataSources.guarded()` passes `-c default_transaction_read_only=on -c
+  statement_timeout=30s -c lock_timeout=5s` as the JDBC `options` **startup parameter**, and
+  `verifySessionGuards()` only reads (backend pid twice + `transaction_read_only`). A pooler rejects
+  or drops startup options (PgBouncer: "unsupported startup parameter in options"), so PgLens
+  refuses with a message to connect directly — having set nothing on any server connection. Never a
+  session `SET` on a monitored database. `forScan()` stays unguarded for test setup only.
+  `ConnectionPoolerIntegrationTest` runs a real PgBouncer. (b) `monitored-db` and `agent` are the
+  compose profile `demo`; `make up` includes it, `make up-no-demo` and plain `docker compose up` don't.
+  (c) `RetentionService` deletes per-sample rows older than `pglens.retention.raw-days` (default 35,
+  minimum 31 — the longest window) hourly; the hourly rollup stays (its trigger is INSERT-only, so it
+  stays exact), and before/after reads it. Hygiene's "unused" and write load now describe the last
+  35 days. (d) `CatalogSnapshot.indexable()` drops findings on system schemas (and, when the catalog
+  is known, on tables outside it) in the detector, for the CLI and server alike; `KnowledgeStore`
+  probes one embedding and remembers a model whose size isn't 768.
+- **Alternatives:** *keep `SET` and only detect a pooler by pid* (the leak happens before detection,
+  and a single client often gets the same backend back, so it isn't detected) · *wrap each HypoPG
+  check in a transaction* (fixes HypoPG under pooling but not the guard leak) · *support poolers via
+  `SET LOCAL` in explicit transactions everywhere* (a larger change to every read path, for a mode
+  where direct connections are always available) · *TimescaleDB retention* (another extension for
+  a `DELETE`) · *a separate production compose file* (two files to keep in step).
+- **Consequences:** a connection string with its own `options` parameter is overridden by PgLens's
+  (none of PgLens's documented setups use one). Upgrading: plain `docker compose up` needs `--profile
+  demo` for the demo (CHANGELOG). The docs-links feature is off for non-768 embedding models.
+

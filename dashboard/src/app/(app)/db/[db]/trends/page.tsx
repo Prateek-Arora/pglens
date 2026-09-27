@@ -3,7 +3,9 @@ import Link from "next/link";
 
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "lucide-react";
 
-import { Count, Measured } from "@/components/numbers";
+import { ChartLegend, dbPoints, Sparkline } from "@/components/impact/impact";
+import { TimeChart } from "@/components/impact/time-chart";
+import { Count, Estimate, Measured } from "@/components/numbers";
 import { METRIC_INK } from "@/components/scale-bar";
 import { SqlInline } from "@/components/sql";
 import { ParamLinks, parseWindow } from "@/components/window-links";
@@ -22,7 +24,7 @@ export default async function TrendsPage({ params, searchParams }: PageProps<"/d
   const { db } = await params;
   const window = parseWindow((await searchParams).window, "7d");
   const client = await api();
-  const [movers, fresh] = await Promise.all([
+  const [movers, fresh, timeline] = await Promise.all([
     read(
       client.GET("/api/v1/databases/{db}/top-movers", {
         params: { path: { db }, query: { window, limit: 10 } },
@@ -33,7 +35,13 @@ export default async function TrendsPage({ params, searchParams }: PageProps<"/d
         params: { path: { db }, query: { window, limit: 10 } },
       }),
     ),
+    read(
+      client.GET("/api/v1/databases/{db}/timeline", {
+        params: { path: { db }, query: { window, series: 6 } },
+      }),
+    ),
   ]);
+  const active = timeline.points.some((p) => p.sampled && p.measuredTotalMs > 0);
   return (
     <div className="space-y-8">
       <ParamLinks
@@ -47,6 +55,64 @@ export default async function TrendsPage({ params, searchParams }: PageProps<"/d
           { value: "30d", text: "30 days" },
         ]}
       />
+
+      {active && (
+        <section aria-labelledby="time" className="sheet space-y-2 px-5 pt-4 pb-2">
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            <h2 id="time" className="mr-auto text-lg font-semibold">
+              Measured time per hour
+            </h2>
+            <ChartLegend />
+          </div>
+          <TimeChart points={dbPoints(timeline.points)} />
+        </section>
+      )}
+
+      {timeline.series.length > 0 && (
+        <section aria-labelledby="busiest" className="space-y-2">
+          <h2 id="busiest" className="text-lg font-semibold">
+            The busiest queries, hour by hour
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Each query&apos;s measured time per hour over the last {window}, drawn to its own scale.
+          </p>
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {timeline.series.map((q, i) => (
+              <li key={q.queryid} className="sheet space-y-2 p-4">
+                <Link
+                  href={routes.query(db, q.queryid)}
+                  className="line-clamp-2 min-h-10 text-[13px] leading-5 underline-offset-4 hover:underline"
+                >
+                  {q.sqlPreview ? <SqlInline sql={q.sqlPreview} /> : `Query ${q.queryid}`}
+                </Link>
+                <Sparkline
+                  values={timeline.points.map((p) =>
+                    p.sampled ? (p.measuredMsBySeries[i] ?? 0) : null,
+                  )}
+                  label={`Measured time per hour of query ${q.queryid}`}
+                />
+                <p className="text-sm">
+                  <span className="text-metric-total font-medium">
+                    <Measured ms={q.measuredTotalMs} what="Total execution time in this window" />
+                  </span>{" "}
+                  <span className="text-muted-foreground">in total</span>
+                  {q.estimatedMsSaved !== null && (
+                    <>
+                      <span className="text-muted-foreground"> · </span>
+                      <Estimate
+                        value={q.estimatedMsSaved}
+                        unit="ms"
+                        what="This window's measured time scaled by the planner's cost drop for its best index — not a measured speedup"
+                      />
+                      <span className="text-muted-foreground"> saved</span>
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-labelledby="movers" className="space-y-2">
         <h2 id="movers" className="text-lg font-semibold">

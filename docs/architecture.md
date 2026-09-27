@@ -76,7 +76,7 @@ OSS support on 2026-06-30).
 Metadata schema is now Flyway **V1–V10** (V6 evidence + `table_stats`, V7 build caution, V8
 explanations + pgvector knowledge, V9 users/sessions/API tokens + `last_ingest_at`, V10 rollup).
 
-## Dashboard (in progress — Phase 4B, ADR-0046; visual world ADR-0048, after ADR-0047)
+## Dashboard (implemented — Phase 4B, ADR-0046; visual world ADR-0048; overview ADR-0052)
 The dashboard is a **backend-for-frontend**: the browser only ever talks to Next.js, and Next.js
 server code calls the REST API on the private network. The API stays the single authority on users,
 sessions and access.
@@ -99,6 +99,31 @@ browser ──(httpOnly session cookie)──▶ Next.js server ──(Bearer to
   `strict-dynamic`) and passes the path on for the post-login return; nothing else.
 - **Pinned, gated dependencies.** Exact versions; pnpm refuses day-old versions and provenance
   downgrades; install scripts off. `output: "standalone"` for a small non-root image.
+- **Impact first (ADR-0052).** `/` is the overview (`GET /api/v1/overview`): measured time, the part
+  in queries with an index to try, the planner-estimated saving (per query at its best index, never
+  summed across indexes), what to fix first, *Built and measured*, and an hourly column chart
+  (`components/impact/time-chart.tsx`: solid = measured, hatched lower part = estimate). Charts use
+  only role inks; busiest queries are server-rendered SVG sparklines.
+
+## Recommendation lifecycle & measured impact (implemented — Step 12, ADR-0051, ADR-0053)
+```
+agent: catalog index fingerprint changed? ──▶ re-capture known plans (else hourly)
+server analysis pass (30 s, advisory-locked):
+  proposed = engine candidates ∪ coverage checks among still-proposed indexes
+  stored rec ∉ proposed ──▶ an index that serves it appeared after it? ──yes──▶ APPLIED (index, first seen)
+                                                                      └─no──▶ deleted
+  applied rec ∈ proposed again (index dropped) ──▶ un-applied
+read: before/after = Σ time / Σ calls, 7 days each side, split exactly at the sample the index
+      appeared in (hourly rollup, that hour left out, once raw rows are gone); before starts no
+      earlier than active_since (a rebuilt index); shown once both sides have ≥ 10 calls
+```
+- `RecommendationLifecycle` (pure) decides; `AnalysisRepository` applies; `AppliedReadService`
+  measures (`ImpactMath`). "First seen" is `min(index_stats.captured_at)` — the same receive time as
+  that batch's samples.
+- `agent_hours` (V13) records the hours each agent reported, so a timeline tells zero load from a
+  gap. `RetentionService` deletes per-sample rows after 35 days; the hourly rollup stays.
+- Monitored-DB guards are **connection startup options** (`DataSources.guarded`), verified by
+  `verifySessionGuards`; a transaction-mode pooler is refused (ADR-0053).
 
 ## Plain-language explanations (implemented — Phase 3, ADR-0043)
 

@@ -4,9 +4,9 @@ import com.pglens.engine.hygiene.IndexHygieneFinding;
 import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.server.persistence.HygieneRepository;
 import com.pglens.server.persistence.MonitoredDb;
+import com.pglens.server.persistence.QueryPreviews;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -68,12 +68,14 @@ public class RecommendationReadService {
 
   private final AdviceService advice;
   private final HygieneRepository hygiene;
+  private final QueryPreviews previews;
   private final JdbcTemplate jdbc;
 
   public RecommendationReadService(
-      AdviceService advice, HygieneRepository hygiene, JdbcTemplate jdbc) {
+      AdviceService advice, HygieneRepository hygiene, QueryPreviews previews, JdbcTemplate jdbc) {
     this.advice = advice;
     this.hygiene = hygiene;
+    this.previews = previews;
     this.jdbc = jdbc;
   }
 
@@ -96,13 +98,10 @@ public class RecommendationReadService {
     return new Hygiene(db.name(), hygiene.loadHygiene(db.id()));
   }
 
-  /** Characters of SQL per query, as on the leaderboard. */
-  private static final int PREVIEW_CHARS = 300;
-
   private List<IndexRecommendation> recommended(MonitoredDb db) {
     var all = advice.advice(db.id());
     Map<Long, String> previews =
-        previews(
+        this.previews.of(
             db.id(),
             all.stream().flatMap(a -> a.queries().stream()).map(q -> q.queryId()).toList());
     return all.stream()
@@ -133,30 +132,11 @@ public class RecommendationReadService {
         .toList();
   }
 
-  /** The start of each query's text, "…"-terminated when cut; one round trip for all of them. */
-  private Map<Long, String> previews(long dbId, List<Long> queryIds) {
-    Map<Long, String> out = new HashMap<>();
-    if (queryIds.isEmpty()) {
-      return out;
-    }
-    jdbc.query(
-        "SELECT queryid, left(normalized_text, ?) AS preview, length(normalized_text) > ? AS cut "
-            + "FROM query_texts WHERE db_id = ? AND queryid = ANY (?)",
-        rs -> {
-          out.put(
-              rs.getLong("queryid"), rs.getString("preview") + (rs.getBoolean("cut") ? "…" : ""));
-        },
-        PREVIEW_CHARS,
-        PREVIEW_CHARS,
-        dbId,
-        queryIds.stream().distinct().toArray(Long[]::new));
-    return out;
-  }
-
   private List<NotPlannerValidated> notPlannerValidated(long dbId) {
     return jdbc.query(
         "SELECT ddl, access_method, min(reason), array_agg(queryid ORDER BY queryid) "
             + "FROM recommendations WHERE db_id = ? AND status = 'NOT_PLANNER_VALIDATED' "
+            + "AND applied_at IS NULL "
             + "GROUP BY ddl, access_method ORDER BY ddl",
         (rs, n) ->
             new NotPlannerValidated(

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ConfirmBox } from "@/components/confirm-box";
+import { AppliedIndexCard } from "@/components/impact/impact";
 import { IndexRecommendationCard, StatusBadge } from "@/components/recommendations";
 import { Badge } from "@/components/ui/badge";
 import { SqlInline } from "@/components/sql";
@@ -17,12 +18,26 @@ export default async function DatabaseRecommendationsPage({
 }: PageProps<"/db/[db]/recommendations">) {
   const { db } = await params;
   const client = await api();
-  const [recs, hygiene] = await Promise.all([
+  const [recs, hygiene, applied] = await Promise.all([
     read(client.GET("/api/v1/databases/{db}/recommendations", { params: { path: { db } } })),
     read(client.GET("/api/v1/databases/{db}/hygiene", { params: { path: { db } } })),
+    read(client.GET("/api/v1/databases/{db}/applied", { params: { path: { db } } })),
   ]);
   return (
     <div className="space-y-8">
+      {applied.items.length > 0 && (
+        <section aria-labelledby="built" className="space-y-3">
+          <h2 id="built" className="text-lg font-semibold">
+            Built and measured
+          </h2>
+          <p className="text-muted-foreground max-w-[75ch] text-sm">{applied.caveat}</p>
+          <div className="sheet divide-y p-5 [&>*]:py-4 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+            {applied.items.map((a) => (
+              <AppliedIndexCard key={a.ddl} applied={a} />
+            ))}
+          </div>
+        </section>
+      )}
       <section aria-labelledby="recommended" className="space-y-3">
         <h2 id="recommended" className="text-lg font-semibold">
           Indexes to consider, biggest estimated saving first

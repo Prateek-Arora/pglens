@@ -106,3 +106,7 @@ tasks.register<Test>("retrievalEval") {
 tasks.named("check") {
   dependsOn(integrationTest)
 }
+
+// META-INF/build-info.properties → the version the status API reports (no timestamp, so builds stay
+// reproducible and cacheable).
+springBoot { buildInfo { excludes.set(setOf("time")) } }

@@ -48,7 +48,7 @@ public class CatalogReader {
       LEFT JOIN pg_stat_user_tables st ON st.relid = c.oid
       LEFT JOIN pg_class rc ON c.relispartition AND rc.oid = pg_partition_root(c.oid)
       LEFT JOIN pg_namespace rn ON rn.oid = rc.relnamespace
-      WHERE c.relkind IN ('r', 'p')
+      WHERE c.relkind IN ('r', 'p', 'm')  -- tables, partitioned tables, materialized views
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       """);
 
@@ -87,7 +87,7 @@ public class CatalogReader {
       JOIN pg_am am ON am.oid = i.relam
       JOIN pg_namespace n ON n.oid = t.relnamespace
       LEFT JOIN pg_stat_user_indexes psui ON psui.indexrelid = ix.indexrelid
-      WHERE t.relkind = 'r'
+      WHERE t.relkind IN ('r', 'm')
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       """);
 

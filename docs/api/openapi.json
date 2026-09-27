@@ -49,6 +49,91 @@
         "required" : [ "createdAt", "id", "lastUsedAt", "name" ],
         "type" : "object"
       },
+      "Applied" : {
+        "properties" : {
+          "caveat" : {
+            "type" : "string"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "caveat", "database", "items" ],
+        "type" : "object"
+      },
+      "AppliedIndex" : {
+        "properties" : {
+          "appliedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "ddl" : {
+            "type" : "string"
+          },
+          "index" : {
+            "type" : "string"
+          },
+          "queries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedQuery"
+            },
+            "type" : "array"
+          },
+          "table" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "appliedAt", "database", "ddl", "index", "queries", "table" ],
+        "type" : "object"
+      },
+      "AppliedQuery" : {
+        "properties" : {
+          "callsAfter" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "callsBefore" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "measuredChangeFraction" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredMeanMsAfter" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredMeanMsBefore" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "plannerCostDropFraction" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sqlPreview" : {
+            "type" : [ "string", "null" ]
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "callsAfter", "callsBefore", "measuredChangeFraction", "measuredMeanMsAfter", "measuredMeanMsBefore", "plannerCostDropFraction", "queryid", "sqlPreview", "status" ],
+        "type" : "object"
+      },
       "Confirm" : {
         "properties" : {
           "caveat" : {
@@ -95,6 +180,159 @@
           }
         },
         "required" : [ "agent", "createdAt", "host", "lastIngestAt", "name" ],
+        "type" : "object"
+      },
+      "DatabaseSummary" : {
+        "properties" : {
+          "agent" : {
+            "enum" : [ "NEVER_CONNECTED", "CONNECTED", "STALE" ],
+            "type" : "string"
+          },
+          "appliedIndexes" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "indexesToConsider" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "lastSampleAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "queries" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "agent", "appliedIndexes", "calls", "estimatedMsSaved", "indexesToConsider", "lastSampleAt", "measuredMsWithAdvice", "measuredTotalMs", "name", "queries" ],
+        "type" : "object"
+      },
+      "DbTimeline" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "points" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DbTimelinePoint"
+            },
+            "type" : "array"
+          },
+          "series" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Series"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "database", "from", "points", "series", "to", "window" ],
+        "type" : "object"
+      },
+      "DbTimelinePoint" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "hour" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMsBySeries" : {
+            "items" : {
+              "format" : "double",
+              "type" : "number"
+            },
+            "type" : "array"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "sampled" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "estimatedMsSaved", "hour", "measuredMsBySeries", "measuredMsWithAdvice", "measuredTotalMs", "sampled" ],
+        "type" : "object"
+      },
+      "ExplanationSetup" : {
+        "properties" : {
+          "docsProblem" : {
+            "type" : [ "string", "null" ]
+          },
+          "endpointHost" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastFallbackReason" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastPassAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "lastPassTemplateFallbacks" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          },
+          "lastPassWritten" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          },
+          "mode" : {
+            "type" : "string"
+          },
+          "model" : {
+            "type" : [ "string", "null" ]
+          },
+          "remote" : {
+            "type" : "boolean"
+          },
+          "writtenByModel" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "writtenByTemplate" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "docsProblem", "endpointHost", "lastFallbackReason", "lastPassAt", "lastPassTemplateFallbacks", "lastPassWritten", "mode", "model", "remote", "writtenByModel", "writtenByTemplate" ],
         "type" : "object"
       },
       "ExplanationView" : {
@@ -326,6 +564,10 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
           "measuredMeanMs" : {
             "format" : "double",
             "type" : [ "number", "null" ]
@@ -362,7 +604,7 @@
             "type" : "boolean"
           }
         },
-        "required" : [ "calls", "measuredMeanMs", "measuredTotalMs", "planCaptured", "queryid", "recommendation", "rows", "sharedBlksHit", "sharedBlksRead", "sqlPreview", "sqlPreviewCut" ],
+        "required" : [ "calls", "estimatedMsSaved", "measuredMeanMs", "measuredTotalMs", "planCaptured", "queryid", "recommendation", "rows", "sharedBlksHit", "sharedBlksRead", "sqlPreview", "sqlPreviewCut" ],
         "type" : "object"
       },
       "LoginRequest" : {
@@ -561,6 +803,81 @@
         "required" : [ "accessMethod", "ddl", "queryids", "reason" ],
         "type" : "object"
       },
+      "Overview" : {
+        "properties" : {
+          "applied" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          },
+          "appliedCaveat" : {
+            "type" : "string"
+          },
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "confirm" : {
+            "$ref" : "#/components/schemas/Confirm"
+          },
+          "databases" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DatabaseSummary"
+            },
+            "type" : "array"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "indexesToConsider" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "notPlannerValidated" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "queries" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "timeline" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TimelinePoint"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "topRecommendations" : {
+            "items" : {
+              "$ref" : "#/components/schemas/IndexRecommendation"
+            },
+            "type" : "array"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "applied", "appliedCaveat", "calls", "confirm", "databases", "estimatedMsSaved", "from", "indexesToConsider", "measuredMsWithAdvice", "measuredTotalMs", "notPlannerValidated", "queries", "timeline", "to", "topRecommendations", "window" ],
+        "type" : "object"
+      },
       "PasswordChange" : {
         "properties" : {
           "currentPassword" : {
@@ -666,6 +983,12 @@
       },
       "QueryDetail" : {
         "properties" : {
+          "applied" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          },
           "confirm" : {
             "$ref" : "#/components/schemas/Confirm"
           },
@@ -725,7 +1048,7 @@
             "type" : "string"
           }
         },
-        "required" : [ "confirm", "database", "findings", "firstSeen", "inWindow", "lastSeen", "plan", "planUnavailableReason", "queryid", "recommendations", "sinceStatsReset", "sql", "sqlTruncated", "window" ],
+        "required" : [ "applied", "confirm", "database", "findings", "firstSeen", "inWindow", "lastSeen", "plan", "planUnavailableReason", "queryid", "recommendations", "sinceStatsReset", "sql", "sqlTruncated", "window" ],
         "type" : "object"
       },
       "QueryEvidence" : {
@@ -831,6 +1154,38 @@
         "required" : [ "confirm", "database", "notPlannerValidated", "recommended" ],
         "type" : "object"
       },
+      "Series" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sqlPreview" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "estimatedMsSaved", "measuredTotalMs", "queryid", "sqlPreview" ],
+        "type" : "object"
+      },
+      "SystemStatus" : {
+        "properties" : {
+          "explanations" : {
+            "$ref" : "#/components/schemas/ExplanationSetup"
+          },
+          "version" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "explanations", "version" ],
+        "type" : "object"
+      },
       "TableActivity" : {
         "properties" : {
           "deleted" : {
@@ -877,6 +1232,28 @@
           }
         },
         "required" : [ "activity", "label", "level", "table", "window" ],
+        "type" : "object"
+      },
+      "TimelinePoint" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "hour" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          }
+        },
+        "required" : [ "estimatedMsSaved", "hour", "measuredMsWithAdvice", "measuredTotalMs" ],
         "type" : "object"
       },
       "TopMoverView" : {
@@ -1168,6 +1545,32 @@
           }
         },
         "tags" : [ "database-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/applied" : {
+      "get" : {
+        "operationId" : "applied",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Applied"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
       }
     },
     "/api/v1/databases/{db}/hygiene" : {
@@ -1463,6 +1866,49 @@
         "tags" : [ "insight-controller" ]
       }
     },
+    "/api/v1/databases/{db}/timeline" : {
+      "get" : {
+        "operationId" : "timeline",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "series",
+          "required" : false,
+          "schema" : {
+            "default" : 5,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DbTimeline"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
+      }
+    },
     "/api/v1/databases/{db}/top-movers" : {
       "get" : {
         "operationId" : "topMovers",
@@ -1639,6 +2085,33 @@
         "tags" : [ "auth-controller" ]
       }
     },
+    "/api/v1/overview" : {
+      "get" : {
+        "operationId" : "overview",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
+      }
+    },
     "/api/v1/recommendations" : {
       "get" : {
         "operationId" : "acrossDatabases",
@@ -1665,6 +2138,24 @@
           }
         },
         "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/system" : {
+      "get" : {
+        "operationId" : "system",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "system-controller" ]
       }
     },
     "/api/v1/users" : {

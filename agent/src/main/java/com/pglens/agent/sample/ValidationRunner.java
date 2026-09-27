@@ -67,10 +67,10 @@ public class ValidationRunner {
       return;
     }
 
-    // Same read-only + timeout guards as the sampler (idempotent). HypoPG's hypothetical indexes
-    // work under read-only and are reset after every candidate — nothing is created on the real DB.
+    // Same read-only + timeout guard check as the sampler. HypoPG's hypothetical indexes work
+    // under read-only and are reset after every candidate — nothing is created on the real DB.
     try {
-      DataSources.applySessionGuards(jdbc);
+      DataSources.verifySessionGuards(jdbc);
     } catch (DataAccessException dbErr) {
       log.warn(
           "monitored-db unavailable for validation: {}", dbErr.getMostSpecificCause().getMessage());
