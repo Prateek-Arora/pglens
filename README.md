@@ -94,10 +94,23 @@ and the workload's own queries were timed before and after
 | TPC-H-derived (SF 0.1, uniform data) | 6 of 14 (43 %) | 4 of 14 |
 | Join Order Benchmark on the real IMDB data (pre-registered) | 128 of 179 (72 %) — plus 34 whose index can't be built | 32 of 179 (18 %) |
 
+![179 planner-checked index recommendations on the Join Order Benchmark, each built and timed: 128 made the query at least 15 % faster, 19 made no clear change, and 32 made it at least 5 % slower, 7 of them more than twice as slow](docs/images/job-benchmark.png)
+
 The ranking holds up better than the individual percentages: on JOB the #1 index saved 364 s of
 424 s. But when the planner misjudges row counts a new index can make a query slower, so PgLens puts
 a way to **measure first** next to every suggestion — `pglens confirm` builds each index on a copy
 you mark as scratch and times your real statements — and **measures again after** you build it.
+
+## Related tools
+
+PgLens isn't the first tool to check index advice with HypoPG. [Dexter](https://github.com/ankane/dexter)
+is an automatic indexer that can create the indexes itself; [PoWA](https://powa.readthedocs.io/) is a
+workload analyzer with index suggestions (it needs `pg_qualstats`); [pganalyze](https://pganalyze.com/)
+is a hosted commercial service with an index advisor; [Postgres MCP Pro](https://github.com/crystaldba/postgres-mcp)
+gives AI agents index tuning and health checks; Supabase's
+[index_advisor](https://github.com/supabase/index_advisor) suggests indexes for a single query.
+PgLens's focus is the whole loop on your own infrastructure: history, planner-checked advice, a way to
+measure first, and a measured before and after once the index exists.
 
 ## Safe by default
 
