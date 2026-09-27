@@ -309,18 +309,6 @@ multi-arch images to GHCR and a drafted GitHub release with the CLI jar.
 - **Strategy** for index-type validators (btree/brin/hash/bloom/partial validated via HypoPG; GIN/GiST heuristic + labeled).
 - Path-scoped `.claude/rules/*.md` will document module-local conventions as code lands (progressive disclosure — loaded only when those files are touched).
 
-## Skill-coverage map (why this project, for the job search)
-| Target skill | Phase(s) | How it's proven |
-|---|---|---|
-| RDBMS indexing + query tuning (deep) | 1, 2 | Build the tuning engine; tune PgLens's own metadata DB; benchmarked. |
-| gRPC + Protobuf | 2 | Collector↔server server-streaming. |
-| RAG + Embeddings + pgvector | 3 | RAG over PG docs to ground explanations. |
-| LLM feature (shipped, guardrailed) | 3 | Real feature with graceful degradation. |
-| Next.js (+ GraphQL optional) | 4 | App-Router dashboard on real data. |
-| Kubernetes / Helm | 5 | Helm chart, kind/k3d, config/secrets/HPA (learning demo). |
-| Terraform / cloud / observability | 6 | Provision node + Neon; self-instrument. |
-| OSS launch / technical writing | 7 | README, benchmarks, demo, release. |
-
 **Deliberately excluded (YAGNI):** Kafka, Cassandra/DynamoDB, ElasticSearch — no need here; don't bolt on.
 
 ## Known architectural risks (see charter §9 + `docs/decisions.md`)

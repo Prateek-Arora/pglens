@@ -83,6 +83,15 @@ machine?** The server's certificate must name the host the agent dials — see �
 
 Data appears from the agent's **second** sample: the first one only anchors each query's counters.
 
+**What the agent costs the database.** Each sample reads `pg_stat_statements` and the catalog; plans
+are `EXPLAIN (GENERIC_PLAN)` (never `ANALYZE`) and HypoPG checks run only for the candidate
+indexes the server asks about; every statement runs under the 30 s `statement_timeout`. Measured on
+the demo database (2026-09-27: 13 tracked queries, default settings, 2.9 hours with the agent
+running throughout): the agent's role used **3.8 s of database time, about 1.3 s an hour** (around
+50 statements a minute), and the agent container ~260 MiB of memory. The catalog
+reads grow with the number of tables and indexes, and the checks with the number of distinct slow
+queries — `pg_stat_statements` on your database shows exactly what the agent's role spends.
+
 ## 4. Managed Postgres and connection poolers
 
 PgLens needs `pg_stat_statements` (and ideally `hypopg`) — most managed services offer both; enable

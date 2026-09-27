@@ -52,7 +52,6 @@ agent, server, API and CLI.
   what failed (e.g. the TLS certificate doesn't name the host) and how to fix it.
 - The dashboard said "nothing an index would fix" when PgLens's rules simply didn't match; it now
   says which patterns it checks and that expression and partial indexes aren't suggested yet.
-
 - **PgLens could make an application's writes fail behind a connection pooler.** Its read-only guard
   was a session `SET`; through a transaction-mode pooler (PgBouncer, Supabase port 6543, Neon
   `-pooler`) it stayed on a shared server connection and made the next client's transactions

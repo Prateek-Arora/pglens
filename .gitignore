@@ -35,3 +35,6 @@ pgdata/
 
 # --- Claude Code (keep shared config, ignore local overrides) ---
 .claude/settings.local.json
+
+# --- Private notes (never published) ---
+docs/private/

@@ -5,7 +5,8 @@ name: release
 #     dashboard,demo-db}:<version>, which `docker compose up` and the dashboard's agent snippet pull;
 #   * a DRAFT GitHub release (a pre-release for -rc/-beta tags) with the CLI jar and its checksum.
 # Nothing is announced: the draft is published by hand (principle 5). New GHCR packages start
-# private — make each public once in the package settings, or pulls need a login.
+# private — make each public once in the package settings, or pulls need a login. Publishing the draft
+# then runs release-check.yml, which follows the README with only these images on amd64 and arm64.
 on:
   push:
     tags: ["v*"]
