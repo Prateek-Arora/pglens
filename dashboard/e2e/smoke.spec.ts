@@ -67,7 +67,11 @@ test("the demo database's data appears, down to a query and its index", async ({
   // The agent samples every 15 s and analysis runs every 30 s: wait for measured activity and a
   // planner-validated recommendation to arrive.
   await page.goto(`/db/${demo}?window=24h`);
-  const validated = page.getByRole("row").filter({ hasText: "Planner-validated" });
+  // Exact text: a hasText string is a case-insensitive substring, so it would also match rows
+  // badged "Not planner-validated" (which rank first on a fresh stack).
+  const validated = page
+    .getByRole("row")
+    .filter({ has: page.getByText("Planner-validated", { exact: true }) });
   await expect(async () => {
     await page.reload();
     await expect(validated.first()).toBeVisible({ timeout: 2_000 });
