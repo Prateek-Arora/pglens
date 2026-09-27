@@ -8,8 +8,10 @@ import java.util.List;
 /**
  * One node in an EXPLAIN plan tree, typed. Fields map to EXPLAIN (FORMAT JSON) keys. Parallelism is
  * a flag ({@code parallelAware}) — a parallel table scan is node type {@code "Seq Scan"} with
- * {@code parallelAware=true}, not a distinct type. The ANALYZE-only fields ({@code actualRows},
- * {@code rowsRemovedByFilter}, {@code sortMethod}) are null under GENERIC_PLAN.
+ * {@code parallelAware=true}, not a distinct type. {@code schema} is set under VERBOSE (always, for
+ * PgLens's captures) and is null in older fixtures, which then name {@code public} tables. The
+ * ANALYZE-only fields ({@code actualRows}, {@code rowsRemovedByFilter}, {@code sortMethod}) are
+ * null under GENERIC_PLAN.
  *
  * <p>Pure model type — no Spring, no I/O.
  */
@@ -21,6 +23,7 @@ public record PlanNode(
     long planRows,
     int planWidth,
     String relationName,
+    String schema,
     String alias,
     String indexName,
     String joinType,
@@ -40,6 +43,11 @@ public record PlanNode(
     sortKeys = sortKeys == null ? List.of() : List.copyOf(sortKeys);
     output = output == null ? List.of() : List.copyOf(output);
     children = children == null ? List.of() : List.copyOf(children);
+  }
+
+  /** The scanned table's identity ({@link SqlIdent#table}); null for a node that scans none. */
+  public String table() {
+    return SqlIdent.table(schema, relationName);
   }
 
   public boolean isSeqScan() {

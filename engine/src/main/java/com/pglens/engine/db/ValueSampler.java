@@ -22,36 +22,39 @@ public class ValueSampler {
   /** One sampled value as a server-quoted literal, and its MCV frequency (null if typical). */
   public record SampledValue(String literal, Double frequency) {}
 
-  // to_regclass resolves the table exactly as the query does (search_path), so the stats row is
-  // the right schema's. Both halves are marked introspection so PgLens never ranks this read.
+  // to_regclass resolves the table's identity (SqlIdent.table: `orders`, `app."User"`) exactly as
+  // the query does; its stats row is matched by that relation's schema and name. A partitioned
+  // table's statistics are the inherited ones (over all its partitions). Both halves are marked
+  // introspection so PgLens never ranks this read.
+  private static final String STATS_ROW =
+      """
+      FROM pg_stats s
+      JOIN pg_class c ON c.oid = to_regclass(?)
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE s.schemaname = n.nspname AND s.tablename = c.relname AND s.attname = ?
+        AND s.inherited = (c.relkind = 'p')
+      """;
+
   private static final String SAMPLE_SQL =
       DataSources.introspection(
           """
           SELECT lit, freq FROM (
             SELECT quote_literal(m.v) AS lit, m.f::float8 AS freq
-            FROM pg_stats s
-            CROSS JOIN LATERAL unnest(s.most_common_vals::text::text[], s.most_common_freqs)
+            FROM (SELECT s.most_common_vals, s.most_common_freqs %1$s) st
+            CROSS JOIN LATERAL unnest(st.most_common_vals::text::text[], st.most_common_freqs)
               AS m(v, f)
-            WHERE s.tablename = ? AND s.attname = ?
-              AND s.schemaname = (SELECT n.nspname FROM pg_class c
-                                  JOIN pg_namespace n ON n.oid = c.relnamespace
-                                  WHERE c.oid = to_regclass(?))
             ORDER BY m.f DESC
-            LIMIT %d
+            LIMIT %2$d
           ) mcv
           UNION ALL
           SELECT quote_literal(h[(array_length(h, 1) + 1) / 2]), NULL::float8
           FROM (
             SELECT s.histogram_bounds::text::text[] AS h
-            FROM pg_stats s
-            WHERE s.tablename = ? AND s.attname = ?
-              AND s.schemaname = (SELECT n.nspname FROM pg_class c
-                                  JOIN pg_namespace n ON n.oid = c.relnamespace
-                                  WHERE c.oid = to_regclass(?))
+            %1$s
           ) hist
           WHERE h IS NOT NULL
           """
-              .formatted(MCV_SAMPLES));
+              .formatted(STATS_ROW, MCV_SAMPLES));
 
   private final JdbcTemplate jdbc;
 
@@ -72,9 +75,7 @@ public class ValueSampler {
           table,
           column,
           table,
-          table,
-          column,
-          table);
+          column);
     } catch (DataAccessException unreadable) {
       return List.of();
     }

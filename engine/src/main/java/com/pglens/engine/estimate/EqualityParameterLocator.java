@@ -1,6 +1,7 @@
 package com.pglens.engine.estimate;
 
 import com.pglens.engine.model.PlanNode;
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -27,24 +28,32 @@ public final class EqualityParameterLocator {
 
   private EqualityParameterLocator() {}
 
-  private static final String IDENT = "[A-Za-z_][A-Za-z0-9_]*";
+  private static final String TYPE_WORD = "[A-Za-z_][A-Za-z0-9_]*";
+
+  // A column or qualifier as EXPLAIN prints it: bare, or "quoted" (ADR-0049).
+  private static final String IDENT =
+      "(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_$\\u0080-\\uffff]*)";
 
   // A bare, optionally parenthesized/cast parameter: $1 · ($1) · ($1)::text · $1::character varying
   private static final String PARAM =
-      "\\(*\\$(\\d+)(?:\\)*::" + IDENT + "(?: " + IDENT + ")*(?:\\[\\])?)*\\)*";
+      "\\(*\\$(\\d+)(?:\\)*::" + TYPE_WORD + "(?: " + TYPE_WORD + ")*(?:\\[\\])?)*\\)*";
 
   // What may follow the parameter: end of the condition, a closing paren, or a boolean connective.
   private static final String END = "(?=\\s*(?:\\)|$|\\s(?:AND|OR)\\s))";
 
-  // q.col = <param>
+  // q.col = <param>, or (q.col)::text = <param> for a varchar column
   private static final Pattern COLUMN_EQ_PARAM =
-      Pattern.compile("(" + IDENT + ")\\.(" + IDENT + ")\\s*=\\s*" + PARAM + END);
+      Pattern.compile(
+          "\\(?(" + IDENT + ")\\.(" + IDENT + ")(?:\\)::(?:text|bpchar))?\\s*=\\s*" + PARAM + END);
 
   // <param> = q.col  (the planner occasionally flips the operands)
   private static final Pattern PARAM_EQ_COLUMN =
       Pattern.compile("(?:^|[\\s(])" + PARAM + "\\s*=\\s*(" + IDENT + ")\\.(" + IDENT + ")" + END);
 
-  /** One equality binding: {@code table.column = $param}. */
+  /**
+   * One equality binding: {@code table.column = $param}; {@code table} is the scanned table's
+   * identity ({@link SqlIdent#table}), {@code column} the raw column name.
+   */
   public record Binding(String table, String column, int param) {}
 
   /**
@@ -69,15 +78,15 @@ public final class EqualityParameterLocator {
         Matcher m = COLUMN_EQ_PARAM.matcher(expr);
         while (m.find()) {
           int param = Integer.parseInt(m.group(3));
-          if (m.group(1).equalsIgnoreCase(qualifier) && seen.add(param)) {
-            out.add(new Binding(node.relationName(), m.group(2), param));
+          if (SqlIdent.unquote(m.group(1)).equalsIgnoreCase(qualifier) && seen.add(param)) {
+            out.add(new Binding(node.table(), SqlIdent.unquote(m.group(2)), param));
           }
         }
         Matcher flipped = PARAM_EQ_COLUMN.matcher(expr);
         while (flipped.find()) {
           int param = Integer.parseInt(flipped.group(1));
-          if (flipped.group(2).equalsIgnoreCase(qualifier) && seen.add(param)) {
-            out.add(new Binding(node.relationName(), flipped.group(3), param));
+          if (SqlIdent.unquote(flipped.group(2)).equalsIgnoreCase(qualifier) && seen.add(param)) {
+            out.add(new Binding(node.table(), SqlIdent.unquote(flipped.group(3)), param));
           }
         }
       }
@@ -94,7 +103,7 @@ public final class EqualityParameterLocator {
       return OptionalInt.empty();
     }
     for (PlanNode node : plan.flatten()) {
-      if (node.relationName() == null || !node.relationName().equalsIgnoreCase(table)) {
+      if (node.table() == null || !node.table().equalsIgnoreCase(table)) {
         continue;
       }
       for (String expr : new String[] {node.filter(), node.indexCond(), node.recheckCond()}) {
@@ -114,14 +123,15 @@ public final class EqualityParameterLocator {
     }
     Matcher m = COLUMN_EQ_PARAM.matcher(expr);
     while (m.find()) {
-      if (m.group(1).equalsIgnoreCase(qualifier) && m.group(2).equalsIgnoreCase(column)) {
+      if (SqlIdent.unquote(m.group(1)).equalsIgnoreCase(qualifier)
+          && SqlIdent.unquote(m.group(2)).equalsIgnoreCase(column)) {
         return OptionalInt.of(Integer.parseInt(m.group(3)));
       }
     }
     Matcher flipped = PARAM_EQ_COLUMN.matcher(expr);
     while (flipped.find()) {
-      if (flipped.group(2).equalsIgnoreCase(qualifier)
-          && flipped.group(3).equalsIgnoreCase(column)) {
+      if (SqlIdent.unquote(flipped.group(2)).equalsIgnoreCase(qualifier)
+          && SqlIdent.unquote(flipped.group(3)).equalsIgnoreCase(column)) {
         return OptionalInt.of(Integer.parseInt(flipped.group(1)));
       }
     }

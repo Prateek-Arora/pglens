@@ -53,8 +53,8 @@ docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docke
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo "==> Building the server jar + image"
-  (cd "$REPO_ROOT" && ./gradlew -q :server:bootJar)
-  docker build -q -t "$IMAGE" -f "$REPO_ROOT/deploy/compose/server/Dockerfile" "$REPO_ROOT" >/dev/null
+  docker build -q --target server -t "$IMAGE" -f "$REPO_ROOT/deploy/compose/java/Dockerfile" \
+    "$REPO_ROOT" >/dev/null
 fi
 
 echo "==> Starting a throwaway metadata Postgres + the server"

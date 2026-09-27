@@ -100,7 +100,7 @@ public final class CopyTarget implements AutoCloseable {
           s.executeQuery(
               "SELECT format('%I.%I', n.nspname, c.relname) FROM pg_class c"
                   + " JOIN pg_namespace n ON n.oid = c.relnamespace"
-                  + " WHERE c.relkind = 'i' AND c.relname LIKE 'pglens\\_confirm\\_%'")) {
+                  + " WHERE c.relkind IN ('i', 'I') AND c.relname LIKE 'pglens\\_confirm\\_%'")) {
         while (rs.next()) {
           dropped.add(rs.getString(1));
         }

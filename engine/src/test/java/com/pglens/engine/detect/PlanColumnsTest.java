@@ -116,10 +116,59 @@ class PlanColumnsTest {
   }
 
   @Test
-  void doesNotExtractAColumnWrappedInACast() {
-    // Same reasoning as the function case: `(customer_id)::text = $1` is served by an expression
-    // index on the cast, not a btree on customer_id. Deliberately not extracted (backlog).
-    assertThat(PlanColumns.predicateColumns("((orders.customer_id)::text = $1)")).isEmpty();
+  void extractsAColumnBehindATextRelabelCast() {
+    // A varchar/char column is compared through a relabel cast — `((u.status)::text = $1)` is how
+    // EXPLAIN prints `status = $1` on a varchar column (Django, Rails) — and a B-tree on the column
+    // serves it (ADR-0049). The rare int-to-text cast is extracted too; HypoPG then finds the
+    // index unused and suppresses it (backlog B3 keeps real expression indexes).
+    assertThat(PlanColumns.predicateColumns("(((u.status)::text = $1) AND (u.tenant_id = $2))"))
+        .containsExactly(new QualifiedColumn("u", "status"), new QualifiedColumn("u", "tenant_id"));
+    assertThat(PlanColumns.predicateColumns("((orders.customer_id)::text = $1)"))
+        .containsExactly(new QualifiedColumn("orders", "customer_id"));
+    assertThat(PlanColumns.predicateColumns("((orders.customer_id)::numeric = $1)")).isEmpty();
+  }
+
+  // --- Quoted identifiers (ADR-0049): EXPLAIN quotes a name that needs it; extraction unquotes.
+  // ---
+
+  @Test
+  void extractsQuotedMixedCaseQualifiersAndColumnsRaw() {
+    assertThat(
+            PlanColumns.predicateColumns(
+                "((\"Post\".\"authorId\" = $1) AND (\"UserAccounts\".tenant_id = $2))"))
+        .containsExactly(
+            new QualifiedColumn("Post", "authorId"),
+            new QualifiedColumn("UserAccounts", "tenant_id"));
+  }
+
+  @Test
+  void unescapesDoubledQuotesAndKeepsReservedWordNames() {
+    assertThat(PlanColumns.predicateColumns("((o.\"user\" = $1) AND (\"a\"\"b\".\"x\"\"y\" > $2))"))
+        .containsExactly(new QualifiedColumn("o", "user"), new QualifiedColumn("a\"b", "x\"y"));
+  }
+
+  @Test
+  void extractsQuotedAndCastJoinKeys() {
+    assertThat(PlanColumns.joinColumns("(\"Post\".\"authorId\" = u.id)"))
+        .containsExactly(new QualifiedColumn("Post", "authorId"), new QualifiedColumn("u", "id"));
+    assertThat(PlanColumns.joinColumns("((o.code)::text = (c.code)::text)"))
+        .containsExactly(new QualifiedColumn("o", "code"), new QualifiedColumn("c", "code"));
+  }
+
+  @Test
+  void parsesQuotedSortKeysAndRejectsExpressionKeys() {
+    assertThat(PlanColumns.sortColumn("p.\"createdAt\" DESC NULLS LAST"))
+        .isEqualTo(new QualifiedColumn("p", "createdAt"));
+    assertThat(PlanColumns.sortColumn("\"Post\".\"createdAt\""))
+        .isEqualTo(new QualifiedColumn("Post", "createdAt"));
+    assertThat(PlanColumns.sortColumn("lower(u.email)")).isNull();
+  }
+
+  @Test
+  void extractsAQuotedJsonbColumn() {
+    assertThat(PlanColumns.jsonbPredicates("(\"Event\".\"Payload\" @> $1)"))
+        .singleElement()
+        .isEqualTo(new JsonbPredicate(new QualifiedColumn("Event", "Payload"), "@>"));
   }
 
   @Test

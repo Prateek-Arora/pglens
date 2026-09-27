@@ -1,0 +1,282 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode follows the OS setting (prefers-color-scheme). */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* IBM Plex Sans for the interface and JetBrains Mono for SQL, self-hosted from npm by
+     next/font/local (layout.tsx): nothing is fetched from a font CDN at build or run time. The
+     fallbacks carry the page if the files fail to load. */
+  --font-sans:
+    var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-code-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-heading: var(--font-sans);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  /* 13 px floor for small text: 12 px gray was hard to read. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --color-finding: var(--finding);
+  --color-finding-foreground: var(--finding-foreground);
+  --color-finding-soft: var(--finding-soft);
+  --color-metric-total: var(--metric-total);
+  --color-metric-mean: var(--metric-mean);
+  --color-metric-calls: var(--metric-calls);
+  --color-code: var(--code-background);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * The Drafting Sheet (ADR-0048). Light = cool drafting film with white sheets laid on it; dark =
+ * blueprint navy. Follows the OS setting. Meanings stay fixed across both:
+ * primary (cobalt / cyan) = you can act on it; success green = validated or healthy; finding
+ * (redline vermilion) = a problem PgLens found in a plan; destructive red = danger. Each metric
+ * keeps one ink everywhere: total time, mean time, calls. SQL token colors live here too, so the
+ * server-highlighted code follows the theme.
+ */
+:root {
+  color-scheme: light;
+  --background: oklch(0.975 0.006 235);
+  --foreground: oklch(0.24 0.025 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.025 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.025 255);
+  --primary: oklch(0.5 0.17 260);
+  --primary-foreground: oklch(0.99 0.004 240);
+  --secondary: oklch(0.955 0.009 235);
+  --secondary-foreground: oklch(0.24 0.025 255);
+  --muted: oklch(0.955 0.009 235);
+  --muted-foreground: oklch(0.46 0.025 250);
+  --accent: oklch(0.95 0.014 245);
+  --accent-foreground: oklch(0.24 0.025 255);
+  --destructive: oklch(0.54 0.2 27);
+  --border: oklch(0.885 0.014 240);
+  --input: oklch(0.82 0.02 240);
+  --ring: oklch(0.5 0.17 260);
+  --success: oklch(0.49 0.12 155);
+  --success-soft: oklch(0.96 0.035 155);
+  --finding: oklch(0.58 0.19 32);
+  --finding-foreground: oklch(0.47 0.16 32);
+  --finding-soft: oklch(0.975 0.018 32);
+  --metric-total: oklch(0.5 0.17 260);
+  --metric-mean: oklch(0.52 0.1 195);
+  --metric-calls: oklch(0.5 0.15 320);
+  --sheet-shadow: 0 1px 2px oklch(0.3 0.05 250 / 0.06), 0 6px 16px -8px oklch(0.3 0.05 250 / 0.12);
+  --code-background: oklch(0.972 0.01 240);
+  --sql-plain: oklch(0.26 0.03 255);
+  --sql-keyword: oklch(0.47 0.16 285);
+  --sql-function: oklch(0.49 0.1 195);
+  --sql-literal: oklch(0.53 0.15 48);
+  --sql-punctuation: oklch(0.5 0.02 250);
+  --sql-comment: oklch(0.52 0.02 250);
+  --chart-1: var(--metric-total);
+  --chart-2: var(--metric-mean);
+  --chart-3: var(--metric-calls);
+  --chart-4: oklch(0.7 0.02 250);
+  --chart-5: oklch(0.85 0.01 250);
+  --radius: 0.375rem;
+  --sidebar: oklch(0.975 0.006 235);
+  --sidebar-foreground: oklch(0.24 0.025 255);
+  --sidebar-primary: oklch(0.5 0.17 260);
+  --sidebar-primary-foreground: oklch(0.99 0.004 240);
+  --sidebar-accent: oklch(0.95 0.014 245);
+  --sidebar-accent-foreground: oklch(0.24 0.025 255);
+  --sidebar-border: oklch(0.885 0.014 240);
+  --sidebar-ring: oklch(0.5 0.17 260);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: oklch(0.225 0.05 258);
+    --foreground: oklch(0.955 0.012 240);
+    --card: oklch(0.255 0.055 258);
+    --card-foreground: oklch(0.955 0.012 240);
+    --popover: oklch(0.28 0.055 258);
+    --popover-foreground: oklch(0.955 0.012 240);
+    --primary: oklch(0.8 0.12 225);
+    --primary-foreground: oklch(0.2 0.05 258);
+    --secondary: oklch(0.3 0.055 258);
+    --secondary-foreground: oklch(0.955 0.012 240);
+    --muted: oklch(0.3 0.055 258);
+    --muted-foreground: oklch(0.8 0.035 245);
+    --accent: oklch(0.32 0.06 256);
+    --accent-foreground: oklch(0.955 0.012 240);
+    --destructive: oklch(0.72 0.17 27);
+    --border: oklch(0.38 0.055 255);
+    --input: oklch(0.47 0.06 255);
+    --ring: oklch(0.8 0.12 225);
+    --success: oklch(0.82 0.15 155);
+    --success-soft: oklch(0.3 0.06 162);
+    --finding: oklch(0.74 0.15 38);
+    --finding-foreground: oklch(0.84 0.11 45);
+    --finding-soft: oklch(0.29 0.06 30);
+    --metric-total: oklch(0.8 0.12 225);
+    --metric-mean: oklch(0.84 0.11 175);
+    --metric-calls: oklch(0.8 0.12 320);
+    --sheet-shadow: 0 1px 2px oklch(0.1 0.04 258 / 0.4), 0 8px 20px -10px oklch(0.1 0.04 258 / 0.6);
+    --code-background: oklch(0.205 0.045 258);
+    --sql-plain: oklch(0.94 0.015 240);
+    --sql-keyword: oklch(0.8 0.12 292);
+    --sql-function: oklch(0.84 0.11 180);
+    --sql-literal: oklch(0.84 0.12 65);
+    --sql-punctuation: oklch(0.75 0.03 245);
+    --sql-comment: oklch(0.72 0.03 245);
+    --chart-4: oklch(0.55 0.04 250);
+    --chart-5: oklch(0.4 0.04 255);
+    --sidebar: oklch(0.255 0.055 258);
+    --sidebar-foreground: oklch(0.955 0.012 240);
+    --sidebar-primary: oklch(0.8 0.12 225);
+    --sidebar-primary-foreground: oklch(0.2 0.05 258);
+    --sidebar-accent: oklch(0.32 0.06 256);
+    --sidebar-accent-foreground: oklch(0.955 0.012 240);
+    --sidebar-border: oklch(0.38 0.055 255);
+    --sidebar-ring: oklch(0.8 0.12 225);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    /* Numbers line up in every table and total. */
+    font-variant-numeric: tabular-nums;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 25%, transparent) transparent;
+  }
+  body {
+    @apply text-foreground;
+    line-height: 1.55;
+    caret-color: var(--primary);
+    background-color: var(--background);
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 24%, transparent);
+    color: var(--foreground);
+  }
+  :focus-visible {
+    outline-color: var(--ring);
+  }
+  /* Disclosure triangles drawn in ink, turning when open, instead of the browser's default. */
+  summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 150ms ease-out;
+    flex-shrink: 0;
+  }
+  details[open] > summary::before {
+    transform: rotate(45deg);
+  }
+  code,
+  kbd,
+  pre {
+    font-feature-settings: "calt" 0;
+  }
+}
+
+@layer utilities {
+  /*
+   * A planner estimate reads differently from a measurement at a glance: a dashed underline (the
+   * drafting convention for a hidden edge), on top of the "est." text and the screen-reader label.
+   */
+  .estimate-mark {
+    text-decoration-line: underline;
+    text-decoration-style: dashed;
+    text-decoration-color: color-mix(in oklch, currentColor 55%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
+  }
+  /* A white sheet laid on the drafting film: tables, code, panels. */
+  .sheet {
+    background-color: var(--card);
+    border-width: 1px;
+    border-style: solid;
+    border-radius: var(--radius);
+    box-shadow: var(--sheet-shadow);
+  }
+  /* Estimates in bars are hatched in their ink, never a pale tint; measurements are solid. */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      135deg,
+      currentColor 0 1.5px,
+      transparent 1.5px 5px
+    );
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+  /* A dimension bar draws in once, from the left. */
+  .draw-in {
+    transform-origin: left center;
+    animation: draw-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .draw-in {
+      animation: none;
+    }
+  }
+}
+
+@keyframes draw-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* SQL highlighted by Shiki on the server (src/components/sql.tsx) with the theme's own colors. */
+.sql pre {
+  background-color: transparent !important;
+  font-variant-ligatures: none;
+}

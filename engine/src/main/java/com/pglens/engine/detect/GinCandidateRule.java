@@ -4,6 +4,7 @@ import com.pglens.engine.detect.PlanColumns.JsonbPredicate;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.Finding.Confidence;
 import com.pglens.engine.model.PlanNode;
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,10 +34,11 @@ final class GinCandidateRule implements Rule {
   public List<Finding> evaluate(PlanContext ctx) {
     List<Finding> findings = new ArrayList<>();
     for (PlanNode node : ctx.plan.flatten()) {
-      if (!node.isSeqScan() || node.filter() == null || node.relationName() == null) {
+      String scanned = node.table();
+      if (!node.isSeqScan() || node.filter() == null || scanned == null) {
         continue;
       }
-      long reltuples = ctx.catalog.reltuples(node.relationName());
+      long reltuples = ctx.catalog.reltuples(scanned);
       if (reltuples >= 0 && reltuples < DetectionThresholds.MIN_TABLE_ROWS) {
         continue;
       }
@@ -44,20 +46,20 @@ final class GinCandidateRule implements Rule {
       Set<String> flagged = new LinkedHashSet<>(); // one finding per column per scan
       for (JsonbPredicate jp : PlanColumns.jsonbPredicates(node.filter())) {
         String qualifier = jp.column().qualifier();
-        String table = qualifier == null ? node.relationName() : ctx.resolveTable(qualifier);
+        String table = qualifier == null ? scanned : ctx.resolveTable(qualifier);
         String column = jp.column().column();
         if (table != null
-            && table.equalsIgnoreCase(node.relationName())
+            && table.equals(scanned)
             && !ctx.catalog.hasIndexLeadingWith(table, column)
             && flagged.add(column)) {
           findings.add(
               new Finding(
                   id(),
                   "Unindexed containment/existence filter (GIN candidate)",
-                  table,
+                  ctx.indexTarget(table),
                   List.of(column),
                   Confidence.MEDIUM,
-                  evidence(node.relationName(), column, jp.operator(), reltuples),
+                  evidence(scanned, column, jp.operator(), reltuples),
                   ctx.nodeId(node)));
         }
       }
@@ -68,6 +70,10 @@ final class GinCandidateRule implements Rule {
   private static String evidence(String table, String column, String operator, long reltuples) {
     return ("Seq Scan on %s filters %s with a %s operator over ~%s rows; a GIN index can serve "
             + "containment/existence lookups. Not planner-validated — HypoPG cannot simulate GIN.")
-        .formatted(table, column, operator, reltuples < 0 ? "?" : Long.toString(reltuples));
+        .formatted(
+            table,
+            SqlIdent.quote(column),
+            operator,
+            reltuples < 0 ? "?" : Long.toString(reltuples));
   }
 }

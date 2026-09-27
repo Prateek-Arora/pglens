@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -47,10 +46,12 @@ public class CatalogRepository {
 
     for (TableStat t : catalog.getTablesList()) {
       jdbc.update(
-          "INSERT INTO table_catalog (db_id, table_name, est_rows) VALUES (?, ?, ?)",
+          "INSERT INTO table_catalog (db_id, table_name, est_rows, partition_root) "
+              + "VALUES (?, ?, ?, ?)",
           dbId,
-          lower(t.getTableName()),
-          t.getEstRows());
+          t.getTableName(),
+          t.getEstRows(),
+          t.getPartitionRoot().isEmpty() ? null : t.getPartitionRoot());
     }
     for (IndexStat ix : catalog.getIndexesList()) {
       jdbc.update(
@@ -61,8 +62,8 @@ public class CatalogRepository {
                         + "is_unique, is_primary, constraint_backed, columns, method, predicate) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             ps.setLong(1, dbId);
-            ps.setString(2, lower(ix.getIndexName()));
-            ps.setString(3, lower(ix.getTableName()));
+            ps.setString(2, ix.getIndexName());
+            ps.setString(3, ix.getTableName());
             ps.setString(4, ix.getDefinition()); // "" until Step 6
             ps.setBoolean(5, ix.getIsUnique());
             ps.setBoolean(6, ix.getIsPrimary());
@@ -90,7 +91,7 @@ public class CatalogRepository {
           "INSERT INTO index_stats (db_id, index_name, captured_at, idx_scan) VALUES (?, ?, ?, ?) "
               + "ON CONFLICT (db_id, index_name, captured_at) DO NOTHING",
           dbId,
-          lower(ix.getIndexName()),
+          ix.getIndexName(),
           at,
           ix.getIdxScan());
     }
@@ -110,7 +111,7 @@ public class CatalogRepository {
               + "n_tup_del, tuples_read) VALUES (?, ?, ?, ?, ?, ?, ?) "
               + "ON CONFLICT (db_id, table_name, captured_at) DO NOTHING",
           dbId,
-          lower(t.getTableName()),
+          t.getTableName(),
           at,
           t.getNTupIns(),
           t.getNTupUpd(),
@@ -123,10 +124,10 @@ public class CatalogRepository {
   public record ActivityWindow(TableActivity activity, int snapshots, Instant from, Instant to) {}
 
   /**
-   * The read/write activity window per table for {@code dbId}, keyed by lowercased table name: the
-   * last snapshot minus the first. Tables with fewer than two snapshots are absent (one point shows
-   * no activity), and so is a window where any counter went backwards — a stats reset makes it
-   * inconclusive, never "no writes" (same rule as index hygiene, ADR-0029).
+   * The read/write activity window per table for {@code dbId}, keyed by table identity (ADR-0049):
+   * the last snapshot minus the first. Tables with fewer than two snapshots are absent (one point
+   * shows no activity), and so is a window where any counter went backwards — a stats reset makes
+   * it inconclusive, never "no writes" (same rule as index hygiene, ADR-0029).
    */
   public Map<String, ActivityWindow> activityWindows(long dbId) {
     Map<String, ActivityWindow> windows = new LinkedHashMap<>();
@@ -167,10 +168,15 @@ public class CatalogRepository {
   /** Rebuilds the engine {@link CatalogSnapshot} for {@code dbId} from persisted rows. */
   public CatalogSnapshot load(long dbId) {
     Map<String, Long> estRows = new LinkedHashMap<>();
+    Map<String, String> roots = new LinkedHashMap<>();
     jdbc.query(
-        "SELECT table_name, est_rows FROM table_catalog WHERE db_id = ? ORDER BY table_name",
+        "SELECT table_name, est_rows, partition_root FROM table_catalog WHERE db_id = ? "
+            + "ORDER BY table_name",
         (RowCallbackHandler)
-            rs -> estRows.put(lower(rs.getString("table_name")), rs.getLong("est_rows")),
+            rs -> {
+              estRows.put(rs.getString("table_name"), rs.getLong("est_rows"));
+              roots.put(rs.getString("table_name"), rs.getString("partition_root"));
+            },
         dbId);
 
     Map<String, List<IndexInfo>> indexesByTable = new LinkedHashMap<>();
@@ -180,7 +186,7 @@ public class CatalogRepository {
             + "FROM index_catalog WHERE db_id = ? ORDER BY table_name, index_name",
         (RowCallbackHandler)
             rs -> {
-              String table = lower(rs.getString("table_name"));
+              String table = rs.getString("table_name");
               indexesByTable
                   .computeIfAbsent(table, k -> new ArrayList<>())
                   .add(
@@ -206,7 +212,12 @@ public class CatalogRepository {
         (table, reltuples) ->
             tables.put(
                 table,
-                new TableInfo(table, reltuples, indexesByTable.getOrDefault(table, List.of()))));
+                new TableInfo(
+                    table,
+                    reltuples,
+                    indexesByTable.getOrDefault(table, List.of()),
+                    null,
+                    roots.get(table))));
     return new CatalogSnapshot(tables);
   }
 
@@ -217,14 +228,10 @@ public class CatalogRepository {
     List<String> cols = new ArrayList<>();
     for (Object o : (Object[]) array.getArray()) {
       if (o != null) {
-        cols.add(lower(o.toString()));
+        cols.add(o.toString());
       }
     }
     return cols;
-  }
-
-  private static String lower(String s) {
-    return s == null ? null : s.toLowerCase(Locale.ROOT);
   }
 
   private static String blankToBtree(String method) {

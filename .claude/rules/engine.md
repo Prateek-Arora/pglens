@@ -42,6 +42,13 @@ paths:
 - **Rules are liberal; HypoPG gates.** A `Rule` flags a pattern from plan + `CatalogSnapshot`; it
   never pre-judges cost. Column extraction is regex over EXPLAIN VERBOSE's qualified text
   (`PlanColumns`) — add operators there, longest-first in the alternation.
+- **Names (ADR-0049).** A table is its identity `SqlIdent.table(schema, name)` (qualified unless
+  `public`, quoted like `quote_ident`) — the key everywhere and valid SQL as written; get it from
+  `PlanNode.table()`, never `relationName()`. Columns are **raw** names; quote with
+  `SqlIdent.quote` when rendering SQL. EXPLAIN prints quoted identifiers (`"Post"."authorId"`) and
+  varchar compares as `(c)::text` — every regex must accept both. A partition's finding targets
+  `PlanContext.indexTarget` (its root). Test new shapes in `RealWorldSchemaIntegrationTest`, not
+  only on the demo.
 - **Tests:** fast unit tests are `./gradlew :engine:test` (no Docker); Testcontainers tests are
   `@Tag("it")` and run via `./gradlew :engine:integrationTest` (needs Docker + the
   `pglens/monitored-db:0.0.0` image). Assert on plan shape / used-or-not / threshold — **never**

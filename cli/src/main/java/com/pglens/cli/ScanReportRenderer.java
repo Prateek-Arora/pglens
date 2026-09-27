@@ -114,7 +114,10 @@ final class ScanReportRenderer {
     sb.append('\n');
 
     if (!q.planCaptured()) {
-      sb.append("    (plan not captured — statement can't be generically explained; skipped)\n");
+      sb.append("    (plan not captured — ")
+          .append(
+              q.planError() == null ? "statement can't be generically explained" : q.planError())
+          .append("; skipped)\n");
       return;
     }
 

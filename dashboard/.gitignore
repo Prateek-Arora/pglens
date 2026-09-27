@@ -1,0 +1,19 @@
+/node_modules
+/.next/
+/out/
+/build
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+.env*
+npm-debug.log*
+.pnpm-debug.log*
+
+# Impeccable design-skill scratch: review screenshots and decision-page state
+.impeccable/review/
+.impeccable/questions/

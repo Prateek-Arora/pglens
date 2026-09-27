@@ -19,7 +19,39 @@ _Last updated: 2026-09-26_
 
 **2026-09-26 — Phase 3 built + evaluated (ADR-0043); `--plain` defaults to the template (ranking 10–0), `--plain=llm` opt-in.** `docs/phases/phase_3.md` (replaces the Desktop draft). Step 0 spike: 4 small Apache/MIT models via Ollama's OpenAI-compatible API, CPU-only Docker, real TPC-H/JOB findings — **`qwen3.5:4b`** was the only one with no invented number/index/claim (16–34 s per explanation, ~4.9 GiB); granite4:3b invented an index and called a cost estimate an execution-time cut; thinking left on = 211 s and no answer. Plan: runtime-agnostic OpenAI-compatible client in a new `:explain` module (no Spring AI — 2.x needs Boot 4), LLM writes 3 prose fields only, PgLens renders DDL/labels/caveats, unit-aware guard + one retry + template fallback, CLI `--plain` + server cache, rule cards first and pgvector docs retrieval kept only if a pre-registered A/B says so.
 
-**Next action:** Phase 4 plan **approved** 2026-09-26 (`docs/phases/phase_4.md`); 4A `v0.0.7` in progress on `phase-4/v0.0.7-secure-api`. **Done:** Step 0 Spring Boot 4.1.1; Step 1 gRPC TLS by default; Step 2 HTTP API login (users, sessions, read-only API tokens, `auth.mode=none`); Step 3 registration API, with `make register` calling it; Step 4 read API (`/api/v1`, OpenAPI, `queryid` as a string, `--json` 1.4 node refs); Step 5 API latency — budget missed, fixed by an hourly rollup (V10, ADR-0045): 30-day leaderboard 741 → 44 ms p95. Tests: full build green, compose smoke 8/8. **4A DoD docs done** (README: HTTP API + scripts, security defaults, remote agent; `docs/architecture.md`; server rules; teach-back questions in `phase_4.md`). **Next:** commit/PR/merge and tag `v0.0.7` (when the user asks); the teach-back is deferred by the user to the end of Phase 4 — one pass over the whole product, 4A + 4B together; 4B `v0.1.0-rc` = dashboard. **Pre-commitment (flexibility, 2026-09-26):** the dashboard must show a full explanation with **no LLM configured** — compute the template on read (`TemplateExplainer` is pure; `ExplanationInputs` is always on) and use a cached LLM row only when one exists, labeled with its source; every page works with the explain job off. Optional: the user spot-checks 6 of Claude's M3/M4 gradings (`docs/llm-eval.md`). Phase 3 merged (`fcdb6af`, tag `v0.0.6`).
+**Next action:** Phase 4A shipped — PR #10 merged (`9c55152`), tag **`v0.0.7`**. **4B `v0.1.0-rc` (dashboard) built** on `phase-4/v0.1.0-rc-dashboard` (ADR-0046), not yet committed. **Done:** exact API contract (required/`@Nullable`, committed `docs/api/openapi.json`, drift IT, `make openapi`); Step 6 scaffold + auth (pinned Next 16 stack, strict pnpm gates, server-only data layer, httpOnly cookie session, CSP nonce); Step 7 all screens on real data (databases/onboarding, leaderboard, query detail with plan tree + trend + recommendations + explanation, trends, recommendations + hygiene, settings) — API gained `QueryEvidence.sqlPreview`; Step 8 honesty components (unit-tested); Step 9 image (non-root, read-only rootfs, `127.0.0.1:3000`), compose service, CI `dashboard` + `e2e` jobs, `make e2e`, README quickstart + Caddy HTTPS recipe. **Visual pass (ADR-0047 → ADR-0048 "Drafting Sheet"):** light drafting film + dark blueprint (OS-driven), syntax-colored SQL everywhere (JetBrains Mono), one ink per metric, to-scale bars (solid = measured, hatched = estimate), redlined plan findings, j/k query stepping, dashed-underline estimates, aligned 36 px form controls, distilled recommendation cards, query page leads with the suggested index, phone layout fixed (no overflow, stacked leaderboard); axe clean at desktop + phone widths. Verified locally: 27 unit tests, 5 Playwright tests (login, add/delete DB, data → detail → copy DDL, template explanation with no LLM) and axe clean on every page, against the compose stack. Quickstart timed from a fresh copy (warm caches): dashboard 41 s, data 122 s. **2026-09-27 — release-readiness check → Step 11 (ADR-0049, ADR-0050).** Tested on a stock PG17 with an app-like schema instead of the demo: tables outside `public` and quoted/varchar names got no usable advice, the README's role captured no plans, no image or CLI was published, a same-host agent failed TLS, and PgLens's own database was on `0.0.0.0` with a default password. Fixed:
+- **Names and partitions:** table identity is `SqlIdent.table`, and partitions are indexed on their root.
+- **Access diagnostics:** plan errors, GRANT advice, and retrying plans that permission errors blocked.
+- **Distribution:**
+  - One version (`0.1.0-rc`), checked by `scripts/check_versions.sh`.
+  - One Docker-only Java Dockerfile, with compose pulling `ghcr.io/prateek-arora/pglens-*`.
+  - `release.yml`, which drafts a release from a tag.
+  - The databases listen on `127.0.0.1`.
+  - The dev certificate also names `host.docker.internal`.
+- **Docs:** `SECURITY.md` and `CHANGELOG.md`; `RealWorldSchemaIntegrationTest` proves the fixes.
+
+**Verified (2026-09-27):**
+- **Java:**
+  - PG16 full build: 335 unit + 118 integration tests, 0 failures.
+  - PG17 and PG18: 118 integration tests each, 0 failures.
+  - `RealWorldSchemaIntegrationTest` runs every validated DDL as written.
+- **Dashboard:**
+  - Format, lint and typecheck are clean; 27 unit tests pass; the production build passes; the dependency audit is clean.
+  - The rebuilt stack passes the Playwright e2e suite (5/5).
+- **Repo checks:** `make lint` (shellcheck, hadolint, sqlfluff, versions), actionlint and gitleaks are clean.
+- **Outside database (stock PG17 + hypopg), re-run of the failing scenario:**
+  - The CLI image named the exact GRANTs.
+  - After the grants, 6 validated DDLs ran as written, including `billing.invoices` on its partitioned parent. A Prisma schema got `"Post" ("authorId", "createdAt")`.
+  - An agent started from the dashboard snippet via `host.docker.internal` connected over TLS.
+  - A revoked schema showed its reason in the API, and the plan arrived 49 s after the GRANT with no restart. The server listed 7 correct recommendations.
+- **Fresh-copy quickstart (Docker only, warm build cache):** dashboard at 46 s, data and recommendations at 85 s; a cold Java image build adds ~95 s.
+
+**Next:** the user reviews → commit/PR (CI runs the dashboard, e2e and new Java-image jobs for the first time). **Before tagging `v0.1.0-rc`:**
+- Pin Next **16.3.7**; the security release is due 2026-09-30.
+- Enable GitHub private vulnerability reporting (`SECURITY.md` points to it).
+- After the first tag: make the five GHCR packages public, then publish the drafted release by hand.
+
+GraphQL (Step 10) is optional and cut first. **Pre-commitment (flexibility, 2026-09-26):** the dashboard must show a full explanation with **no LLM configured** — compute the template on read (`TemplateExplainer` is pure; `ExplanationInputs` is always on) and use a cached LLM row only when one exists, labeled with its source; every page works with the explain job off. Teach-back deferred to the end of Phase 4 (4A + 4B together). Optional: the user spot-checks 6 of Claude's M3/M4 gradings (`docs/llm-eval.md`).
 
 **Deferred work is tracked in `docs/backlog.md`** (why each item was skipped + contributor tags) — check it before proposing "new" engine features; several are already reasoned through.
 
@@ -50,7 +82,7 @@ OSS, self-hosted Postgres slow-query & index advisor with HypoPG-validated index
 | 2.5 | Recommendation Accuracy Sprint | ✅ done | Value-range floors, footprint + write load, overlap cross-validation, TPC-H accuracy benchmark (11/14 pinned → 6/14 under server settings, ADR-0041) | `v0.0.4` ✅ |
 | 2.6 | Confirm on a Copy (measured index checks) | ✅ done (ADR-0042) | `pglens confirm`: build recommended indexes on a user-marked scratch copy, run real statements, report measured verdicts | `v0.0.5` ✅ |
 | 3 | Plain-Language Explanations (local LLM, grounded + checked) | ✅ shipped `v0.0.6` | Grounded plain-language explanations (local LLM, guardrailed) | `v0.0.6` (was `v0.0.5`; moved by Phase 2.6) |
-| 4 | Dashboard (Next.js) | 🚧 4A built (`v0.0.7`: TLS, logins, registration + read API); 4B next | Leaderboard, plan viewer, recs, trends (+opt GraphQL) | `v0.1.0-rc` ← **ship here** |
+| 4 | Dashboard (Next.js) | 🚧 4A shipped (`v0.0.7`); 4B built + release-readiness Step 11 done (ADR-0049/0050), uncommitted | Leaderboard, plan viewer, recs, trends (+opt GraphQL) | `v0.1.0-rc` ← **ship here** |
 | 5 | Containerize + Kubernetes + Helm | ⬜ (v0.2) | `helm install pglens` on kind/k3d | — |
 | 6 | IaC + Cloud Deploy + Hardening | ⬜ (v0.2) | Terraform → free-tier + Neon; self-observability; opt OIDC | — |
 | 7 | Launch & Community | ⬜ (v0.2) | README, benchmarks, demo, `v0.1.0`, launch drafts | `v0.1.0` |
@@ -65,6 +97,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done · ⏸ paused
 - ~~Phase 1: `track=top` vs `track=all` for the ranker~~ — **resolved** (ADR-0014): filter `toplevel = true` + dbid + utility/self, leaving the monitored server's `track` setting untouched.
 
 ## Session log (newest first — one line each, keep it short)
+- 2026-09-26 — **Phase 4B started (ADR-0046).** `v0.0.7` merged + tagged. API contract made exact (required/`@Nullable`, committed spec, drift IT). Dashboard Step 6: pinned Next 16 stack, strict pnpm supply-chain gates (caught a day-old `@types/node`; 3 trust-policy hits checked by hand), server-only data layer + httpOnly cookie session, CSP nonce; login smoke + axe pass. Deviations: ESLint 10 (9 is deprecated), TS 5.9.3 (not 7).
 - 2026-09-26 — **Phase 4A built (ADR-0044, ADR-0045).** Boot 4.1.1; gRPC TLS (compose `certs`); HTTP auth (V9 users/sessions/API tokens); registration API + `make register` via the API (`deploy/compose/.env`); read API + OpenAPI; `Finding.planNode` (`--json` 1.4); `make bench-api` missed the 300 ms budget (741 ms) → V10 hourly rollup → 44 ms. Live checks found: the old root `.env.example` was never read by compose; Boot's default user logged a stray password; GIN suggestions hidden on the leaderboard; an empty-leaderboard-after-setup state for 4B.
 - 2026-09-26 — **Secret scanning added.** gitleaks runs as a pre-commit hook (`make hooks`: staged changes, plus a guard that refuses `AGENTS.md`) and as a CI job over the full history (`scripts/secret_scan.sh`, pinned Docker image, no install). The first scan found no leaks in 12 commits or in the 100 pending Phase 3 files, and a manual grep for personal data and paths found none either. The hook was tested: it blocks a fake AWS key and `AGENTS.md`, and allows a clean commit.
 - 2026-09-26 — **Phase 3 built + evaluated (ADR-0043).**

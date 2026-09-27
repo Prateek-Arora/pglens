@@ -1,0 +1,92 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Limit",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 5133.54,
+      "Total Cost": 5133.77,
+      "Plan Rows": 2,
+      "Plan Width": 12,
+      "Output": ["\"Post\".id", "\"Post\".\"createdAt\""],
+      "Plans": [
+        {
+          "Node Type": "Gather Merge",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 5133.54,
+          "Total Cost": 5133.77,
+          "Plan Rows": 2,
+          "Plan Width": 12,
+          "Output": ["\"Post\".id", "\"Post\".\"createdAt\""],
+          "Workers Planned": 1,
+          "Plans": [
+            {
+              "Node Type": "Sort",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 4133.53,
+              "Total Cost": 4133.54,
+              "Plan Rows": 2,
+              "Plan Width": 12,
+              "Output": ["\"Post\".id", "\"Post\".\"createdAt\""],
+              "Sort Key": ["\"Post\".\"createdAt\" DESC"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.29,
+                  "Total Cost": 4133.52,
+                  "Plan Rows": 2,
+                  "Plan Width": 12,
+                  "Output": ["\"Post\".id", "\"Post\".\"createdAt\""],
+                  "Inner Unique": false,
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": true,
+                      "Async Capable": false,
+                      "Relation Name": "Post",
+                      "Schema": "public",
+                      "Alias": "Post",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 4116.88,
+                      "Plan Rows": 2,
+                      "Plan Width": 16,
+                      "Output": ["\"Post\".id", "\"Post\".\"authorId\"", "\"Post\".\"createdAt\"", "\"Post\".title"],
+                      "Filter": "(\"Post\".\"authorId\" = $1)"
+                    },
+                    {
+                      "Node Type": "Index Only Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "User_pkey",
+                      "Relation Name": "User",
+                      "Schema": "public",
+                      "Alias": "User",
+                      "Startup Cost": 0.29,
+                      "Total Cost": 8.31,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["\"User\".id"],
+                      "Index Cond": "(\"User\".id = $1)"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Query Identifier": 3428665889884321423
+  }
+]

@@ -3,6 +3,7 @@ package com.pglens.agent.sample;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.IndexInfo;
@@ -20,7 +21,6 @@ import com.pglens.proto.v1.ValidateResult;
 import com.pglens.proto.v1.ValidationStatus;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,7 +61,8 @@ class ProtoMappersTest {
   @Test
   void toQueryTextWithACapturedPlanFlagsItTrue() {
     QueryText text =
-        ProtoMappers.toQueryText(stat(7, false), "hash-7", Optional.of("{\"Plan\":{}}"));
+        ProtoMappers.toQueryText(
+            stat(7, false), "hash-7", new PlanCapturer.Capture("{\"Plan\":{}}", null, false));
 
     assertThat(text.getQueryid()).isEqualTo(7);
     assertThat(text.getTextHash()).isEqualTo("hash-7");
@@ -73,10 +74,15 @@ class ProtoMappersTest {
 
   @Test
   void toQueryTextWithoutAPlanIsHonestlyEmptyNotFabricated() {
-    QueryText text = ProtoMappers.toQueryText(stat(9, true), "hash-9", Optional.empty());
+    QueryText text =
+        ProtoMappers.toQueryText(
+            stat(9, true),
+            "hash-9",
+            new PlanCapturer.Capture(null, "the PgLens role may not read a table", true));
 
     assertThat(text.getPlanCaptured()).isFalse();
     assertThat(text.getPlanJson()).isEmpty();
+    assertThat(text.getPlanError()).isEqualTo("the PgLens role may not read a table");
     assertThat(text.getTruncated()).as("truncation flag is a property of the text").isTrue();
   }
 

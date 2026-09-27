@@ -6,7 +6,8 @@ import java.util.List;
  * One analyzed statement, and the per-query shape of the {@code --json} contract: its {@code
  * pg_stat_statements} identity and <em>real measured</em> stats (calls, total/mean exec time), the
  * captured generic plan ({@code null} when the statement could not be safely explained — utility
- * statements, generic-plan rejects), the anti-pattern findings, and one {@link Recommendation} per
+ * statements, generic-plan rejects, a table the role may not read — with the reason in {@code
+ * planError}; contract 1.5), the anti-pattern findings, and one {@link Recommendation} per
  * candidate. Recommendations are all carried — validated, suppressed, and not-planner-validated
  * alike — so the report is honest about everything that was tried, not just the wins. Pure model —
  * no I/O.
@@ -19,6 +20,7 @@ public record QueryReport(
     double totalExecMs,
     double meanExecMs,
     boolean planCaptured,
+    String planError,
     PlanSummary plan,
     List<Finding> findings,
     List<Recommendation> recommendations) {

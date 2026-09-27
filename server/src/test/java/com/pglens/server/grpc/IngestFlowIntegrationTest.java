@@ -177,6 +177,44 @@ class IngestFlowIntegrationTest {
   }
 
   @Test
+  void aPlanErrorAndPartitionRootsArePersistedAndReadBack() throws Exception {
+    // ADR-0049: the agent says why a plan is missing (and re-sends it once access is granted), and
+    // names each partition's root table; identities keep their case and schema.
+    long dbId = monitoredDbs.findByTokenHash(Tokens.sha256Hex(TOKEN)).orElseThrow().id();
+    QueryText denied =
+        text().toBuilder()
+            .setPlanError(
+                "the PgLens role may not read a table this query uses (permission denied)")
+            .build();
+    SampleBatch first = batch(1_000L, RESET_A, sample(100, 500.0, 1000), denied);
+    send(
+        first.toBuilder()
+            .setCatalog(
+                CatalogSnapshot.newBuilder()
+                    .addTables(TableStat.newBuilder().setTableName("billing.invoices"))
+                    .addTables(
+                        TableStat.newBuilder()
+                            .setTableName("billing.\"Invoices_2026\"")
+                            .setPartitionRoot("billing.invoices")))
+            .build());
+
+    assertThat(jdbc.queryForObject("SELECT plan_error FROM query_texts", String.class))
+        .contains("permission denied");
+    assertThat(catalogs.load(dbId).partitionRoot("billing.\"Invoices_2026\""))
+        .contains("billing.invoices");
+
+    // Access granted: the re-sent text carries the plan and clears the error.
+    send(
+        batch(
+            1_060L,
+            RESET_A,
+            sample(150, 800.0, 1600),
+            text().toBuilder().setPlanCaptured(true).setPlanJson("[{\"Plan\":{}}]").build()));
+    assertThat(jdbc.queryForObject("SELECT plan_error IS NULL FROM query_texts", Boolean.class))
+        .isTrue();
+  }
+
+  @Test
   void unknownTokenIsRejected() throws InterruptedException {
     ManagedChannel bad = channelWithToken("wrong-token");
     try {

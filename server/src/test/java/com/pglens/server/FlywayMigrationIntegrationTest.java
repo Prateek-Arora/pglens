@@ -78,6 +78,13 @@ class FlywayMigrationIntegrationTest {
             "sessions",
             "api_tokens",
             "query_stats_hourly"); // V10
+    // V11 (ADR-0049): why a plan is missing, and each partition's root table.
+    assertThat(
+            jdbc.queryForList(
+                "SELECT table_name || '.' || column_name FROM information_schema.columns "
+                    + "WHERE column_name IN ('plan_error', 'partition_root')",
+                String.class))
+        .containsExactlyInAnyOrder("query_texts.plan_error", "table_catalog.partition_root");
   }
 
   @Test
@@ -85,14 +92,14 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(10); // V1 … V10
+    assertThat(applied).isEqualTo(11); // V1 … V11
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("10");
+    assertThat(version).isEqualTo("11");
   }
 
   /**

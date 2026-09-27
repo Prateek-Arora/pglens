@@ -8,7 +8,7 @@ plugins {
 
 allprojects {
   group = "com.pglens"
-  version = "0.0.1-SNAPSHOT"
+  version = "0.1.0-rc" // one version for the whole release: scripts/check_versions.sh (ADR-0050)
 }
 
 subprojects {

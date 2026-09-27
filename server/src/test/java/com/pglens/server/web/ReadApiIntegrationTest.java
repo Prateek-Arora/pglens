@@ -377,6 +377,8 @@ class ReadApiIntegrationTest {
             jsonPath("$.recommended[0].estimatedMsSaved").value(greaterThan(0.0), Double.class))
         .andExpect(
             jsonPath("$.recommended[0].queries[0].queryid").value(Long.toString(ordersQueryId)))
+        .andExpect(
+            jsonPath("$.recommended[0].queries[0].sqlPreview").value(containsString("FROM orders")))
         .andExpect(jsonPath("$.notPlannerValidated[0].accessMethod").value("GIN"))
         .andExpect(jsonPath("$.notPlannerValidated[0].queryids[0]").value(isA(String.class)));
 

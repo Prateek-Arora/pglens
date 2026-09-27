@@ -225,6 +225,71 @@ class AntiPatternDetectorTest {
 
   // ---------- helpers ----------
 
+  // ---------- Real-world names (ADR-0049): schemas, quoted names, varchar, partitions ----------
+
+  @Test
+  void findsVarcharFiltersAndSortOnAQuotedTableInAnotherSchema() {
+    // app."UserAccounts" u WHERE u.status = $1 AND u."Email" = $2 ORDER BY u.tenant_id LIMIT 5,
+    // both columns varchar — EXPLAIN prints them as (u.status)::text / (u."Email")::text.
+    PlanNode plan = parse("useraccounts_quoted_varchar.json");
+    String table = "app.\"UserAccounts\"";
+    CatalogSnapshot catalog = catalog(table(table, 50_000, pk(table, "id")));
+
+    List<Finding> findings = new AntiPatternDetector().detect(plan, catalog);
+
+    assertThat(findings)
+        .extracting(Finding::ruleId, Finding::table, Finding::columns)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("R1", table, List.of("status")),
+            org.assertj.core.groups.Tuple.tuple("R1", table, List.of("Email")),
+            org.assertj.core.groups.Tuple.tuple("R4", table, List.of("tenant_id")));
+    assertThat(findings.get(1).evidence()).contains("\"Email\"");
+  }
+
+  @Test
+  void findsPrismaStyleQuotedCamelCaseFiltersJoinsAndSorts() {
+    PlanNode filtered = parse("prisma_post_author.json");
+    PlanNode joined = parse("prisma_post_user_join.json");
+    CatalogSnapshot catalog =
+        catalog(
+            table("\"Post\"", 300_000, pk("\"Post\"", "id")),
+            table("\"User\"", 100_000, pk("\"User\"", "id")));
+
+    assertThat(new AntiPatternDetector().detect(filtered, catalog))
+        .extracting(Finding::ruleId, Finding::table, Finding::columns)
+        .contains(
+            org.assertj.core.groups.Tuple.tuple("R1", "\"Post\"", List.of("authorId")),
+            org.assertj.core.groups.Tuple.tuple("R4", "\"Post\"", List.of("createdAt")));
+    assertThat(only(new UnindexedJoinRule(), joined, catalog))
+        .singleElement()
+        .satisfies(
+            f -> {
+              assertThat(f.table()).isEqualTo("\"Post\"");
+              assertThat(f.columns()).containsExactly("authorId");
+            });
+  }
+
+  @Test
+  void aPartitionsFindingsTargetTheirRootTableOnce() {
+    // inv is partitioned into inv_a and inv_b; both scans filter acct and d.
+    PlanNode plan = parse("partitioned_inv_filter.json");
+    CatalogSnapshot catalog =
+        catalog(
+            table("inv", 100_000),
+            new TableInfo("inv_a", 52_000, List.of(), null, "inv"),
+            new TableInfo("inv_b", 48_000, List.of(), null, "inv"));
+
+    List<Finding> findings = only(new SelectiveSeqScanRule(), plan, catalog);
+
+    assertThat(findings).isNotEmpty().allSatisfy(f -> assertThat(f.table()).isEqualTo("inv"));
+    assertThat(findings).extracting(Finding::evidence).anyMatch(e -> e.contains("inv_a"));
+    assertThat(
+            new com.pglens.engine.candidate.IndexCandidateGenerator()
+                .generate(findings).stream().map(c -> c.ddl()).toList())
+        .containsExactly(
+            "CREATE INDEX idx_inv_d ON inv (d);", "CREATE INDEX idx_inv_acct ON inv (acct);");
+  }
+
   private List<Finding> only(Rule rule, PlanNode plan, CatalogSnapshot catalog) {
     return new AntiPatternDetector(List.of(rule)).detect(plan, catalog);
   }

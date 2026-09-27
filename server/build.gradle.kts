@@ -57,6 +57,13 @@ dependencies {
 // symmetry with :agent (which must stay consumable as a test dependency).
 tasks.bootJar { archiveFileName.set("app.jar") }
 
+// The version the server reports (health, OpenAPI) is the build's own — one source (ADR-0050).
+tasks.processResources {
+  val version = project.version.toString()
+  inputs.property("pglensVersion", version)
+  filesMatching("application.yml") { filter { line -> line.replace("@pglensVersion@", version) } }
+}
+
 // Fast unit tests run by default; Testcontainers integration tests (@Tag("it"), need Docker) run as a
 // separate task that `check`/`build` include — mirrors :engine, keeping the inner loop container-free.
 tasks.test {
@@ -76,6 +83,11 @@ val integrationTest by
       systemProperty(
           "pglens.monitoredImage",
           providers.gradleProperty("monitoredImage").getOrElse("pglens/monitored-db:0.0.0"))
+      // The committed API contract (docs/api/openapi.json, ADR-0046): `-PopenapiUpdate=true`
+      // (make openapi) rewrites it instead of failing on a difference.
+      systemProperty("pglens.repoRoot", rootDir.absolutePath)
+      systemProperty(
+          "pglens.openapi.update", providers.gradleProperty("openapiUpdate").getOrElse("false"))
     }
 
 // M7 of the Phase 3 eval: real embeddings, pgvector HNSW vs exact (docs/llm-eval.md). Needs a

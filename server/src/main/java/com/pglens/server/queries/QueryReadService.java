@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,12 +53,12 @@ public class QueryReadService {
       boolean sqlPreviewCut,
       long calls,
       double measuredTotalMs,
-      Double measuredMeanMs,
+      @Nullable Double measuredMeanMs,
       long rows,
       long sharedBlksHit,
       long sharedBlksRead,
       boolean planCaptured,
-      String recommendation) {}
+      @Nullable String recommendation) {}
 
   public record Leaderboard(
       String window,
@@ -71,27 +72,31 @@ public class QueryReadService {
 
   /** Measured totals over a period ({@code measuredMeanMs} is null when there were no calls). */
   public record MeasuredTotals(
-      long calls, double measuredTotalMs, Double measuredMeanMs, long rows, Instant asOf) {}
+      long calls,
+      double measuredTotalMs,
+      @Nullable Double measuredMeanMs,
+      long rows,
+      Instant asOf) {}
 
   /** One node of the estimated plan; {@code id} is its pre-order position (0 = root). */
   public record PlanNodeView(
       int id,
       String nodeType,
       boolean parallelAware,
-      String relation,
-      String alias,
-      String index,
-      String joinType,
+      @Nullable String relation,
+      @Nullable String alias,
+      @Nullable String index,
+      @Nullable String joinType,
       double estimatedStartupCost,
       double estimatedTotalCost,
       long estimatedRows,
       int estimatedWidth,
-      String filter,
-      String indexCond,
-      String recheckCond,
-      String hashCond,
+      @Nullable String filter,
+      @Nullable String indexCond,
+      @Nullable String recheckCond,
+      @Nullable String hashCond,
       List<String> sortKeys,
-      Integer workersPlanned,
+      @Nullable Integer workersPlanned,
       List<PlanNodeView> children) {}
 
   public record PlanView(
@@ -101,11 +106,11 @@ public class QueryReadService {
   public record FindingView(
       String ruleId,
       String title,
-      String table,
+      @Nullable String table,
       List<String> columns,
       String confidence,
       String evidence,
-      Integer planNode) {}
+      @Nullable Integer planNode) {}
 
   /**
    * One index checked for this query. {@code plannerCostDropFraction} is {@code (before − after) /
@@ -116,16 +121,16 @@ public class QueryReadService {
       String ddl,
       String accessMethod,
       String status,
-      Double plannerCostBefore,
-      Double plannerCostAfter,
-      Double plannerCostDropFraction,
-      Boolean usedByPlanner,
-      String reason,
-      Double estimatedMsSaved,
-      String scoreBasis,
-      String rangeLabel,
-      String footprintLabel,
-      String buildCaution,
+      @Nullable Double plannerCostBefore,
+      @Nullable Double plannerCostAfter,
+      @Nullable Double plannerCostDropFraction,
+      @Nullable Boolean usedByPlanner,
+      @Nullable String reason,
+      @Nullable Double estimatedMsSaved,
+      @Nullable String scoreBasis,
+      @Nullable String rangeLabel,
+      @Nullable String footprintLabel,
+      @Nullable String buildCaution,
       Instant validatedAt) {}
 
   public record QueryDetail(
@@ -137,8 +142,9 @@ public class QueryReadService {
       Instant lastSeen,
       String window,
       MeasuredTotals inWindow,
-      MeasuredTotals sinceStatsReset,
-      PlanView plan,
+      @Nullable MeasuredTotals sinceStatsReset,
+      @Nullable PlanView plan,
+      @Nullable String planUnavailableReason,
       List<FindingView> findings,
       List<QueryRecommendation> recommendations,
       Confirm confirm) {}
@@ -148,7 +154,7 @@ public class QueryReadService {
    * capturedAt} is the interval's receive time, or the hour's start.
    */
   public record TrendPointView(
-      Instant capturedAt, long calls, double measuredTotalMs, Double measuredMeanMs) {}
+      Instant capturedAt, long calls, double measuredTotalMs, @Nullable Double measuredMeanMs) {}
 
   /** {@code resolution}: {@code RAW} (one point per persisted interval) or {@code HOUR}. */
   public record Trend(
@@ -210,9 +216,20 @@ public class QueryReadService {
         root == null
             ? null
             : new PlanView("generic_plan", PLAN_LABEL, root.totalCost(), node(root, new int[1])),
+        root == null ? planUnavailable(q) : null,
         findings,
         repo.recommendations(dbId, queryid).stream().map(QueryReadService::recommendation).toList(),
         Confirm.INSTANCE);
+  }
+
+  /** Why a query has no plan to show: the agent's reason, or that it hasn't been captured yet. */
+  private static String planUnavailable(StoredQuery q) {
+    if (q.planError() != null && !q.planError().isBlank()) {
+      return q.planError();
+    }
+    return q.planCaptured()
+        ? "The stored plan couldn't be read."
+        : "No plan was captured for this query (an agent older than this server doesn't say why).";
   }
 
   /** Trend resolutions: every persisted interval, or one point per UTC hour (the rollup). */
@@ -282,7 +299,7 @@ public class QueryReadService {
         id,
         n.nodeType(),
         n.parallelAware(),
-        n.relationName(),
+        n.table(),
         n.alias(),
         n.indexName(),
         n.joinType(),

@@ -6,7 +6,10 @@ import com.pglens.server.persistence.HygieneRepository;
 import com.pglens.server.persistence.MonitoredDb;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -19,13 +22,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class RecommendationReadService {
 
-  /** This index's planner-validated evidence for one query. */
+  /**
+   * This index's planner-validated evidence for one query. {@code sqlPreview} is the start of the
+   * query's text (null if the text was never captured), so a reader can tell the queries apart.
+   */
   public record QueryEvidence(
       String queryid,
+      @Nullable String sqlPreview,
       double estimatedMsSaved,
-      String scoreBasis,
+      @Nullable String scoreBasis,
       double plannerCostDropFraction,
-      String rangeLabel) {}
+      @Nullable String rangeLabel) {}
 
   /**
    * One index to consider creating. {@code estimatedMsSaved} sums the per-query estimates, each
@@ -35,19 +42,19 @@ public class RecommendationReadService {
   public record IndexRecommendation(
       String database,
       String ddl,
-      String table,
+      @Nullable String table,
       String accessMethod,
       double estimatedMsSaved,
       boolean actionable,
-      String redundantWith,
-      String footprintLabel,
-      String buildCaution,
-      TableWriteLoad writeLoad,
+      @Nullable String redundantWith,
+      @Nullable String footprintLabel,
+      @Nullable String buildCaution,
+      @Nullable TableWriteLoad writeLoad,
       List<QueryEvidence> queries) {}
 
   /** An index PgLens suggests but HypoPG cannot simulate (GIN/GiST): no planner estimate exists. */
   public record NotPlannerValidated(
-      String ddl, String accessMethod, String reason, List<String> queryids) {}
+      String ddl, String accessMethod, @Nullable String reason, List<String> queryids) {}
 
   public record Recommendations(
       String database,
@@ -89,8 +96,16 @@ public class RecommendationReadService {
     return new Hygiene(db.name(), hygiene.loadHygiene(db.id()));
   }
 
+  /** Characters of SQL per query, as on the leaderboard. */
+  private static final int PREVIEW_CHARS = 300;
+
   private List<IndexRecommendation> recommended(MonitoredDb db) {
-    return advice.advice(db.id()).stream()
+    var all = advice.advice(db.id());
+    Map<Long, String> previews =
+        previews(
+            db.id(),
+            all.stream().flatMap(a -> a.queries().stream()).map(q -> q.queryId()).toList());
+    return all.stream()
         .map(
             a ->
                 new IndexRecommendation(
@@ -109,12 +124,33 @@ public class RecommendationReadService {
                             q ->
                                 new QueryEvidence(
                                     Long.toString(q.queryId()),
+                                    previews.get(q.queryId()),
                                     q.estimatedMsSaved(),
                                     q.scoreBasis(),
                                     q.relativeDrop(),
                                     q.rangeLabel()))
                         .toList()))
         .toList();
+  }
+
+  /** The start of each query's text, "…"-terminated when cut; one round trip for all of them. */
+  private Map<Long, String> previews(long dbId, List<Long> queryIds) {
+    Map<Long, String> out = new HashMap<>();
+    if (queryIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT queryid, left(normalized_text, ?) AS preview, length(normalized_text) > ? AS cut "
+            + "FROM query_texts WHERE db_id = ? AND queryid = ANY (?)",
+        rs -> {
+          out.put(
+              rs.getLong("queryid"), rs.getString("preview") + (rs.getBoolean("cut") ? "…" : ""));
+        },
+        PREVIEW_CHARS,
+        PREVIEW_CHARS,
+        dbId,
+        queryIds.stream().distinct().toArray(Long[]::new));
+    return out;
   }
 
   private List<NotPlannerValidated> notPlannerValidated(long dbId) {

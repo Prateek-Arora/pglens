@@ -28,6 +28,11 @@ import java.util.List;
  * position of the node it is about in a pre-order walk of its query's plan (0 = the root), so a
  * plan viewer can highlight it.
  *
+ * <p>Contract 1.5 (ADR-0049, additive over 1.4): a query whose plan couldn't be captured carries
+ * {@code planError}, the reason; the notes name the schemas the role can't read, with the grants
+ * that fix it. Tables are named by their identity ({@link SqlIdent#table}: schema-qualified unless
+ * {@code public}, quoted when Postgres would quote them), and columns by their raw names.
+ *
  * <p>A validated recommendation appears twice by design: once under its query ({@link
  * QueryReport#recommendations()}, the full per-query story) and once, ranked and scored, in {@link
  * #topRecommendations()} (the cross-query "indexes to create" summary).
@@ -45,7 +50,7 @@ public record ScanReport(
    * The frozen {@code --json} contract version. Bump on any breaking field change (Phase 2 reads
    * it).
    */
-  public static final String SCHEMA_VERSION = "1.4";
+  public static final String SCHEMA_VERSION = "1.5";
 
   public ScanReport {
     queries = queries == null ? List.of() : List.copyOf(queries);

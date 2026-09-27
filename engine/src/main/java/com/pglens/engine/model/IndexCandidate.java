@@ -1,6 +1,6 @@
 package com.pglens.engine.model;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -12,6 +12,9 @@ import java.util.regex.Pattern;
  * the access method, and whether HypoPG can planner-validate it. A candidate is a <em>proposal</em>
  * — HypoPG validation (step 8) decides whether it becomes a recommendation or is suppressed. Pure
  * model — no I/O.
+ *
+ * <p>{@code table} is the table's identity ({@link SqlIdent#table}) and {@code columns} are raw
+ * names; {@link #ddl()} quotes them the way Postgres would (ADR-0049).
  *
  * <p>Phase 1 generates only full (non-partial) candidates: {@code pg_stat_statements} text is
  * normalized ({@code $1}), so there is no literal to build a partial {@code WHERE} from.
@@ -51,10 +54,16 @@ public record IndexCandidate(
         table, columns, accessMethod, validatable, reason, sourceRuleIds, rationale);
   }
 
-  // Inverse of ddl(): "CREATE INDEX <name> ON <table> [USING <am> ](<c1>, <c2>);"
+  // Inverse of ddl(): "CREATE INDEX <name> ON <table> [USING <am> ](<c1>, <c2>);" — identifiers as
+  // SqlIdent.quote writes them (older rows hold bare lower-case names, which parse the same way).
+  private static final String IDENT = "(?:\"(?:[^\"]|\"\")+\"|[^\\s.\"(),;]+)";
   private static final Pattern DDL =
       Pattern.compile(
-          "^\\s*CREATE INDEX \\S+ ON (\\S+) (?:USING (\\w+) )?\\((.+)\\);?\\s*$",
+          "^\\s*CREATE INDEX \\S+ ON ("
+              + IDENT
+              + "(?:\\."
+              + IDENT
+              + ")?) (?:USING (\\w+) )?\\((.+)\\);?\\s*$",
           Pattern.CASE_INSENSITIVE);
 
   /**
@@ -79,11 +88,42 @@ public record IndexCandidate(
     } catch (IllegalArgumentException unknownMethod) {
       return Optional.empty();
     }
-    List<String> columns = Arrays.stream(m.group(3).split(",")).map(String::strip).toList();
-    if (columns.stream().anyMatch(String::isEmpty)) {
+    List<String> tableParts = SqlIdent.parts(m.group(1));
+    List<String> columns = new ArrayList<>();
+    for (String token : splitTopLevelCommas(m.group(3))) {
+      if (!SqlIdent.isIdentifier(token)) {
+        return Optional.empty();
+      }
+      columns.add(SqlIdent.unquote(token));
+    }
+    if (tableParts.isEmpty() || tableParts.size() > 2 || columns.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.of(of(m.group(1), columns, method, List.of(), null));
+    String table =
+        tableParts.size() == 2
+            ? SqlIdent.table(tableParts.get(0), tableParts.get(1))
+            : SqlIdent.table(null, tableParts.get(0));
+    return Optional.of(of(table, columns, method, List.of(), null));
+  }
+
+  /** {@code a, "b,c"} → {@code [a, "b,c"]}: commas inside double quotes don't split. */
+  private static List<String> splitTopLevelCommas(String list) {
+    List<String> out = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    boolean quoted = false;
+    for (char c : list.toCharArray()) {
+      if (c == '"') {
+        quoted = !quoted;
+      }
+      if (c == ',' && !quoted) {
+        out.add(current.toString().strip());
+        current.setLength(0);
+      } else {
+        current.append(c);
+      }
+    }
+    out.add(current.toString().strip());
+    return out;
   }
 
   /**
@@ -106,9 +146,20 @@ public record IndexCandidate(
     return true;
   }
 
-  /** A deterministic index name for the rendered DDL (HypoPG assigns its own name internally). */
+  /**
+   * A deterministic index name for the rendered DDL (HypoPG assigns its own name internally):
+   * {@code idx_<table>_<columns>}, lower case with anything but letters, digits and {@code _}
+   * turned into {@code _}, so it never needs quoting; a name past Postgres's 63-byte limit is cut
+   * and ends in a hash of the full name, so two long names can't collide.
+   */
   public String suggestedName() {
-    return "idx_" + table + "_" + String.join("_", columns);
+    String raw = "idx_" + SqlIdent.relationName(table) + "_" + String.join("_", columns);
+    String name = raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+    if (name.length() <= SqlIdent.MAX_IDENTIFIER_BYTES) {
+      return name;
+    }
+    String hash = Integer.toHexString(raw.hashCode() & 0x7fffffff);
+    return name.substring(0, SqlIdent.MAX_IDENTIFIER_BYTES - hash.length() - 1) + "_" + hash;
   }
 
   /** The copy-pasteable {@code CREATE INDEX} statement (also what HypoPG is asked to simulate). */
@@ -116,6 +167,10 @@ public record IndexCandidate(
     String using =
         accessMethod == AccessMethod.BTREE ? "" : "USING " + accessMethod.sqlUsing() + " ";
     return "CREATE INDEX %s ON %s %s(%s);"
-        .formatted(suggestedName(), table, using, String.join(", ", columns));
+        .formatted(
+            suggestedName(),
+            table,
+            using,
+            String.join(", ", columns.stream().map(SqlIdent::quote).toList()));
   }
 }

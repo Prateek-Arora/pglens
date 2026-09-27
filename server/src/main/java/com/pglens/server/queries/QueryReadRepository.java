@@ -57,6 +57,7 @@ class QueryReadRepository {
       boolean truncated,
       String planJson,
       boolean planCaptured,
+      String planError,
       Instant firstSeen,
       Instant lastSeen) {}
 
@@ -165,16 +166,17 @@ class QueryReadRepository {
   Optional<StoredQuery> query(long dbId, long queryid) {
     return jdbc
         .query(
-            "SELECT normalized_text, truncated, plan_json, plan_captured, first_seen, last_seen "
-                + "FROM query_texts WHERE db_id = ? AND queryid = ?",
+            "SELECT normalized_text, truncated, plan_json, plan_captured, plan_error, first_seen, "
+                + "last_seen FROM query_texts WHERE db_id = ? AND queryid = ?",
             (rs, n) ->
                 new StoredQuery(
                     rs.getString(1),
                     rs.getBoolean(2),
                     rs.getString(3),
                     rs.getBoolean(4),
-                    instant(rs, 5),
-                    instant(rs, 6)),
+                    rs.getString(5),
+                    instant(rs, 6),
+                    instant(rs, 7)),
             dbId,
             queryid)
         .stream()

@@ -1,11 +1,13 @@
 package com.pglens.engine.model;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * A table's write-load classification over a window, with the real counts behind it and a human
  * label (ADR-0038). Built by {@code hygiene.WriteLoad}. Pure model — no I/O.
  */
 public record TableWriteLoad(
-    String table, Level level, TableActivity activity, String window, String label) {
+    String table, Level level, @Nullable TableActivity activity, String window, String label) {
 
   public enum Level {
     /** More tuples written than read over the window — weigh an index's maintenance cost. */

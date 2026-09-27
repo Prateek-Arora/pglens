@@ -27,6 +27,7 @@ spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" 
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-jdbc = { module = "org.springframework:spring-jdbc" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+jspecify = { module = "org.jspecify:jspecify" }
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

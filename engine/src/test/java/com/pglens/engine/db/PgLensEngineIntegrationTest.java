@@ -141,7 +141,7 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
-    assertThat(report.schemaVersion()).isEqualTo("1.4");
+    assertThat(report.schemaVersion()).isEqualTo("1.5");
     // 1.4: every finding points at a node of its query's plan (ADR-0044).
     assertThat(report.queries())
         .flatExtracting(q -> q.findings())

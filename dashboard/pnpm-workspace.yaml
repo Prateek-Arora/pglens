@@ -1,0 +1,18 @@
+# Supply-chain guards (ADR-0046). Set explicitly, the age gate is strict: a version younger than a
+# day fails the install instead of being added to the exclude list. `next` is exempt so a
+# security release can be pinned the day it ships (it is pinned exactly anyway).
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - next
+  - "@next/*"
+trustPolicy: no-downgrade
+# Each exclusion below was checked by hand (2026-09-26): an old release by the same maintainer as
+# the releases around it, published without the provenance a neighbouring release had.
+trustPolicyExclude:
+  - eslint-import-resolver-typescript@3.10.1 # lint-only, via eslint-config-next; final 3.x
+  - semver@6.3.1 # old 6.x line; published by an npm maintainer before the move to CI publishing
+  - why-is-node-running@3.2.2 # test-only, via vitest
+# Dependency install scripts stay off unless listed here (neither is needed to build or run).
+allowBuilds:
+  sharp: false
+  unrs-resolver: false

@@ -23,6 +23,8 @@ springdoc:
   api-docs:
     path: /api/v1/openapi.json
   paths-to-match: /api/v1/**
+  # The API only ever answers JSON; say so, so generated clients type responses as JSON (ADR-0046).
+  default-produces-media-type: application/json
 
 # HTTP API (Phase 4, ADR-0044): /api/v1, stateless bearer tokens. The dashboard calls it from its own
 # server code on the private network; scripts can use it with a read-only API token.
@@ -30,7 +32,7 @@ server:
   port: ${PGLENS_HTTP_PORT:8080}
 
 pglens:
-  version: 0.0.7   # reported by /api/v1/health and the OpenAPI description
+  version: "@pglensVersion@"   # the build's version (Gradle fills it in); reported by /api/v1/health + OpenAPI
   # Login for the HTTP API (ADR-0044). REQUIRED by default; `none` = one person on their own machine
   # (every response is flagged and the dashboard shows a banner). On an empty users table the server
   # creates the first admin: PGLENS_ADMIN_PASSWORD (12+ characters), or a generated password logged

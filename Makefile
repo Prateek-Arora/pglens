@@ -7,17 +7,16 @@ MON_DB  ?= pglens_demo
 META_DB ?= pglens_meta
 
 .DEFAULT_GOAL := help
-.PHONY: help up seed reseed warmup register test smoke bench bench-api accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
+.PHONY: help up seed reseed warmup register test smoke e2e bench bench-api openapi accuracy accuracy-job llm-up llm-down llm-eval down clean logs ps psql-monitored psql-metadata lint secrets hooks
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| sort \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
 
-up: ## Build jars + images and start the full stack (dbs + server + agent), waiting for health
+up: ## Build the images from source and start the full stack (dbs + server + agent + dashboard), waiting for health
 	@docker info >/dev/null 2>&1 || { echo "Docker daemon not running — start Docker Desktop"; exit 1; }
 	bash scripts/dev_env.sh
-	./gradlew :server:bootJar :agent:bootJar
 	$(COMPOSE) up -d --build --wait
 
 seed: ## Load demo data (idempotent; skips if already seeded)
@@ -39,6 +38,12 @@ test smoke: ## Run the smoke test (reproducibility gate + Phase 1 oracle)
 
 bench: ## Dogfood benchmark — measure PgLens's own trend query, before/after the time-series index (KEEP=1 keeps the container)
 	bash scripts/dogfood_benchmark.sh
+
+e2e: ## Dashboard end-to-end smoke: full stack + demo data, then Playwright + axe (needs Node 24 + pnpm)
+	bash scripts/e2e.sh
+
+openapi: ## Rewrite the committed API contract docs/api/openapi.json from the server (commit it; CI fails on drift)
+	./gradlew :server:integrationTest --tests '*OpenApiSpecIntegrationTest' -PopenapiUpdate=true
 
 bench-api: ## API latency benchmark — every read endpoint over HTTP on a 30-day, 500-query history (KEEP=1 keeps the containers)
 	bash scripts/api_benchmark.sh

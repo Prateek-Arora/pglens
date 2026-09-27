@@ -12,7 +12,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 if have shellcheck; then
     echo "== shellcheck =="
-    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh scripts/dogfood_benchmark.sh scripts/api_benchmark.sh scripts/accuracy_benchmark.sh scripts/secret_scan.sh scripts/dev_env.sh scripts/register.sh scripts/git-hooks/pre-commit deploy/compose/certs/gen-dev-certs.sh || status=1
+    shellcheck demo/warmup.sh scripts/smoke_test.sh scripts/lint.sh scripts/dogfood_benchmark.sh scripts/api_benchmark.sh scripts/accuracy_benchmark.sh scripts/secret_scan.sh scripts/dev_env.sh scripts/register.sh scripts/check_versions.sh scripts/e2e.sh scripts/git-hooks/pre-commit deploy/compose/certs/gen-dev-certs.sh || status=1
 else
     echo "(shellcheck not installed -- skipping)"
 fi
@@ -21,8 +21,8 @@ if have hadolint; then
     echo "== hadolint =="
     hadolint \
         deploy/compose/monitored/Dockerfile \
-        deploy/compose/agent/Dockerfile \
-        deploy/compose/server/Dockerfile || status=1
+        deploy/compose/java/Dockerfile \
+        dashboard/Dockerfile || status=1
 else
     echo "(hadolint not installed -- skipping)"
 fi
@@ -39,6 +39,9 @@ if have sqlfluff; then
 else
     echo "(sqlfluff not installed -- skipping)"
 fi
+
+echo "== versions =="
+bash scripts/check_versions.sh || status=1
 
 if [ "$status" -eq 0 ]; then
     echo "lint: OK"

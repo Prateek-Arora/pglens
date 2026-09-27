@@ -35,7 +35,7 @@ public final class AdviceAssembler {
 
   /**
    * @param rows every validated (query, index) row for one db
-   * @param writeLoadByTable the write-load assessment per lowercased table (may lack a table)
+   * @param writeLoadByTable the write-load assessment per table identity (may lack a table)
    * @return actionable advice by total estimated savings (descending), then redundant advice
    */
   public static List<IndexAdvice> assemble(

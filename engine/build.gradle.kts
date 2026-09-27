@@ -19,6 +19,9 @@ dependencies {
   implementation(platform(libs.spring.boot.dependencies))
   implementation(libs.spring.jdbc)
   implementation(libs.jackson.databind) // pure PlanParser uses Jackson (allowed; not Spring)
+  // @Nullable on model records the server returns: its OpenAPI spec reads it (ADR-0046).
+  api(platform(libs.spring.boot.dependencies))
+  api(libs.jspecify)
   runtimeOnly(libs.postgresql)
 
   testImplementation(platform(libs.spring.boot.dependencies))

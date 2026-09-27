@@ -8,6 +8,7 @@ import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.db.StatsReader;
 import com.pglens.engine.detect.AntiPatternDetector;
 import com.pglens.engine.hygiene.WriteLoad;
+import com.pglens.engine.model.AccessGap;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.Finding;
@@ -183,8 +184,8 @@ public final class PgLensEngine implements AutoCloseable {
    * One statement end-to-end: capture → detect → propose → validate. Shared by scan and explain.
    */
   private QueryReport analyze(StatementStat s, CatalogSnapshot catalog) {
-    PlanNode plan =
-        planCapturer.captureGenericPlanJson(s.query()).map(planParser::parse).orElse(null);
+    PlanCapturer.Capture capture = planCapturer.capture(s.query());
+    PlanNode plan = capture.plan().map(planParser::parse).orElse(null);
     List<Finding> findings = plan == null ? List.of() : detector.detect(plan, catalog);
     List<IndexCandidate> candidates = candidateGenerator.generate(findings);
     List<Recommendation> recommendations = validator.validate(s.query(), candidates);
@@ -196,6 +197,7 @@ public final class PgLensEngine implements AutoCloseable {
         s.totalExecTimeMs(),
         s.meanExecTimeMs(),
         plan != null,
+        plan == null ? capture.error() : null,
         plan == null ? null : PlanSummary.genericPlan(plan),
         findings,
         recommendations);
@@ -246,6 +248,10 @@ public final class PgLensEngine implements AutoCloseable {
     notes.add(
         "GIN/GiST recommendations (jsonb, full-text, LIKE '%…%') are surfaced but not "
             + "planner-validated — HypoPG cannot simulate those access methods.");
+    String access = AccessGap.advice(catalogReader.currentRole(), catalogReader.accessGaps());
+    if (!access.isEmpty()) {
+      notes.add(access);
+    }
     if (!validator.hypopgAvailable()) {
       notes.add(
           "hypopg is not installed on the target, so no recommendation could be planner-validated. "

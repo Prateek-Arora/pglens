@@ -4,7 +4,7 @@
 
 PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries that actually cost you time, captures their `EXPLAIN` plans, and recommends indexes — then **checks each recommendation against the real planner with [HypoPG](https://github.com/HypoPG/hypopg)** so the "expected improvement" is the planner's own cost estimate for that index — not a guess, and always labeled as an estimate rather than a measured runtime. Everything runs on free/local infrastructure — **your data stays on your own infrastructure** (no query text is sent to a third-party service; the optional LLM explanations use a local model unless you explicitly allow a remote one).
 
-**Status:** 🟢 **`v0.0.7` — Phases 0–3 and 4A shipped: the CLI engine, the collector agent + server + time-series history, a recommendation-accuracy pass measured on two public benchmarks, and a secured HTTP API** ([how accurate is it?](#how-accurate-is-it--check-before-you-apply)). A lightweight **`pglens-agent`** streams `pg_stat_statements` to a central **`pglens-server`** over **gRPC**; the server persists a **delta time-series**, runs the engine on a schedule with **HypoPG-validated** recommendations, produces **index-hygiene** advice (unused / duplicate indexes), and answers **trend / top-mover** questions. The one-shot **`pglens scan` CLI** (Phase 1, `v0.0.1`) is still here for a quick snapshot, **`pglens confirm`** (Phase 2.6, `v0.0.5`) measures its recommendations on a copy of your database before you apply them, **`--plain`** (Phase 3, `v0.0.6`) explains each recommended index in plain language, with an optional local LLM whose wording is checked against PgLens's facts, and the server's **[HTTP API](#the-http-api)** (Phase 4A, `v0.0.7`) serves all of it to scripts, behind logins and TLS. Next: the Next.js dashboard (Phase 4B, `v0.1.0-rc`) — see the [roadmap](docs/project.md).
+**Status:** 🟡 **`v0.1.0-rc` — release candidate.** The web dashboard, the HTTP API, the collector agent + server with its history, and the one-shot `pglens` CLI (with `confirm` and plain-language explanations). Supports **PostgreSQL 16, 17 and 18**. What changed: [`CHANGELOG.md`](CHANGELOG.md); plan and status: [`docs/project.md`](docs/project.md).
 
 ## Design principles
 
@@ -13,26 +13,70 @@ PgLens watches a Postgres database's `pg_stat_statements`, ranks the queries tha
 - **Deterministic core, optional AI.** Analysis is correct and complete with no LLM. The optional LLM (`--plain`) only phrases facts the core already owns. PgLens checks its words against those facts and falls back to its own template.
 - **HypoPG honesty.** btree/brin/hash/bloom recs are planner-validated with a planner cost estimate. GIN/GiST recs (jsonb, full-text, `LIKE '%…%'`) are surfaced but clearly labeled **"not planner-validated"** — HypoPG can't simulate them, and PgLens never pretends it did.
 
-## Try it on your DB in 2 minutes
+## Quickstart — the dashboard
 
-**Prerequisites:** Docker (with the Compose plugin), GNU Make, and a JDK (17 or newer) to run the Gradle wrapper — which then auto-provisions the JDK 21 the engine builds and runs on, so you don't have to install it separately. Start Docker first.
-
-### 1. Spin up the bundled demo database (a deliberately-slow Postgres)
+**Prerequisites:** Docker (with the Compose plugin) and GNU Make. Start Docker first. (Everything builds inside Docker; plain `docker compose -f deploy/compose/docker-compose.yml up` also works and pulls the released images.)
 
 ```bash
-git clone <repo-url> pglens && cd pglens
-make up        # build the jars + images and start the full stack (dbs + server + agent), waiting for health
-make seed      # load skewed demo data (~1M rows) with deliberately-missing indexes
-make warmup    # replay the slow-query pack so pg_stat_statements accumulates real stats
+git clone https://github.com/Prateek-Arora/pglens.git && cd pglens
+make up         # build and start everything: two Postgres, server, agent, dashboard (writes an admin password to deploy/compose/.env)
+make register   # register the bundled demo database and hand its agent a token
+make seed       # load the deliberately slow demo data
+make warmup     # run the slow-query pack; run it again a minute later (a query's first sample only sets its baseline)
+grep PGLENS_ADMIN_PASSWORD deploy/compose/.env   # your login
 ```
 
-*(`make up` now brings up the whole Phase-2 stack. For the one-shot CLI scan below you only need the databases; the running collector→server system is covered in the **"Run it as a running system"** section further down.)*
+Open **<http://localhost:3000>** and sign in as `admin`. Measured from a fresh copy of the repo (2026-09-27, Docker build caches already warm): the dashboard was up after 46 s and showed the demo's slow queries and planner-validated recommendations after 85 s. A first-ever run also downloads the base images and builds the Java images inside Docker (about 95 s more here).
 
-### 2. Scan it
+- **Slow queries** — where the time went in the last 24 h / 7 d / 30 d, measured by `pg_stat_statements`.
+- **A query** — its SQL, measured trend, the captured plan with the problem node highlighted, each recommended index with the planner's estimate (always marked *est.*), a plain-language explanation, and the `pglens confirm` command to measure it on a copy before you build it.
+- **Recommendations** — the indexes worth building across every database, biggest estimated saving first, plus indexes HypoPG couldn't check and unused or duplicate indexes.
+- **Settings** — users, read-only API tokens, and databases: **Add a database** shows the agent token once with a ready-to-fill agent config.
+
+Every number says what it is: *measured* times and *counted* calls come from your database; *estimates* come from the planner and are never presented as a speedup. No LLM is needed — explanations fall back to PgLens's own template.
+
+## Monitor your own database
+
+**1. Prepare the database** (once, as a superuser or the tables' owner). It needs:
+
+- **PostgreSQL 16 or newer** — PgLens plans normalized `pg_stat_statements` text with `EXPLAIN (GENERIC_PLAN)`, added in PG16. Older servers are refused up front with a clear message. (CI runs the integration suite on 16, 17 and 18.)
+- **`pg_stat_statements`** in `shared_preload_libraries` (restart after adding it), then created in the database.
+- **`hypopg`** (optional but recommended) for planner-validated recommendations. Without it PgLens still finds problems and suggests indexes, labeled *not planner-validated*. Most managed services offer it; on a self-hosted server install your distribution's package (e.g. `postgresql-17-hypopg`).
+- **A read-only login role** that can read the statistics **and** the tables — Postgres won't even plan a query on a table the role can't read:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE EXTENSION IF NOT EXISTS hypopg;
+CREATE ROLE pglens_ro LOGIN PASSWORD '<a strong password>';
+GRANT pg_read_all_stats TO pglens_ro;
+-- for every schema your application's tables live in (public, app, billing, …):
+GRANT USAGE ON SCHEMA public TO pglens_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO pglens_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO pglens_ro;  -- run as the tables' owner
+```
+
+Missed a schema? `pglens scan` and the agent's log name each schema the role can't read, with the exact `GRANT`s; the dashboard shows the reason on each query without a plan, and the agent picks the plans up by itself once access is granted.
+
+PgLens connects **read-only** and never writes to the database — no index is ever built on it (`pglens confirm` builds them on a copy, never on the scanned database).
+
+**2. Add it in the dashboard** — *Settings → Add a database* shows its agent token once, with an `agent.env` to fill in and the command that starts the agent (`ghcr.io/prateek-arora/pglens-agent`) next to your database. The agent only dials out, to the server's gRPC port 9090 (TLS).
+
+**3. Where the agent runs.** On the same machine as PgLens, use `host.docker.internal` for the database or server host — the dev certificate names it, next to `server`, `localhost` and `127.0.0.1`. On another machine, the server's certificate must name the host the agent dials: set `PGLENS_TLS_EXTRA_SANS=DNS:pglens.internal` (or `IP:10.0.0.5`) in `deploy/compose/.env` and run `make up` again; the certificates are re-issued when the names change (then copy the new `ca.pem` to every agent). Or give the server your own certificate — see [Security defaults](#security-defaults).
+
+## The CLI — a one-off scan
+
+`pglens scan` ranks a database's costliest queries and recommends indexes in one run, with no server. Run it from the release image, the release jar (needs Java 21), or source:
 
 ```bash
-./gradlew :cli:bootRun --args="scan postgresql://pglens:pglens@localhost:5433/pglens_demo"
+# Docker (no install); -v lets scan/confirm read and write report files in this folder
+alias pglens='docker run --rm -it -v "$PWD:/work" ghcr.io/prateek-arora/pglens-cli:0.1.0-rc'
+# or: java -jar pglens-cli-0.1.0-rc.jar …   (from the GitHub release)
+# or, from a clone: ./gradlew :cli:bootRun --args="…"
+
+pglens scan postgresql://pglens_ro:<password>@your-host:5432/your_db
 ```
+
+From a container, a database on your own machine is `host.docker.internal` (add `--add-host=host.docker.internal:host-gateway` on Linux). To try it on the bundled demo after `make up && make seed && make warmup`: `pglens scan postgresql://pglens:pglens@host.docker.internal:5433/pglens_demo`.
 
 You'll get a ranked report of the costliest queries, each with the offending plan node, the anti-pattern found, and a copy-pasteable `CREATE INDEX` with its **HypoPG planner-cost delta** — for example:
 
@@ -46,6 +90,8 @@ You'll get a ranked report of the costliest queries, each with the offending pla
       [validated] CREATE INDEX idx_order_items_order_id ON order_items (order_id);
           Planner-validated (HypoPG estimate): total cost 9761 → 4071 (−58.3%). Estimate from the planner, not a runtime measurement.
 ```
+
+The `CREATE INDEX` runs as written: tables outside `public` are schema-qualified (`ON billing.invoices (…)`), names are quoted when Postgres needs it (`ON "Post" ("authorId")`), and a partitioned table gets one index on the parent, which covers every partition.
 
 Legitimate full scans get **no** recommendation, and jsonb/GIN cases are shown as `[not planner-validated]` — never with a fabricated number.
 
@@ -132,21 +178,6 @@ Lower on RAM? `--llm-model qwen3.5:2b` (2.7 GB) works, but in PgLens's tests it 
 
 If you do allow a hosted API (set `PGLENS_LLM_API_KEY`), check its data terms first. As of 2026-09: Groq doesn't retain inference data by default, while Google's Gemini free tier may use your content to improve its products.
 
-### 3. Point it at your own database
-
-```bash
-./gradlew :cli:bootRun --args="scan postgresql://user:password@your-host:5432/your_db"
-```
-
-Your database needs:
-
-- **PostgreSQL 16 or newer** — PgLens plans normalized `pg_stat_statements` text with `EXPLAIN (GENERIC_PLAN)`, added in PG16. Older servers are refused up front with a clear message. (CI runs the integration suite on PG16; PG17 and PG18 are verified by a compatibility job.)
-- **`pg_stat_statements` enabled** — add it to `shared_preload_libraries`, restart, then `CREATE EXTENSION pg_stat_statements;`
-- **a login role with read access to stats** — e.g. `GRANT pg_read_all_stats TO <role>;`
-- **`hypopg` (optional but recommended)** — `CREATE EXTENSION hypopg;` enables planner-validated cost deltas. Without it, PgLens still detects anti-patterns and suggests indexes, labeled *not planner-validated*.
-
-PgLens connects **read-only** and never writes to the target — no index is ever built on it (`pglens confirm` builds them on a copy, never on the scanned database).
-
 ### Command reference
 
 ```bash
@@ -166,20 +197,13 @@ confirm --report scan.json --copy <conn> --statements <file.sql|postgresql.log> 
 
 `--json` emits the full report as a stable, versioned contract (handy for piping into other tools). `--min-calls` (default 20) ignores rarely-run statements; `--order-by` changes the ranking.
 
-**Prefer a standalone binary?** Build the fat jar (needs a Java 21 runtime to *run*): `./gradlew :cli:bootJar` produces `cli/build/libs/cli-0.0.1-SNAPSHOT.jar`, then `java -jar cli/build/libs/cli-0.0.1-SNAPSHOT.jar scan <conn>`.
+**Building the jar yourself:** `./gradlew :cli:bootJar` (a JDK 17+ runs the Gradle wrapper, which provisions JDK 21) produces `cli/build/libs/cli-0.1.0-rc.jar`; run it with `java -jar` on Java 21.
 
 ## Run it as a running system (collector → server → history)
 
-The `pglens scan` CLI is a one-shot snapshot. Phase 2 (`v0.0.2`) adds the real product shape: a lightweight **agent** that streams stats to a central **server**, which remembers them over time.
+The `pglens scan` CLI is a one-shot snapshot. The [quickstart](#quickstart--the-dashboard) runs the real product shape: a lightweight **agent** that streams stats to a central **server**, which remembers them over time.
 
-```bash
-make up         # build jars + images and start the whole stack; writes a generated admin password to deploy/compose/.env
-make register   # register the demo db through the HTTP API; its agent token goes to deploy/compose/.env
-make seed       # load the skewed demo data
-make warmup     # replay the slow-query pack so pg_stat_statements accumulates
-```
-
-**Upgrading from `v0.0.6`:** your history carries over (the server migrates it on start). Run `make register` once after `make up`: the demo agent's old fixed token (`devtoken`) is no longer the default, so until then the agent is refused. `make register` gives it a fresh token.
+**Upgrading from `v0.0.7`:** run `make up`. Your history carries over (the server migrates it on start). The dev TLS certificates are re-issued once (they now also name `host.docker.internal`), so an agent on another machine needs the new `ca.pem`. The two databases' ports now listen on `127.0.0.1` only. From `v0.0.6`, also run `make register` once, to give the demo agent a token.
 
 Now the loop runs on its own. Every interval the agent — logged in as a read-only **`pglens_ro`** role — streams `pg_stat_statements` to the server, which stores a **delta time-series**, runs the engine on a schedule, hands HypoPG-validation work **back to the agent to run next to the database**, and records **validated recommendations**, **index-hygiene** findings, and **trends** in the metadata DB.
 
@@ -232,27 +256,34 @@ API tokens can read everything and change nothing; list or revoke them at `/api/
 
 ### Security defaults
 
-- **Agent ↔ server gRPC is TLS.** `make up` runs a one-shot `certs` service that creates a dev CA and a server certificate (for `server`, `localhost`, `127.0.0.1`) in the `grpc-certs` volume and throws the CA's key away; the agent trusts only that CA. For a real deployment give the server your own certificate (`PGLENS_GRPC_TLS_CERT`, `PGLENS_GRPC_TLS_KEY`) and the agent its CA (`PGLENS_SERVER_CA_CERT`). Plaintext needs `PGLENS_GRPC_PLAINTEXT=true` on the server *and* `PGLENS_SERVER_PLAINTEXT=true` on the agent, and is logged as a warning.
+- **Agent ↔ server gRPC is TLS.** `make up` runs a one-shot `certs` service that creates a dev CA and a server certificate (for `server`, `localhost`, `127.0.0.1`, `host.docker.internal` and any `PGLENS_TLS_EXTRA_SANS`) in the `grpc-certs` volume and throws the CA's key away; the agent trusts only that CA. For a real deployment give the server your own certificate (`PGLENS_GRPC_TLS_CERT`, `PGLENS_GRPC_TLS_KEY`) and the agent its CA (`PGLENS_SERVER_CA_CERT`). Plaintext needs `PGLENS_GRPC_PLAINTEXT=true` on the server *and* `PGLENS_SERVER_PLAINTEXT=true` on the agent, and is logged as a warning.
 - **The HTTP API needs a login.** The first admin's password comes from `PGLENS_ADMIN_PASSWORD` (12+ characters), otherwise a random one is logged once on first start (`docker compose logs server`). Passwords are stored as bcrypt hashes and tokens as SHA-256 hashes; 5 failed logins lock a username out of new logins for 15 minutes. `PGLENS_AUTH_MODE=none` turns logins off — only for one person on their own machine; every response then carries `X-PgLens-Auth: none`.
-- **The API listens on `127.0.0.1` only** in compose. To reach it from elsewhere, put HTTPS in front — e.g. [Caddy](https://caddyserver.com), which gets a certificate automatically:
+- **Only the agents' gRPC port (9090, TLS + token) is open to the network.** The dashboard and the API (ports 3000 and 8080) and both databases (5433, 5434) listen on `127.0.0.1` only: a login over plain HTTP must not cross a network, and the databases use the default password `pglens` unless you set `POSTGRES_PASSWORD` in `deploy/compose/.env` before the first `make up`. The dashboard's browser session is an `httpOnly` cookie; the dashboard's own server forwards it to the API, so no token ever reaches page scripts. Every page carries a per-request Content-Security-Policy.
+- **To share it, put HTTPS in front** — e.g. [Caddy](https://caddyserver.com), which gets a certificate automatically and tells the dashboard the request was HTTPS (it then uses a `Secure`, `__Host-` cookie):
   ```
   pglens.example.com {
+      reverse_proxy 127.0.0.1:3000
+  }
+  # only if scripts elsewhere need the API:
+  api.pglens.example.com {
       reverse_proxy 127.0.0.1:8080
   }
   ```
+  Add `Strict-Transport-Security` there once HTTPS works (`header Strict-Transport-Security "max-age=31536000"`) — the dashboard doesn't send it itself, so plain-HTTP localhost keeps working.
 
-**An agent on another machine.** Run the agent image next to your database with `PGLENS_MONITORED_DB_URL` (a read-only role, like the demo's [`20_pglens_ro.sql`](deploy/compose/monitored/initdb/20_pglens_ro.sql); the database needs what [step 3](#3-point-it-at-your-own-database) lists), `PGLENS_DB_NAME` and `PGLENS_AGENT_TOKEN` (from `POST /api/v1/databases`), `PGLENS_SERVER_HOST` / `PGLENS_SERVER_PORT`, and `PGLENS_SERVER_CA_CERT` pointing at the CA certificate (from the dev setup: `docker compose -f deploy/compose/docker-compose.yml exec agent cat /certs/ca.pem > ca.pem`). The server's certificate must name the host the agent dials: set `PGLENS_TLS_EXTRA_SANS=DNS:pglens.internal` (or `IP:10.0.0.5`) before the certificates are first made — they are kept while valid, so to add a name later remove the `grpc-certs` volume and `make up` again.
+**An agent on another machine.** Run `ghcr.io/prateek-arora/pglens-agent:0.1.0-rc` next to your database with `PGLENS_MONITORED_DB_URL` (a read-only role — see [Monitor your own database](#monitor-your-own-database)), `PGLENS_DB_NAME` and `PGLENS_AGENT_TOKEN` (from *Add a database*, or `POST /api/v1/databases`), `PGLENS_SERVER_HOST` / `PGLENS_SERVER_PORT`, and `PGLENS_SERVER_CA_CERT` pointing at the CA certificate (from the dev setup: `docker compose -f deploy/compose/docker-compose.yml exec agent cat /certs/ca.pem > ca.pem`). The server's certificate must name the host the agent dials: set `PGLENS_TLS_EXTRA_SANS=DNS:pglens.internal` (or `IP:10.0.0.5`) in `deploy/compose/.env` and `make up` — a change of names re-issues the certificates (and the CA), so copy the new `ca.pem` to every agent. If the agent can't connect, its log says why (e.g. the certificate doesn't name that host).
 
 ## The demo environment
 
-`make help` lists every target. The four services:
+`make help` lists every target. The services:
 
 | Service | Purpose | Host port |
 |---|---|---|
-| `monitored-db` | The database PgLens observes (demo data: `pglens_demo`) | `5433` |
-| `metadata-db`  | PgLens's own store, pgvector (`pglens_meta`) | `5434` |
+| `monitored-db` | The database PgLens observes (demo data: `pglens_demo`) | `127.0.0.1:5433` |
+| `metadata-db`  | PgLens's own store, pgvector (`pglens_meta`) | `127.0.0.1:5434` |
 | `server` | The central brain: gRPC ingest/validation (TLS), scheduled analysis, the HTTP API | `9090` (gRPC), `127.0.0.1:8080` (HTTP) |
 | `agent` | The collector next to `monitored-db` (headless — no port) | — |
+| `dashboard` | The web dashboard (Next.js) | `127.0.0.1:3000` |
 | `certs` | One-shot: creates the dev TLS certificates for gRPC, then exits | — |
 
 Default local-dev credentials are `pglens` / `pglens` (override via `deploy/compose/.env`; see `deploy/compose/.env.example`). `make test` runs the end-to-end reproducibility gate (also run in CI); `make bench` runs the dogfood index benchmark; `make bench-api` the API latency benchmark; `make psql-monitored` / `make psql-metadata` open a shell on either database.

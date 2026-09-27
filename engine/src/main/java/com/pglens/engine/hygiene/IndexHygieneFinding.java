@@ -1,5 +1,7 @@
 package com.pglens.engine.hygiene;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * One index-hygiene finding: an existing index worth <em>reviewing for removal</em> (Phase 2, Step
  * 6, ADR-0029). Advisory only — PgLens surfaces the evidence and never auto-drops anything, and by
@@ -19,7 +21,7 @@ public record IndexHygieneFinding(
     String indexName,
     String definition,
     Kind kind,
-    String relatedIndex,
+    @Nullable String relatedIndex,
     String reason) {
 
   /** The hygiene issue. At most one is reported per index, in this priority order. */

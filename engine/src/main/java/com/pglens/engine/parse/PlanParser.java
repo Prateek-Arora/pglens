@@ -48,6 +48,7 @@ public final class PlanParser {
         lng(n, "Plan Rows"),
         (int) lng(n, "Plan Width"),
         text(n, "Relation Name"),
+        text(n, "Schema"),
         text(n, "Alias"),
         text(n, "Index Name"),
         text(n, "Join Type"),

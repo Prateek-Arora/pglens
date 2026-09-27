@@ -4,6 +4,7 @@ import com.pglens.engine.detect.PlanColumns.QualifiedColumn;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.Finding.Confidence;
 import com.pglens.engine.model.PlanNode;
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,11 +54,14 @@ final class SortLimitRule implements Rule {
                   new Finding(
                       id(),
                       "Sort feeding a Limit (top-N could use an ordered index)",
-                      table,
+                      ctx.indexTarget(table),
                       columns,
                       Confidence.MEDIUM,
                       "Top-N sorts %s by %s (sort node cost %.2f); an index in that order avoids the sort."
-                          .formatted(table, String.join(", ", columns), sort.totalCost()),
+                          .formatted(
+                              table,
+                              String.join(", ", columns.stream().map(SqlIdent::quote).toList()),
+                              sort.totalCost()),
                       ctx.nodeId(sort)));
             }
           });

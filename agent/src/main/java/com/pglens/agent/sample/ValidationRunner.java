@@ -1,6 +1,7 @@
 package com.pglens.agent.sample;
 
 import com.pglens.agent.config.PglensAgentProperties;
+import com.pglens.agent.grpc.GrpcFailures;
 import com.pglens.agent.grpc.ValidationClient;
 import com.pglens.engine.db.DataSources;
 import com.pglens.engine.db.HypoPGValidator;
@@ -56,7 +57,10 @@ public class ValidationRunner {
     try {
       jobs = validationClient.lease(props.getDbName(), props.getValidation().getMaxLease());
     } catch (RuntimeException leaseFailed) {
-      log.warn("validation lease failed: {}", leaseFailed.toString());
+      log.warn(
+          "validation lease failed: {}",
+          GrpcFailures.describe(
+              leaseFailed, props.getServer().getHost() + ":" + props.getServer().getPort()));
       return;
     }
     if (jobs.isEmpty()) {
