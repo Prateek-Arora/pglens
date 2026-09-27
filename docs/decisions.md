@@ -70,9 +70,9 @@
 
 ## ADR-0002
 **Scope = full arc (Phases 0–7); ship-after-Phase-4 is the plan of record** · 2026-08-21 · Accepted
-- **Context:** ~10 hrs/week bandwidth; full arc re-baselined to ~24–34 weeks (gRPC/RAG/K8s/Terraform all from zero).
+- **Context:** a single part-time maintainer; full arc re-baselined to ~24–34 weeks (gRPC/RAG/K8s/Terraform all from zero).
 - **Decision:** Build toward the full arc but treat **Phase 4** (`v0.1.0-rc`, self-hostable web tool) as the real ship target; Phases 5–7 = v0.2.
-- **Alternatives:** Commit to full 0–7 upfront (scope-creep risk) · Stop at Phase 1 CLI (under-delivers on skills).
+- **Alternatives:** Commit to full 0–7 upfront (scope-creep risk) · Stop at Phase 1 CLI (under-delivers as a product).
 - **Consequences:** Hard shippable checkpoints at Phases 1, 4, 7 protect momentum; 5–7 explicitly deferrable.
 
 ## ADR-0003
@@ -688,7 +688,7 @@
   more API call (the ranking, `limit=200`) for previous/next. Colors live only in `globals.css`
   tokens (both themes); charts read the same variables. axe is clean on all 8 routes at 1440 and
   390 px in both themes; the unit and e2e suites needed no change. Impeccable artifacts:
-  `dashboard/PRODUCT.md`, the surface brief under `dashboard/.impeccable/`, and `DESIGN.md`.
+  `dashboard/PRODUCT.md`, the surface brief under `dashboard/.impeccable/` (local design-tool state, git-ignored since 2026-09-27), and `DESIGN.md`.
 
 ## ADR-0049
 **Real-schema identity: schemas, quoted names, partitions — and saying why a plan is missing** · 2026-09-27 · Accepted

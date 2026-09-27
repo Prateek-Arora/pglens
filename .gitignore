@@ -38,3 +38,6 @@ pgdata/
 
 # --- Private notes (never published) ---
 docs/private/
+
+# --- Local design-tool state ---
+dashboard/.impeccable/

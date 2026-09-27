@@ -10,13 +10,13 @@ The first release candidate of the complete self-hosted tool: the web dashboard 
 agent, server, API and CLI.
 
 ### Added
-- **Overview** — the dashboard now opens on the impact across every database: measured query time,
+- **Overview**: the dashboard now opens on the impact across every database: measured query time,
   how much of it is in queries with an index to try, the planner-estimated saving (hatched, marked
   *est.*), what to fix first, an hourly chart, and indexes that were built with their measured
   result. Charts on each database's slow-query and trends pages, with the busiest queries hour by
   hour; each leaderboard row shows its estimated saving. API: `GET /overview`,
   `/databases/{db}/timeline`, `/databases/{db}/applied`, `/system`.
-- **Built and measured** — when an index PgLens recommended appears on the database (any name, as
+- **Built and measured**: when an index PgLens recommended appears on the database (any name, as
   long as it serves the recommendation), the advice retires and PgLens compares each query's
   **measured** mean time per call in the 7 days before against the time since, split at the sample
   the index appeared in, once both sides have 10 calls (ADR-0051).

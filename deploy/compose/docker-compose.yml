@@ -131,7 +131,7 @@ services:
     ports:
       - "${PGLENS_GRPC_PORT:-9090}:9090"
       # The HTTP API, on this machine only by default: the dashboard reaches it on the compose
-      # network. Publish it wider only behind TLS (see the README's HTTPS recipe).
+      # network. Publish it wider only behind TLS (docs/operations.md §5).
       - "127.0.0.1:${PGLENS_HTTP_PORT:-8080}:8080"
     healthcheck:
       # TCP connects to both listeners (gRPC is TLS, so no plain probe). The JRE base image (Ubuntu)
