@@ -38,7 +38,7 @@ _Last updated: 2026-09-26 — end-state target below; Phases 0–3 and 4A are im
 | `pglens-server` | Spring Boot 4.1 | Persist the history, detect anti-patterns, queue HypoPG validation for the agent, serve the authenticated REST API (OpenAPI). |
 | `:explain` (LLM layer, in-JVM) | `java.net.http` → any OpenAI-compatible LLM (default: local Ollama + `qwen3.5:4b`); pgvector docs retrieval on the server | Turn PgLens's facts into a checked plain-language explanation. Optional; falls back to a deterministic template (ADR-0043). |
 | Metadata Postgres | Postgres + pgvector | PgLens's own store: snapshots, recommendations, embeddings, trends. |
-| Dashboard | Next.js (App Router) | Leaderboard, plan viewer, recommendations, trends over time. |
+| Dashboard (`dashboard/`) | Next.js 16 (App Router), React 19, Node 24 | Leaderboard, plan viewer, recommendations, trends over time. A backend-for-frontend: the browser talks only to Next.js; its server code calls the REST API (ADR-0046). |
 
 ## Deliberate design choices (each ties to the "usable" bar)
 1. **Two Postgres instances, never one** (ADR-0003). The *monitored* DB is touched read-only. PgLens keeps its own *metadata* Postgres with pgvector. Bonus: gives us a real growing schema to dogfood indexing on.
@@ -75,6 +75,55 @@ OSS support on 2026-06-30).
 
 Metadata schema is now Flyway **V1–V10** (V6 evidence + `table_stats`, V7 build caution, V8
 explanations + pgvector knowledge, V9 users/sessions/API tokens + `last_ingest_at`, V10 rollup).
+
+## Dashboard (implemented — Phase 4B, ADR-0046; visual world ADR-0048; overview ADR-0052)
+The dashboard is a **backend-for-frontend**: the browser only ever talks to Next.js, and Next.js
+server code calls the REST API on the private network. The API stays the single authority on users,
+sessions and access.
+
+```
+browser ──(httpOnly session cookie)──▶ Next.js server ──(Bearer token)──▶ pglens-server /api/v1
+          CSP nonce per request         src/lib/api/server.ts (server-only)   decides who sees what
+```
+
+- **One data-access layer.** `src/lib/api/server.ts` is the only code that calls the API: a typed
+  `openapi-fetch` client that forwards the session cookie as a bearer token; 401 → the login page,
+  404 → not-found. Nothing is cached across requests or users; every page renders per request.
+- **An exact contract.** Types are generated from the committed spec `docs/api/openapi.json`, in
+  which every field is required and only `@Nullable` ones may be null, so the compiler makes every
+  screen handle "no measurement". A drift IT (server) and a regenerate-and-diff (CI) keep the spec,
+  the server and the types in step.
+- **Session cookie.** `__Host-pglens_session` (Secure) behind HTTPS, `pglens_session` on
+  plain-HTTP localhost; httpOnly, `sameSite=lax`. Login/logout are Server Actions (Origin-checked).
+- **`src/proxy.ts` is not auth.** It sets a per-request CSP nonce (`script-src` nonce +
+  `strict-dynamic`) and passes the path on for the post-login return; nothing else.
+- **Pinned, gated dependencies.** Exact versions; pnpm refuses day-old versions and provenance
+  downgrades; install scripts off. `output: "standalone"` for a small non-root image.
+- **Impact first (ADR-0052).** `/` is the overview (`GET /api/v1/overview`): measured time, the part
+  in queries with an index to try, the planner-estimated saving (per query at its best index, never
+  summed across indexes), what to fix first, *Built and measured*, and an hourly column chart
+  (`components/impact/time-chart.tsx`: solid = measured, hatched lower part = estimate). Charts use
+  only role inks; busiest queries are server-rendered SVG sparklines.
+
+## Recommendation lifecycle & measured impact (implemented — Step 12, ADR-0051, ADR-0053)
+```
+agent: catalog index fingerprint changed? ──▶ re-capture known plans (else hourly)
+server analysis pass (30 s, advisory-locked):
+  proposed = engine candidates ∪ coverage checks among still-proposed indexes
+  stored rec ∉ proposed ──▶ an index that serves it appeared after it? ──yes──▶ APPLIED (index, first seen)
+                                                                      └─no──▶ deleted
+  applied rec ∈ proposed again (index dropped) ──▶ un-applied
+read: before/after = Σ time / Σ calls, 7 days each side, split exactly at the sample the index
+      appeared in (hourly rollup, that hour left out, once raw rows are gone); before starts no
+      earlier than active_since (a rebuilt index); shown once both sides have ≥ 10 calls
+```
+- `RecommendationLifecycle` (pure) decides; `AnalysisRepository` applies; `AppliedReadService`
+  measures (`ImpactMath`). "First seen" is `min(index_stats.captured_at)` — the same receive time as
+  that batch's samples.
+- `agent_hours` (V13) records the hours each agent reported, so a timeline tells zero load from a
+  gap. `RetentionService` deletes per-sample rows after 35 days; the hourly rollup stays.
+- Monitored-DB guards are **connection startup options** (`DataSources.guarded`), verified by
+  `verifySessionGuards`; a transaction-mode pooler is refused (ADR-0053).
 
 ## Plain-language explanations (implemented — Phase 3, ADR-0043)
 
@@ -223,6 +272,13 @@ remnants to `$N::TYPE` so normalized text still parses) → `PlanParser` → `An
 `Recommender` (cross-query ranking + btree-prefix dedupe). Output: a human report and a `--json`
 v1.0 contract that **is** the pure model record graph (can't drift). Rationale: ADR-0012…0021.
 
+**Names (ADR-0049).** A table is identified everywhere — catalog, findings, candidates, proto, server
+rows, API — by `SqlIdent.table(schema, name)`: schema-qualified unless `public`, quoted exactly as
+`quote_ident` would, so the identity is also valid SQL (`app."UserAccounts"`). Columns travel as raw
+names and are quoted when SQL is rendered. A partition's finding targets its partition tree's root
+(HypoPG simulates an index on a partitioned parent). A plan that can't be captured carries its
+reason (`planError`), and a missing grant is named with the `GRANT` that fixes it.
+
 **Safe-by-default is enforced, not assumed:** the whole scan runs on a single connection (HypoPG is
 session-local) set **read-only at the database** (`SET SESSION CHARACTERISTICS AS TRANSACTION READ
 ONLY`) with statement/lock timeouts — writes are rejected by Postgres, driver-independently
@@ -234,29 +290,24 @@ least-privilege **`pglens_ro`** role with no write grant (ADR-0030) — defense 
 Docker Compose stands up the two Postgres instances (`deploy/compose/`): `monitored-db`
 (custom image = `postgres:${PG_MAJOR}-bookworm` + `postgresql-${PG_MAJOR}-hypopg`, `PG_MAJOR` default 16, 17/18 in CI `compat`; `pg_stat_statements`
 loaded via `shared_preload_libraries`) on host port 5433, and `metadata-db`
-(`pgvector/pgvector:0.8.6-pg16`) on 5434. `demo/` holds a reproducible skewed dataset
+(`pgvector/pgvector:0.8.6-pg16`) on 5434 — both on `127.0.0.1` only (ADR-0050). `demo/` holds a reproducible skewed dataset
 and `slow_queries.sql` — the documented, HypoPG-validated slow-query oracle later phases
 test against. One command: `make up && make seed && make warmup && make test`. Rationale:
 ADR-0010, ADR-0011. Java modules (`engine`/`agent`/`server`) and their build tooling land
 from Phase 1 on.
+
+**Images and releases (ADR-0050).** One version per release (`scripts/check_versions.sh`). The
+server, agent and CLI images come from one Dockerfile (`deploy/compose/java/Dockerfile`, targets
+`server` / `agent` / `cli`) whose build stage runs Gradle on the build platform, so a build needs
+only Docker. Compose names the released images (`ghcr.io/prateek-arora/pglens-*:${PGLENS_VERSION}`)
+and keeps `build:` — `docker compose up` pulls, `make up` builds. A `v*` tag runs `release.yml`:
+multi-arch images to GHCR and a drafted GitHub release with the CLI jar.
 
 ## Design patterns & standards applied
 - **SOLID / DRY / KISS / YAGNI** throughout. Notable: the analysis engine is built once (Phase 1 CLI), then extracted behind a service interface (Phase 2) — dependency inversion so the CLI, server, and tests share one core.
 - **Deterministic-core / optional-adapter** boundary: LLM and dashboard are adapters over a stable analysis API; neither can invent facts.
 - **Strategy** for index-type validators (btree/brin/hash/bloom/partial validated via HypoPG; GIN/GiST heuristic + labeled).
 - Path-scoped `.claude/rules/*.md` will document module-local conventions as code lands (progressive disclosure — loaded only when those files are touched).
-
-## Skill-coverage map (why this project, for the job search)
-| Target skill | Phase(s) | How it's proven |
-|---|---|---|
-| RDBMS indexing + query tuning (deep) | 1, 2 | Build the tuning engine; tune PgLens's own metadata DB; benchmarked. |
-| gRPC + Protobuf | 2 | Collector↔server server-streaming. |
-| RAG + Embeddings + pgvector | 3 | RAG over PG docs to ground explanations. |
-| LLM feature (shipped, guardrailed) | 3 | Real feature with graceful degradation. |
-| Next.js (+ GraphQL optional) | 4 | App-Router dashboard on real data. |
-| Kubernetes / Helm | 5 | Helm chart, kind/k3d, config/secrets/HPA (learning demo). |
-| Terraform / cloud / observability | 6 | Provision node + Neon; self-instrument. |
-| OSS launch / technical writing | 7 | README, benchmarks, demo, release. |
 
 **Deliberately excluded (YAGNI):** Kafka, Cassandra/DynamoDB, ElasticSearch — no need here; don't bolt on.
 

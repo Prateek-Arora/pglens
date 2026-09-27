@@ -23,6 +23,8 @@ springdoc:
   api-docs:
     path: /api/v1/openapi.json
   paths-to-match: /api/v1/**
+  # The API only ever answers JSON; say so, so generated clients type responses as JSON (ADR-0046).
+  default-produces-media-type: application/json
 
 # HTTP API (Phase 4, ADR-0044): /api/v1, stateless bearer tokens. The dashboard calls it from its own
 # server code on the private network; scripts can use it with a read-only API token.
@@ -30,7 +32,7 @@ server:
   port: ${PGLENS_HTTP_PORT:8080}
 
 pglens:
-  version: 0.0.7   # reported by /api/v1/health and the OpenAPI description
+  version: "@pglensVersion@"   # the build's version (Gradle fills it in); reported by /api/v1/health + OpenAPI
   # Login for the HTTP API (ADR-0044). REQUIRED by default; `none` = one person on their own machine
   # (every response is flagged and the dashboard shows a banner). On an empty users table the server
   # creates the first admin: PGLENS_ADMIN_PASSWORD (12+ characters), or a generated password logged
@@ -67,6 +69,10 @@ pglens:
     # Prune terminal (DONE/FAILED) validation jobs older than this (F1); the verdict lives on in
     # `recommendations`, so this only bounds the work-queue's audit trail (default 7 days).
     job-retention-ms: ${PGLENS_ANALYSIS_JOB_RETENTION_MS:604800000}
+  # PgLens's own store (B26, ADR-0053): per-interval rows older than this are deleted hourly; the
+  # hourly rollup the dashboard reads is kept. At least 31 days (the longest window).
+  retention:
+    raw-days: ${PGLENS_RETENTION_RAW_DAYS:35}
   # Plain-language explanations (Phase 3, ADR-0043). OFF by default: when enabled, a separate
   # scheduled pass explains each db's top indexes with an OpenAI-compatible LLM and caches the result
   # (table `explanations`) for the Phase-4 dashboard. It also embeds the bundled PostgreSQL-docs

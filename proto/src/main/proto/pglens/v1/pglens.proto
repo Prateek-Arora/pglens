@@ -66,6 +66,9 @@ message QueryText {
   string plan_json = 4;               // empty when plan_captured = false
   bool plan_captured = 5;
   bool truncated = 6;                 // query text hit track_activity_query_size (a property of the text)
+  // Why there is no plan (ADR-0049), e.g. the role may not read a table ("permission denied for
+  // schema app"); empty when plan_captured. A permission failure is re-sent once access is granted.
+  string plan_error = 7;
 }
 
 // Row-count estimates + the existing index catalog for the monitored DB's user tables. Needed
@@ -85,6 +88,10 @@ message TableStat {
   int64 n_tup_upd = 4;
   int64 n_tup_del = 5;
   int64 tuples_read = 6;              // seq_tup_read + idx_tup_fetch
+  // ADR-0049: for a partition, the identity of its partition tree's root table (where an index for
+  // it belongs); empty otherwise. Table names are identities: schema-qualified unless public,
+  // quoted as Postgres would quote them.
+  string partition_root = 7;
 }
 
 message IndexStat {

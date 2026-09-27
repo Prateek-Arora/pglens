@@ -4,9 +4,13 @@ import com.pglens.engine.detect.AntiPatternDetector;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.parse.PlanParser;
+import com.pglens.engine.rank.RankingScore;
 import com.pglens.server.advice.Confirm;
 import com.pglens.server.errors.Errors.NotFound;
+import com.pglens.server.impact.AppliedReadService;
+import com.pglens.server.impact.AppliedReadService.AppliedIndex;
 import com.pglens.server.persistence.CatalogRepository;
+import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.queries.QueryReadRepository.Row;
 import com.pglens.server.queries.QueryReadRepository.Sort;
 import com.pglens.server.queries.QueryReadRepository.StoredQuery;
@@ -20,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,7 +49,9 @@ public class QueryReadService {
   /**
    * One row of the leaderboard: a query's summed activity in the window. {@code recommendation} is
    * the best verdict among the indexes suggested for it — {@code PLANNER_VALIDATED}, {@code
-   * NOT_PLANNER_VALIDATED} (GIN/GiST: surfaced, not checkable by HypoPG) — or null for none.
+   * NOT_PLANNER_VALIDATED} (GIN/GiST: surfaced, not checkable by HypoPG) — or null for none. {@code
+   * estimatedMsSaved} is the window's measured time × the planner's cost drop for its best
+   * planner-validated index (an estimate; null without one).
    */
   public record LeaderboardEntry(
       String queryid,
@@ -52,12 +59,13 @@ public class QueryReadService {
       boolean sqlPreviewCut,
       long calls,
       double measuredTotalMs,
-      Double measuredMeanMs,
+      @Nullable Double measuredMeanMs,
       long rows,
       long sharedBlksHit,
       long sharedBlksRead,
       boolean planCaptured,
-      String recommendation) {}
+      @Nullable String recommendation,
+      @Nullable Double estimatedMsSaved) {}
 
   public record Leaderboard(
       String window,
@@ -71,27 +79,31 @@ public class QueryReadService {
 
   /** Measured totals over a period ({@code measuredMeanMs} is null when there were no calls). */
   public record MeasuredTotals(
-      long calls, double measuredTotalMs, Double measuredMeanMs, long rows, Instant asOf) {}
+      long calls,
+      double measuredTotalMs,
+      @Nullable Double measuredMeanMs,
+      long rows,
+      Instant asOf) {}
 
   /** One node of the estimated plan; {@code id} is its pre-order position (0 = root). */
   public record PlanNodeView(
       int id,
       String nodeType,
       boolean parallelAware,
-      String relation,
-      String alias,
-      String index,
-      String joinType,
+      @Nullable String relation,
+      @Nullable String alias,
+      @Nullable String index,
+      @Nullable String joinType,
       double estimatedStartupCost,
       double estimatedTotalCost,
       long estimatedRows,
       int estimatedWidth,
-      String filter,
-      String indexCond,
-      String recheckCond,
-      String hashCond,
+      @Nullable String filter,
+      @Nullable String indexCond,
+      @Nullable String recheckCond,
+      @Nullable String hashCond,
       List<String> sortKeys,
-      Integer workersPlanned,
+      @Nullable Integer workersPlanned,
       List<PlanNodeView> children) {}
 
   public record PlanView(
@@ -101,11 +113,11 @@ public class QueryReadService {
   public record FindingView(
       String ruleId,
       String title,
-      String table,
+      @Nullable String table,
       List<String> columns,
       String confidence,
       String evidence,
-      Integer planNode) {}
+      @Nullable Integer planNode) {}
 
   /**
    * One index checked for this query. {@code plannerCostDropFraction} is {@code (before − after) /
@@ -116,16 +128,16 @@ public class QueryReadService {
       String ddl,
       String accessMethod,
       String status,
-      Double plannerCostBefore,
-      Double plannerCostAfter,
-      Double plannerCostDropFraction,
-      Boolean usedByPlanner,
-      String reason,
-      Double estimatedMsSaved,
-      String scoreBasis,
-      String rangeLabel,
-      String footprintLabel,
-      String buildCaution,
+      @Nullable Double plannerCostBefore,
+      @Nullable Double plannerCostAfter,
+      @Nullable Double plannerCostDropFraction,
+      @Nullable Boolean usedByPlanner,
+      @Nullable String reason,
+      @Nullable Double estimatedMsSaved,
+      @Nullable String scoreBasis,
+      @Nullable String rangeLabel,
+      @Nullable String footprintLabel,
+      @Nullable String buildCaution,
       Instant validatedAt) {}
 
   public record QueryDetail(
@@ -137,10 +149,12 @@ public class QueryReadService {
       Instant lastSeen,
       String window,
       MeasuredTotals inWindow,
-      MeasuredTotals sinceStatsReset,
-      PlanView plan,
+      @Nullable MeasuredTotals sinceStatsReset,
+      @Nullable PlanView plan,
+      @Nullable String planUnavailableReason,
       List<FindingView> findings,
       List<QueryRecommendation> recommendations,
+      List<AppliedIndex> applied,
       Confirm confirm) {}
 
   /**
@@ -148,7 +162,7 @@ public class QueryReadService {
    * capturedAt} is the interval's receive time, or the hour's start.
    */
   public record TrendPointView(
-      Instant capturedAt, long calls, double measuredTotalMs, Double measuredMeanMs) {}
+      Instant capturedAt, long calls, double measuredTotalMs, @Nullable Double measuredMeanMs) {}
 
   /** {@code resolution}: {@code RAW} (one point per persisted interval) or {@code HOUR}. */
   public record Trend(
@@ -157,15 +171,21 @@ public class QueryReadService {
   private final QueryReadRepository repo;
   private final CatalogRepository catalogs;
   private final TrendService trends;
+  private final AppliedReadService applied;
   private final Clock clock;
   private final PlanParser planParser = new PlanParser();
   private final AntiPatternDetector detector = new AntiPatternDetector();
 
   public QueryReadService(
-      QueryReadRepository repo, CatalogRepository catalogs, TrendService trends, Clock clock) {
+      QueryReadRepository repo,
+      CatalogRepository catalogs,
+      TrendService trends,
+      AppliedReadService applied,
+      Clock clock) {
     this.repo = repo;
     this.catalogs = catalogs;
     this.trends = trends;
+    this.applied = applied;
     this.clock = clock;
   }
 
@@ -210,9 +230,21 @@ public class QueryReadService {
         root == null
             ? null
             : new PlanView("generic_plan", PLAN_LABEL, root.totalCost(), node(root, new int[1])),
+        root == null ? planUnavailable(q) : null,
         findings,
         repo.recommendations(dbId, queryid).stream().map(QueryReadService::recommendation).toList(),
+        applied.forQuery(new MonitoredDb(dbId, database), queryid),
         Confirm.INSTANCE);
+  }
+
+  /** Why a query has no plan to show: the agent's reason, or that it hasn't been captured yet. */
+  private static String planUnavailable(StoredQuery q) {
+    if (q.planError() != null && !q.planError().isBlank()) {
+      return q.planError();
+    }
+    return q.planCaptured()
+        ? "The stored plan couldn't be read."
+        : "No plan was captured for this query (an agent older than this server doesn't say why).";
   }
 
   /** Trend resolutions: every persisted interval, or one point per UTC hour (the rollup). */
@@ -282,7 +314,7 @@ public class QueryReadService {
         id,
         n.nodeType(),
         n.parallelAware(),
-        n.relationName(),
+        n.table(),
         n.alias(),
         n.indexName(),
         n.joinType(),
@@ -311,7 +343,8 @@ public class QueryReadService {
         r.sharedBlksHit(),
         r.sharedBlksRead(),
         r.planCaptured(),
-        r.recommendation());
+        r.recommendation(),
+        r.bestDrop() == null ? null : RankingScore.drop(r.bestDrop()).value() * r.totalMs());
   }
 
   private static MeasuredTotals totals(Totals t) {

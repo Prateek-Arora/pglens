@@ -15,12 +15,14 @@ paths:
 - **Read-only is enforced at TWO independent layers** (defense in depth). (1) The agent **logs in as
   the least-privilege `pglens_ro` role** (ADR-0030 — provisioned by the monitored image's
   `20_pglens_ro.sql`; `NOSUPERUSER`, `SELECT`-only + `pg_read_all_stats`, **no write grant**), so the
-  DB itself rejects a write with "permission denied" regardless of session state. (2) The sampler
-  calls `DataSources.applySessionGuards` at the start of each cycle (idempotent `SET … READ ONLY` +
-  statement/lock timeouts) so the guard survives a reconnect. Never weaken either: don't grant the
+  DB itself rejects a write with "permission denied" regardless of session state. (2) The connection
+  (`DataSources.guarded`) carries `default_transaction_read_only` + statement/lock timeouts as
+  **startup options**, and the sampler calls `DataSources.verifySessionGuards` each cycle. Never
+  `SET` session state on the monitored DB: through a transaction-mode pooler it leaks onto the
+  app's connections (ADR-0053). Never weaken either: don't grant the
   role more than it needs, never rely on a framework `readOnly` flag, never open a writable
   connection to the monitored DB.
-- **One monitored-DB connection** (`SingleConnectionDataSource` via `DataSources.forScan`). HypoPG
+- **One monitored-DB connection** (`SingleConnectionDataSource` via `DataSources.guarded`). HypoPG
   edge validation (Step 5) needs a session-local connection for its hypothetical indexes; the sampler
   shares that one connection. On a monitored-DB error, `resetConnection()` and retry next interval.
 - **Register each query's text + plan once**, keyed by `queryid`, and only mark it registered **after

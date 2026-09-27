@@ -6,12 +6,15 @@ import com.pglens.engine.db.CatalogReader;
 import com.pglens.engine.db.DataSources;
 import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.db.StatsReader;
+import com.pglens.engine.model.AccessGap;
+import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.RankBy;
 import com.pglens.engine.model.StatementStat;
 import com.pglens.proto.v1.IngestSummary;
 import com.pglens.proto.v1.SampleBatch;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -35,6 +38,14 @@ import org.springframework.stereotype.Component;
  * next interval retries; a send failure leaves the new-text registrations un-marked so they are
  * re-sent next interval (the server upserts them idempotently), and loses no data window because
  * the server's deltas are anchored to the last <em>persisted</em> snapshot, not to this send.
+ *
+ * <p>A known query's plan is captured again when the database's indexes change and at least every
+ * {@code plan-refresh-ms} ({@link PlanRefresh}, ADR-0051), so building a recommended index shows up
+ * as a new plan and retires the advice.
+ *
+ * <p>A plan the role wasn't allowed to capture ({@code permission denied}) is retried every
+ * interval and re-sent once it succeeds, so granting access fixes the dashboard without a restart;
+ * the schemas the role can't read are logged with the grants that fix them (ADR-0049).
  */
 @Component
 public class SampleCollector {
@@ -52,6 +63,11 @@ public class SampleCollector {
 
   // queryids whose text+plan the server has already accepted; only added after a successful send.
   private final Set<Long> registeredQueryIds = ConcurrentHashMap.newKeySet();
+  // registered queryids whose plan capture was refused for lack of privileges: retried each cycle.
+  private final Set<Long> permissionDenied = ConcurrentHashMap.newKeySet();
+  private final PlanRefresh planRefresh;
+  // the access advice last logged, so it is logged when it changes rather than every interval.
+  private String loggedAccessAdvice = "";
 
   public SampleCollector(
       PglensAgentProperties props,
@@ -68,6 +84,7 @@ public class SampleCollector {
     this.catalogReader = catalogReader;
     this.planCapturer = planCapturer;
     this.ingestClient = ingestClient;
+    this.planRefresh = new PlanRefresh(props.getSample().getPlanRefreshMs());
     if (props.getToken() == null || props.getToken().isBlank()) {
       log.warn(
           "pglens.agent.token is empty — the server will reject every batch with UNAUTHENTICATED "
@@ -81,12 +98,18 @@ public class SampleCollector {
 
     SampleBatch batch;
     List<Long> newlyRegistered;
+    Set<Long> stillDenied;
+    Set<Long> recovered;
     try {
-      // Re-assert the DB-level read-only + timeout guards each cycle: idempotent, and it restores
-      // them after any reconnect so the monitored DB is never writable from the agent.
-      DataSources.applySessionGuards(jdbc);
+      // Check the DB-level read-only + timeout guards each cycle (they come with the connection,
+      // including after a reconnect), so the agent never reads through an unguarded session.
+      DataSources.verifySessionGuards(jdbc);
 
       Optional<Instant> statsReset = statsReader.globalStatsReset();
+      CatalogSnapshot catalog = catalogReader.read();
+      if (planRefresh.observe(catalog)) {
+        log.info("indexes changed on db '{}'; capturing the plans again", props.getDbName());
+      }
       List<StatementStat> stats =
           statsReader.topStatements(
               RankBy.TOTAL_TIME, props.getSample().getTopN(), props.getSample().getMinCalls());
@@ -100,19 +123,38 @@ public class SampleCollector {
               // The catalog (table estimates + existing indexes) the server persists for detection
               // (ADR-0028). Small and slow-changing; sent every interval, replacing the server's
               // copy.
-              .setCatalog(ProtoMappers.toProtoCatalog(catalogReader.read()));
+              .setCatalog(ProtoMappers.toProtoCatalog(catalog));
 
       newlyRegistered = new ArrayList<>();
+      stillDenied = new HashSet<>();
+      recovered = new HashSet<>();
       for (StatementStat stat : stats) {
         String textHash = TextHash.sha256Hex(stat.query());
         builder.addSamples(ProtoMappers.toSample(stat, textHash));
-        if (!registeredQueryIds.contains(stat.queryId())) {
-          Optional<String> plan = planCapturer.captureGenericPlanJson(stat.query());
-          builder.addNewTexts(ProtoMappers.toQueryText(stat, textHash, plan));
-          newlyRegistered.add(stat.queryId());
+        long id = stat.queryId();
+        boolean known = registeredQueryIds.contains(id);
+        boolean retry = known && permissionDenied.contains(id);
+        boolean stale = known && planRefresh.due(id, sampledAtMs);
+        if (!known || retry || stale) {
+          PlanCapturer.Capture capture = planCapturer.capture(stat.query());
+          if (capture.permissionDenied()) {
+            stillDenied.add(id);
+          }
+          if (!known || capture.captured()) {
+            builder.addNewTexts(ProtoMappers.toQueryText(stat, textHash, capture));
+            newlyRegistered.add(id);
+          }
+          if (retry && capture.captured()) {
+            recovered.add(id);
+          }
+          if (known && !capture.captured() && !capture.permissionDenied()) {
+            // Keep the stored plan and try again after the refresh period, not every interval.
+            planRefresh.captured(id, sampledAtMs);
+          }
         }
       }
       batch = builder.build();
+      logAccessAdvice();
     } catch (DataAccessException dbErr) {
       log.warn(
           "monitored-db read failed ({}); resetting the connection, retrying next interval",
@@ -124,6 +166,9 @@ public class SampleCollector {
     try {
       IngestSummary summary = ingestClient.send(batch, SEND_TIMEOUT_SECONDS);
       registeredQueryIds.addAll(newlyRegistered);
+      newlyRegistered.forEach(id -> planRefresh.captured(id, sampledAtMs));
+      permissionDenied.addAll(stillDenied);
+      permissionDenied.removeAll(recovered);
       log.info(
           "streamed {} samples ({} new texts) for db '{}'; server watermark {}",
           batch.getSamplesCount(),
@@ -132,10 +177,23 @@ public class SampleCollector {
           summary.getServerReceiveEpochMs());
     } catch (IngestClient.IngestException sendErr) {
       log.warn(
-          "ingest send failed for db '{}' ({}); {} new texts will be re-registered next interval",
+          "ingest send failed for db '{}': {}; {} new texts will be re-registered next interval",
           props.getDbName(),
           sendErr.getMessage(),
           newlyRegistered.size());
+    }
+  }
+
+  /** Warns, once per change, about the schemas this role can't read — with the fixing grants. */
+  private void logAccessAdvice() {
+    String advice = AccessGap.advice(catalogReader.currentRole(), catalogReader.accessGaps());
+    if (!advice.equals(loggedAccessAdvice)) {
+      if (!advice.isEmpty()) {
+        log.warn("db '{}': {}", props.getDbName(), advice);
+      } else if (!loggedAccessAdvice.isEmpty()) {
+        log.info("db '{}': the PgLens role can now read every table", props.getDbName());
+      }
+      loggedAccessAdvice = advice;
     }
   }
 

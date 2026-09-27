@@ -1,6 +1,7 @@
 package com.pglens.server.analysis;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.pglens.proto.v1.CatalogSnapshot;
 import com.pglens.proto.v1.IndexStat;
@@ -9,8 +10,15 @@ import com.pglens.server.advice.AdviceService;
 import com.pglens.server.advice.IndexAdvice;
 import com.pglens.server.auth.Tokens;
 import com.pglens.server.grpc.GrpcTestTls;
+import com.pglens.server.impact.AppliedReadService;
 import com.pglens.server.persistence.CatalogRepository;
+import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.persistence.MonitoredDbRepository;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,7 +90,51 @@ class AnalysisFlowIntegrationTest {
       ]
       """;
 
+  // The same filter under a Sort feeding a Limit: R1 + R4 → the composite customers(email,
+  // created_at).
+  private static final String SORTED_PLAN =
+      """
+      [
+        {
+          "Plan": {
+            "Node Type": "Limit",
+            "Startup Cost": 474.00,
+            "Total Cost": 474.01,
+            "Plan Rows": 1,
+            "Plan Width": 47,
+            "Plans": [
+              {
+                "Node Type": "Sort",
+                "Parent Relationship": "Outer",
+                "Startup Cost": 474.00,
+                "Total Cost": 474.01,
+                "Plan Rows": 1,
+                "Plan Width": 47,
+                "Sort Key": ["customers.created_at DESC"],
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Relation Name": "customers",
+                    "Alias": "customers",
+                    "Startup Cost": 0.00,
+                    "Total Cost": 473.00,
+                    "Plan Rows": 1,
+                    "Plan Width": 47,
+                    "Filter": "(customers.email = $1)"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+      """;
+
+  private static final String EMAIL_DDL = "CREATE INDEX idx_customers_email ON customers (email);";
+
   @Autowired AnalysisService analysisService;
+  @Autowired AppliedReadService appliedReads;
   @Autowired AdviceService adviceService;
   @Autowired CatalogRepository catalogs;
   @Autowired MonitoredDbRepository monitoredDbs;
@@ -94,7 +146,8 @@ class AnalysisFlowIntegrationTest {
   void setUp() {
     jdbc.execute(
         "TRUNCATE monitored_dbs, query_texts, table_catalog, index_catalog, validation_jobs, "
-            + "recommendations RESTART IDENTITY CASCADE");
+            + "recommendations, index_stats, query_stats, query_stats_hourly "
+            + "RESTART IDENTITY CASCADE");
     dbId = monitoredDbs.register("demo", "monitored-db", Tokens.sha256Hex("t"));
   }
 
@@ -292,6 +345,7 @@ class AnalysisFlowIntegrationTest {
     String narrow = "CREATE INDEX idx_customers_email ON customers (email);";
     String wide = "CREATE INDEX idx_customers_email_created_at ON customers (email, created_at);";
     seedCapturedQuery();
+    seedCapturedQuery(OTHER_QUERYID, SORTED_PLAN); // proposes the wide index
     seedCatalog(/* withEmailIndex= */ false);
     insertValidatedRec(QUERYID, narrow, 300.0); // fresh → the regular candidate stays cooled down
     insertValidatedRec(OTHER_QUERYID, wide, 500.0);
@@ -313,6 +367,156 @@ class AnalysisFlowIntegrationTest {
     // …and the check is not re-requested once it has a verdict.
     jdbc.update("DELETE FROM validation_jobs");
     assertThat(analysisService.run()).isZero();
+  }
+
+  // ---------- recommendation lifecycle (ADR-0051) ----------
+
+  @Test
+  void anIndexBuiltAfterTheAdviceRetiresItAsAppliedWithMeasuredBeforeAndAfter() {
+    seedCapturedQuery();
+    seedCatalog(false);
+    insertValidatedRec(QUERYID, EMAIL_DDL, 300.0);
+    jdbc.update("UPDATE recommendations SET created_at = now() - interval '10 hours'");
+    Instant built =
+        Instant.now()
+            .minus(Duration.ofHours(5))
+            .truncatedTo(ChronoUnit.HOURS)
+            .plus(Duration.ofMinutes(30));
+    // Measured: 30 calls at 6 ms before, the sample the index appeared in (left out), then 30 calls
+    // at 2.33 ms after — split exactly at that sample while the per-sample rows are kept.
+    insertSample(QUERYID, built.minus(Duration.ofHours(3)), 10, 70.0);
+    insertSample(QUERYID, built.minus(Duration.ofHours(2)), 10, 70.0);
+    insertSample(QUERYID, built.minus(Duration.ofMinutes(20)), 10, 40.0);
+    insertSample(QUERYID, built, 10, 40.0);
+    insertSample(QUERYID, built.plus(Duration.ofMinutes(20)), 10, 40.0);
+    insertSample(QUERYID, built.plus(Duration.ofHours(2)), 10, 15.0);
+    insertSample(QUERYID, built.plus(Duration.ofHours(3)), 10, 15.0);
+
+    // Someone builds it under their own name; the agent's next snapshot lists it.
+    seedCatalog(true, built);
+    analysisService.run();
+
+    Map<String, Object> rec = jdbc.queryForMap("SELECT * FROM recommendations");
+    assertThat(rec.get("applied_index")).isEqualTo("customers_email_idx");
+    assertThat(((java.sql.Timestamp) rec.get("applied_at")).toInstant()).isEqualTo(built);
+    assertThat(adviceService.advice(dbId)).as("no longer advice").isEmpty();
+
+    var applied = appliedReads.forDatabase(new MonitoredDb(dbId, "demo")).items();
+    assertThat(applied)
+        .singleElement()
+        .satisfies(
+            a -> {
+              assertThat(a.ddl()).isEqualTo(EMAIL_DDL);
+              assertThat(a.index()).isEqualTo("customers_email_idx");
+              assertThat(a.queries())
+                  .singleElement()
+                  .satisfies(
+                      q -> {
+                        assertThat(q.status()).isEqualTo("MEASURED");
+                        assertThat(q.callsBefore()).isEqualTo(30);
+                        assertThat(q.callsAfter()).isEqualTo(30);
+                        assertThat(q.measuredMeanMsBefore()).isEqualTo(6.0);
+                        assertThat(q.measuredMeanMsAfter()).isCloseTo(2.333, within(0.001));
+                        assertThat(q.measuredChangeFraction()).isCloseTo(-0.611, within(0.001));
+                      });
+            });
+  }
+
+  @Test
+  void anIndexOlderThanTheKeptSamplesIsMeasuredOnWholeHours() {
+    Instant built =
+        Instant.now().minus(Duration.ofDays(40)).truncatedTo(ChronoUnit.HOURS).plusSeconds(1800);
+    insertValidatedRec(QUERYID, EMAIL_DDL, 300.0);
+    jdbc.update(
+        "UPDATE recommendations SET applied_index = 'customers_email_idx', applied_at = ?",
+        OffsetDateTime.ofInstant(built, ZoneOffset.UTC));
+    insertSample(QUERYID, built.minus(Duration.ofHours(2)), 10, 70.0);
+    insertSample(QUERYID, built.minus(Duration.ofMinutes(20)), 10, 400.0); // its hour: left out
+    insertSample(QUERYID, built.plus(Duration.ofMinutes(20)), 10, 400.0); // its hour: left out
+    insertSample(QUERYID, built.plus(Duration.ofHours(2)), 10, 20.0);
+
+    var q = appliedReads.forDatabase(new MonitoredDb(dbId, "demo")).items().get(0).queries().get(0);
+    assertThat(q.callsBefore()).isEqualTo(10);
+    assertThat(q.measuredMeanMsBefore()).isEqualTo(7.0);
+    assertThat(q.callsAfter()).isEqualTo(10);
+    assertThat(q.measuredMeanMsAfter()).isEqualTo(2.0);
+  }
+
+  @Test
+  void aRebuiltIndexNeverCountsItsEarlierLifeAsBefore() {
+    Instant built = Instant.now().minus(Duration.ofHours(1)).truncatedTo(ChronoUnit.MICROS);
+    insertValidatedRec(QUERYID, EMAIL_DDL, 300.0);
+    // The index existed until 3 h ago (fast), was dropped (advice again), then built again.
+    jdbc.update(
+        "UPDATE recommendations SET applied_index = 'customers_email_idx', applied_at = ?, "
+            + "active_since = ?",
+        OffsetDateTime.ofInstant(built, ZoneOffset.UTC),
+        OffsetDateTime.ofInstant(built.minus(Duration.ofHours(3)), ZoneOffset.UTC));
+    insertSample(QUERYID, built.minus(Duration.ofHours(5)), 10, 10.0); // earlier index: not before
+    insertSample(QUERYID, built.minus(Duration.ofHours(2)), 10, 80.0);
+    insertSample(QUERYID, built.plus(Duration.ofMinutes(10)), 10, 20.0);
+
+    var q = appliedReads.forDatabase(new MonitoredDb(dbId, "demo")).items().get(0).queries().get(0);
+    assertThat(q.callsBefore()).isEqualTo(10);
+    assertThat(q.measuredMeanMsBefore()).isEqualTo(8.0);
+    assertThat(q.measuredMeanMsAfter()).isEqualTo(2.0);
+  }
+
+  @Test
+  void anIndexThatWasAlreadyThereIsNotCreditedAndStaleAdviceIsDeleted() {
+    seedCapturedQuery();
+    seedCatalog(true, Instant.now().minus(Duration.ofDays(1)));
+    insertValidatedRec(QUERYID, EMAIL_DDL, 300.0); // recommended after the index already existed
+    insertValidatedRec(QUERYID, "CREATE INDEX idx_pg_authid_tableoid ON pg_authid (tableoid);", 1);
+
+    analysisService.run();
+
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM recommendations", Integer.class)).isZero();
+  }
+
+  @Test
+  void droppingTheIndexBringsTheAdviceBack() {
+    seedCapturedQuery();
+    seedCatalog(false);
+    insertValidatedRec(QUERYID, EMAIL_DDL, 300.0);
+    jdbc.update(
+        "UPDATE recommendations SET created_at = now() - interval '2 hours', "
+            + "applied_index = 'customers_email_idx', applied_at = now() - interval '1 hour'");
+    assertThat(adviceService.advice(dbId)).isEmpty();
+
+    analysisService.run(); // the catalog has no email index: the engine proposes it again
+
+    assertThat(jdbc.queryForObject("SELECT applied_at FROM recommendations", Object.class))
+        .isNull();
+    assertThat(jdbc.queryForObject("SELECT active_since FROM recommendations", Object.class))
+        .as("a rebuilt index's before starts here")
+        .isNotNull();
+    assertThat(adviceService.advice(dbId)).extracting(IndexAdvice::ddl).containsExactly(EMAIL_DDL);
+
+    // Built again under the same name: dated from this build, not the name's first life.
+    seedCatalog(true, Instant.now().minus(Duration.ofDays(1))); // the old life
+    Instant rebuilt = Instant.now().plusSeconds(5).truncatedTo(ChronoUnit.MICROS);
+    seedCatalog(true, rebuilt);
+    analysisService.run();
+    assertThat(
+            ((java.sql.Timestamp)
+                    jdbc.queryForObject("SELECT applied_at FROM recommendations", Object.class))
+                .toInstant())
+        .isEqualTo(rebuilt);
+  }
+
+  private void insertSample(long queryid, Instant at, long calls, double totalMs) {
+    jdbc.update(
+        "INSERT INTO query_stats (db_id, queryid, captured_at, agent_sample_at, calls_delta, "
+            + "total_exec_time_delta_ms, mean_exec_time_ms, rows_delta, shared_blks_hit_delta, "
+            + "shared_blks_read_delta) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)",
+        dbId,
+        queryid,
+        OffsetDateTime.ofInstant(at, ZoneOffset.UTC),
+        OffsetDateTime.ofInstant(at, ZoneOffset.UTC),
+        calls,
+        totalMs,
+        totalMs / calls);
   }
 
   private void insertValidatedRec(long queryid, String ddl, double estimatedMsSaved) {
@@ -341,17 +545,26 @@ class AnalysisFlowIntegrationTest {
   }
 
   private void seedCapturedQuery() {
+    seedCapturedQuery(QUERYID, SEQ_SCAN_PLAN);
+  }
+
+  private void seedCapturedQuery(long queryid, String plan) {
     jdbc.update(
         "INSERT INTO query_texts (db_id, queryid, text_hash, normalized_text, plan_json, "
             + "plan_captured) VALUES (?, ?, ?, ?, ?, true)",
         dbId,
-        QUERYID,
+        queryid,
         "h",
         "select id, full_name, email from customers where email = $1",
-        SEQ_SCAN_PLAN);
+        plan);
   }
 
   private void seedCatalog(boolean withEmailIndex) {
+    seedCatalog(withEmailIndex, Instant.now());
+  }
+
+  /** Replaces the catalog as an ingest at {@code at} would, index snapshots included. */
+  private void seedCatalog(boolean withEmailIndex, Instant at) {
     CatalogSnapshot.Builder catalog =
         CatalogSnapshot.newBuilder()
             .addTables(TableStat.newBuilder().setTableName("customers").setEstRows(1_000_000))
@@ -372,5 +585,6 @@ class AnalysisFlowIntegrationTest {
               .addColumns("email"));
     }
     catalogs.replaceCatalog(dbId, catalog.build());
+    catalogs.recordIndexScans(dbId, catalog.build(), at);
   }
 }

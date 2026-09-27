@@ -47,7 +47,10 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 
 ### B3. Expression / functional-index rule (function, cast, and jsonb-field predicates)
 - **What:** Recommend an expression index for predicates the current extractor deliberately ignores:
-  `lower(email) = $1`, `(customer_id)::text = $1`, `payload ->> 'k' = $1`.
+  `lower(email) = $1`, `(customer_id)::numeric = $1`, `payload ->> 'k' = $1`. *(Since ADR-0049 a
+  `::text`/`::bpchar` relabel cast IS extracted — that is how EXPLAIN prints a varchar column —
+  so only real expressions remain here. Found live on 2026-09-27: `lower("Email") = $1` was the
+  costliest query of an app-like test schema, so this is the most valuable next rule.)*
 - **Why deferred:** `PlanColumns.predicateColumns` only extracts a *plain* `qualifier.column` before
   the operator — a function/cast wrapper or a jsonb-field extraction is skipped on purpose, because a
   plain btree on the bare column would **not** serve the predicate (recommending one would be a
@@ -356,11 +359,17 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Constraints:** `--json` output must stay byte-compatible (schema tests guard it). OpenRewrite has a Boot-4 "adopt Jackson 3" recipe.
 - **Effort/type:** `good-first-issue`. **Refs:** ADR-0044.
 
-### B26. Retention for the raw `query_stats` rows
+### B26. Retention for the raw `query_stats` rows — ✅ DELIVERED (35-day raw retention, ADR-0053)
 - **What:** keep the 5-minute deltas for a limited time (e.g. 14 days) and the hourly rollup (`query_stats_hourly`, V10) much longer; prune raw rows on a schedule.
 - **Why deferred:** nothing needs it yet — the API reads the rollup for windows and the raw rows only for short trends and one query's detail, both served by the primary key (measured: `docs/benchmarks.md`, API latency). Measured size: ~18 MB per query-year of 5-minute rows (749 MB for 500 queries × 30 days).
 - **Constraints:** the rollup must be complete before raw rows go (it is — trigger-maintained); "first seen" for new-slow queries reads the raw minimum, so keep it or store it on `query_texts`; delta anchoring uses `query_cumulative`, not old raw rows.
 - **Effort/type:** `good-first-issue`. **Refs:** ADR-0045.
+
+### B27. Never propose indexes on system catalogs — ✅ DELIVERED (`CatalogSnapshot.indexable`, ADR-0053)
+- **What:** skip candidates on tables outside the user catalog (`pg_catalog`, `information_schema`). Found live in Phase 4B (2026-09-26): a `pg_dump` run against the monitored database put its catalog queries in `pg_stat_statements`, and the engine proposed indexes on `pg_proc`, `pg_trigger`, `pg_authid`… Most were correctly rejected (`SUPPRESSED`), but where HypoPG *errored* ("index creation on system columns is not supported") the candidate was stored as `NOT_PLANNER_VALIDATED`, so the dashboard's "Not planner-validated" list shows them beside the real GIN/GiST suggestions.
+- **Why deferred:** an engine change found during dashboard work; nothing wrong is recommended as planner-validated, and the reason text says HypoPG rejected it. Out of 4B's scope.
+- **Constraints:** `CatalogReader` already excludes these schemas, so a candidate whose table isn't in the `CatalogSnapshot` can be dropped before validation. Separately, a HypoPG *error* is not the charter-#6 "can't simulate this access method" case — give it its own status (or `SUPPRESSED` with the reason) rather than `NOT_PLANNER_VALIDATED`.
+- **Effort/type:** `good-first-issue`. **Refs:** charter #6, ADR-0005.
 
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):

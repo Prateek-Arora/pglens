@@ -25,6 +25,8 @@ pglens:
       interval-ms: ${PGLENS_SAMPLE_INTERVAL_MS:60000}
       top-n: ${PGLENS_SAMPLE_TOP_N:200}
       min-calls: ${PGLENS_SAMPLE_MIN_CALLS:1}
+      # Re-capture each known query's plan at least this often (and when the indexes change).
+      plan-refresh-ms: ${PGLENS_PLAN_REFRESH_MS:3600000}
     validation:
       interval-ms: ${PGLENS_VALIDATION_INTERVAL_MS:30000}
       max-lease: ${PGLENS_VALIDATION_MAX_LEASE:10}

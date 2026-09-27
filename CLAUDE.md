@@ -7,7 +7,7 @@ Open-source, self-hosted **Postgres slow-query & index advisor** with **LLM-expl
 
 ## Read the doc you need (progressive disclosure — don't read all of them)
 - **`docs/project.md`** — goals, scope, status, phase tracker, **Current focus** ← check FIRST each session
-- **`docs/architecture.md`** — end-state architecture, components, deliberate design choices, skill-coverage map
+- **`docs/architecture.md`** — end-state architecture, components, deliberate design choices
 - **`docs/decisions.md`** — decision log (the *why*); read before revisiting or contradicting a past decision
 - **`docs/backlog.md`** — consciously-deferred work (the *why-not-yet* + contributor tags); check before proposing a "new" engine feature
 - **`docs/phases/`** — per-phase plans (each self-contained); `README.md` indexes them
@@ -23,7 +23,7 @@ Open-source, self-hosted **Postgres slow-query & index advisor** with **LLM-expl
 - Deploy: **Docker Compose** (dev) → **Helm** on kind/k3d → **Terraform** + Neon (cloud)
 
 ## Core principles (never violate — from the project charter)
-1. **No fabricated evidence.** Every number is real, measured, and labeled (HypoPG cost-*estimate* vs actual runtime). Resume/benchmark claims stay templated until real numbers exist.
+1. **No fabricated evidence.** Every number is real, measured, and labeled (HypoPG cost-*estimate* vs actual runtime). Benchmark and launch claims stay templated until real numbers exist.
 2. **Safe-by-default vs the monitored DB.** Read-only role; never write to it; no `EXPLAIN ANALYZE` on write statements; hypothetical indexes only (dropped in-session); statement timeouts.
 3. **Deterministic core, optional AI.** The tool must produce correct analysis with the LLM turned off. LLM only phrases facts the deterministic core owns.
 4. **Ship each phase.** Every phase ends in something runnable and demoable. Plan of record: **ship after Phase 4**; Phases 5–7 = v0.2.

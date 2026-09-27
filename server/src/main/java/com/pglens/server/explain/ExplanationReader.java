@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -41,9 +42,9 @@ public class ExplanationReader {
       String whyItIsSlow,
       String whatTheIndexChanges,
       List<String> docs,
-      String model,
-      String promptVersion,
-      Instant generatedAt) {}
+      @Nullable String model,
+      @Nullable String promptVersion,
+      @Nullable Instant generatedAt) {}
 
   private final JdbcTemplate jdbc;
   private final ExplanationInputs inputs;
@@ -73,6 +74,7 @@ public class ExplanationReader {
         jdbc.queryForList(
             "SELECT ddl FROM recommendations WHERE db_id = ? AND queryid = ? "
                 + "AND status IN ('PLANNER_VALIDATED', 'NOT_PLANNER_VALIDATED') "
+                + "AND applied_at IS NULL "
                 + "ORDER BY status = 'PLANNER_VALIDATED' DESC, estimated_ms_saved DESC NULLS LAST, "
                 + "ddl",
             String.class,

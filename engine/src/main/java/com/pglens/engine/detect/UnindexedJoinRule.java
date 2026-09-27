@@ -4,6 +4,7 @@ import com.pglens.engine.detect.PlanColumns.QualifiedColumn;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.Finding.Confidence;
 import com.pglens.engine.model.PlanNode;
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,7 +36,8 @@ final class UnindexedJoinRule implements Rule {
         if (table == null || ctx.catalog.hasIndexLeadingWith(table, qc.column())) {
           continue; // unknown, or already indexed (e.g. the PK side)
         }
-        if (!seen.add(table.toLowerCase() + "." + qc.column().toLowerCase())) {
+        String target = ctx.indexTarget(table);
+        if (!seen.add(target + "." + qc.column())) {
           continue;
         }
         long reltuples = ctx.catalog.reltuples(table);
@@ -43,12 +45,15 @@ final class UnindexedJoinRule implements Rule {
             new Finding(
                 id(),
                 "Unindexed join key",
-                table,
+                target,
                 List.of(qc.column()),
                 reltuples >= DetectionThresholds.LARGE_TABLE ? Confidence.HIGH : Confidence.MEDIUM,
                 "Join on %s.%s has no index, so the %s side is scanned (~%s rows)."
                     .formatted(
-                        table, qc.column(), table, reltuples < 0 ? "?" : Long.toString(reltuples)),
+                        table,
+                        SqlIdent.quote(qc.column()),
+                        table,
+                        reltuples < 0 ? "?" : Long.toString(reltuples)),
                 ctx.nodeId(node)));
       }
     }

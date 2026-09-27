@@ -3,6 +3,7 @@ package com.pglens.cli;
 import java.util.concurrent.Callable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.IVersionProvider;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Spec;
 
@@ -14,7 +15,7 @@ import picocli.CommandLine.Spec;
 @Command(
     name = "pglens",
     mixinStandardHelpOptions = true,
-    version = "pglens 0.0.1",
+    versionProvider = PglensCommand.BuildVersion.class,
     description = "Postgres slow-query & index advisor (HypoPG-validated).",
     subcommands = {ScanCommand.class, ExplainCommand.class, ConfirmCommand.class})
 class PglensCommand implements Callable<Integer> {
@@ -25,5 +26,16 @@ class PglensCommand implements Callable<Integer> {
   public Integer call() {
     spec.commandLine().usage(System.out);
     return 0;
+  }
+
+  /**
+   * The build's version, from the jar's manifest (Spring Boot writes it); "dev" when unpackaged.
+   */
+  static final class BuildVersion implements IVersionProvider {
+    @Override
+    public String[] getVersion() {
+      String v = PglensCommand.class.getPackage().getImplementationVersion();
+      return new String[] {"pglens " + (v == null ? "dev" : v)};
+    }
   }
 }

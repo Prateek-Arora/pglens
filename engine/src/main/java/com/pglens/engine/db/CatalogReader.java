@@ -1,8 +1,10 @@
 package com.pglens.engine.db;
 
 import com.pglens.engine.PgLensException;
+import com.pglens.engine.model.AccessGap;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.IndexInfo;
+import com.pglens.engine.model.SqlIdent;
 import com.pglens.engine.model.TableActivity;
 import com.pglens.engine.model.TableInfo;
 import java.sql.Array;
@@ -11,7 +13,6 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DataAccessException;
@@ -25,22 +26,29 @@ import org.springframework.jdbc.core.RowCallbackHandler;
  * offline-testable. It also carries each table's cumulative read/write counters ({@link
  * TableActivity}, from {@code pg_stat_user_tables}) for the write-load note (ADR-0038).
  *
- * <p>Scope: ordinary user tables ({@code relkind = 'r'}) outside the system schemas.
+ * <p>Scope: ordinary and partitioned user tables outside the system schemas, each named by its
+ * identity ({@link SqlIdent#table}: schema-qualified unless {@code public}, quoted as needed;
+ * ADR-0049). Column names are raw (unquoted, case preserved). A partition carries its tree's root;
+ * the root gets its leaves' row estimates and activity summed.
  */
 public class CatalogReader {
 
   private static final String TUPLES_SQL =
       DataSources.introspection(
           """
-      SELECT c.relname AS table_name, c.reltuples::bigint AS reltuples,
+      SELECT n.nspname AS schema_name, c.relname AS table_name, c.relkind AS kind,
+             c.reltuples::bigint AS reltuples,
              COALESCE(st.n_tup_ins, 0) AS n_tup_ins,
              COALESCE(st.n_tup_upd, 0) AS n_tup_upd,
              COALESCE(st.n_tup_del, 0) AS n_tup_del,
-             COALESCE(st.seq_tup_read, 0) + COALESCE(st.idx_tup_fetch, 0) AS tuples_read
+             COALESCE(st.seq_tup_read, 0) + COALESCE(st.idx_tup_fetch, 0) AS tuples_read,
+             rn.nspname AS root_schema, rc.relname AS root_name
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       LEFT JOIN pg_stat_user_tables st ON st.relid = c.oid
-      WHERE c.relkind = 'r'
+      LEFT JOIN pg_class rc ON c.relispartition AND rc.oid = pg_partition_root(c.oid)
+      LEFT JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+      WHERE c.relkind IN ('r', 'p', 'm')  -- tables, partitioned tables, materialized views
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       """);
 
@@ -52,11 +60,15 @@ public class CatalogReader {
   // Step 6 (hygiene) adds three columns: `definition` (the full pg_get_indexdef DDL, for display),
   // `constraint_backed_base` (TRUE when the index backs a PK/UNIQUE/EXCLUSION constraint — its OID
   // appears as some constraint's conindid), and cumulative `idx_scan` (pg_stat_user_indexes; 0 when
-  // the view has no row yet). FK coverage is folded into constraint_backed afterwards, in Java.
+  // the view has no row yet). FK coverage is folded into constraint_backed afterwards, in Java. An
+  // index attached to a partitioned index can't be dropped on its own, so it counts as backed too;
+  // the partitioned index itself (relkind 'I') is left out: it is never scanned (idx_scan stays 0),
+  // and the rules look at the partitions it cascades to.
   private static final String INDEX_SQL =
       DataSources.introspection(
           """
-      SELECT t.relname AS table_name,
+      SELECT n.nspname AS schema_name,
+             t.relname AS table_name,
              i.relname AS index_name,
              ix.indisunique AS is_unique,
              ix.indisprimary AS is_primary,
@@ -64,6 +76,7 @@ public class CatalogReader {
              pg_get_expr(ix.indpred, ix.indrelid) AS predicate,
              pg_get_indexdef(ix.indexrelid) AS definition,
              EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid)
+               OR EXISTS (SELECT 1 FROM pg_inherits inh WHERE inh.inhrelid = ix.indexrelid)
                AS constraint_backed_base,
              COALESCE(psui.idx_scan, 0) AS idx_scan,
              (SELECT array_agg(pg_get_indexdef(ix.indexrelid, k + 1, true) ORDER BY k)
@@ -74,7 +87,7 @@ public class CatalogReader {
       JOIN pg_am am ON am.oid = i.relam
       JOIN pg_namespace n ON n.oid = t.relnamespace
       LEFT JOIN pg_stat_user_indexes psui ON psui.indexrelid = ix.indexrelid
-      WHERE t.relkind = 'r'
+      WHERE t.relkind IN ('r', 'm')
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
       """);
 
@@ -85,7 +98,8 @@ public class CatalogReader {
   private static final String FK_SQL =
       DataSources.introspection(
           """
-      SELECT t.relname AS table_name,
+      SELECT n.nspname AS schema_name,
+             t.relname AS table_name,
              (SELECT array_agg(a.attname ORDER BY x.ord)
                 FROM unnest(con.conkey) WITH ORDINALITY AS x(attnum, ord)
                 JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = x.attnum)
@@ -96,6 +110,22 @@ public class CatalogReader {
       WHERE con.contype = 'f'
         AND t.relkind = 'r'
         AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      """);
+
+  // Per schema: its user tables, how many this role can't SELECT, and whether it has USAGE.
+  private static final String ACCESS_SQL =
+      DataSources.introspection(
+          """
+      SELECT n.nspname AS schema_name, count(*) AS tables,
+             count(*) FILTER (WHERE NOT has_table_privilege(c.oid, 'SELECT')) AS no_select,
+             has_schema_privilege(n.oid, 'USAGE') AS usage
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname NOT LIKE 'pg\\_%'
+      GROUP BY n.nspname, n.oid
+      ORDER BY n.nspname
       """);
 
   private final JdbcTemplate jdbc;
@@ -121,25 +151,78 @@ public class CatalogReader {
     }
   }
 
+  /**
+   * The schemas whose tables this role can't read (no {@code USAGE} on the schema, or no {@code
+   * SELECT} on some table), so their queries can't be planned. Empty when the check itself can't
+   * run — it only ever adds advice.
+   */
+  public List<AccessGap> accessGaps() {
+    try {
+      return jdbc
+          .query(
+              ACCESS_SQL,
+              (rs, n) -> {
+                boolean usage = rs.getBoolean("usage");
+                int tables = rs.getInt("tables");
+                return new AccessGap(
+                    rs.getString("schema_name"),
+                    usage ? rs.getInt("no_select") : tables,
+                    tables,
+                    usage);
+              })
+          .stream()
+          .filter(g -> g.unreadable() > 0)
+          .toList();
+    } catch (DataAccessException unavailable) {
+      return List.of();
+    }
+  }
+
+  /** The role PgLens is connected as. */
+  public String currentRole() {
+    return jdbc.queryForObject(DataSources.introspection("SELECT current_user"), String.class);
+  }
+
   /** Snapshots row-count estimates and existing indexes for every user table. */
   public CatalogSnapshot read() {
     try {
       Map<String, Long> tuples = new LinkedHashMap<>();
       Map<String, TableActivity> activity = new LinkedHashMap<>();
+      Map<String, String> roots = new LinkedHashMap<>();
+      List<String> leaves = new ArrayList<>();
       jdbc.query(
           TUPLES_SQL,
           (RowCallbackHandler)
               rs -> {
-                String table = lower(rs.getString("table_name"));
-                tuples.put(table, rs.getLong("reltuples"));
+                String table =
+                    SqlIdent.table(rs.getString("schema_name"), rs.getString("table_name"));
+                boolean partitioned = "p".equals(rs.getString("kind"));
+                tuples.put(table, partitioned ? 0L : rs.getLong("reltuples"));
                 activity.put(
                     table,
-                    new TableActivity(
-                        rs.getLong("n_tup_ins"),
-                        rs.getLong("n_tup_upd"),
-                        rs.getLong("n_tup_del"),
-                        rs.getLong("tuples_read")));
+                    partitioned
+                        ? new TableActivity(0, 0, 0, 0)
+                        : new TableActivity(
+                            rs.getLong("n_tup_ins"),
+                            rs.getLong("n_tup_upd"),
+                            rs.getLong("n_tup_del"),
+                            rs.getLong("tuples_read")));
+                String rootName = rs.getString("root_name");
+                if (rootName != null) {
+                  roots.put(table, SqlIdent.table(rs.getString("root_schema"), rootName));
+                  if (!partitioned) {
+                    leaves.add(table);
+                  }
+                }
               });
+      // A partitioned root holds no rows itself: give it its leaf partitions' totals.
+      for (String leaf : leaves) {
+        String root = roots.get(leaf);
+        if (tuples.containsKey(root)) {
+          tuples.merge(root, Math.max(0L, tuples.get(leaf)), Long::sum);
+          activity.put(root, sum(activity.get(root), activity.get(leaf)));
+        }
+      }
 
       Map<String, List<List<String>>> fkColumnsByTable = readForeignKeyColumns();
 
@@ -156,12 +239,21 @@ public class CatalogReader {
                       table,
                       reltuples,
                       indexesByTable.getOrDefault(table, List.of()),
-                      activity.get(table))));
+                      activity.get(table),
+                      roots.get(table))));
       return new CatalogSnapshot(tables);
     } catch (DataAccessException e) {
       throw new PgLensException(
           "Failed to read the table/index catalog: " + e.getMostSpecificCause().getMessage(), e);
     }
+  }
+
+  private static TableActivity sum(TableActivity a, TableActivity b) {
+    return new TableActivity(
+        a.inserted() + b.inserted(),
+        a.updated() + b.updated(),
+        a.deleted() + b.deleted(),
+        a.tuplesRead() + b.tuplesRead());
   }
 
   private Map<String, List<List<String>>> readForeignKeyColumns() {
@@ -170,7 +262,8 @@ public class CatalogReader {
         FK_SQL,
         (RowCallbackHandler)
             rs -> {
-              String table = lower(rs.getString("table_name"));
+              String table =
+                  SqlIdent.table(rs.getString("schema_name"), rs.getString("table_name"));
               List<String> cols = toColumnList(rs.getArray("fk_columns"));
               if (!cols.isEmpty()) {
                 byTable.computeIfAbsent(table, k -> new ArrayList<>()).add(cols);
@@ -184,7 +277,8 @@ public class CatalogReader {
       Map<String, List<IndexInfo>> byTable,
       Map<String, List<List<String>>> fkColumnsByTable)
       throws java.sql.SQLException {
-    String table = lower(rs.getString("table_name"));
+    String schema = rs.getString("schema_name");
+    String table = SqlIdent.table(schema, rs.getString("table_name"));
     List<String> cols = toColumnList(rs.getArray("columns"));
     boolean constraintBacked =
         rs.getBoolean("constraint_backed_base")
@@ -194,7 +288,7 @@ public class CatalogReader {
         .add(
             new IndexInfo(
                 table,
-                rs.getString("index_name"),
+                SqlIdent.table(schema, rs.getString("index_name")),
                 cols,
                 rs.getBoolean("is_unique"),
                 rs.getBoolean("is_primary"),
@@ -219,19 +313,20 @@ public class CatalogReader {
     return false;
   }
 
+  /**
+   * Key columns as raw names: a plain column (which {@code pg_get_indexdef} prints quoted when it
+   * needs to be) is unquoted, an expression key is kept as its text.
+   */
   private static List<String> toColumnList(Array array) throws java.sql.SQLException {
     List<String> cols = new ArrayList<>();
     if (array != null) {
       for (Object o : (Object[]) array.getArray()) {
         if (o != null) {
-          cols.add(lower(o.toString()));
+          String key = o.toString();
+          cols.add(SqlIdent.isIdentifier(key) ? SqlIdent.unquote(key) : key);
         }
       }
     }
     return cols;
-  }
-
-  private static String lower(String s) {
-    return s == null ? null : s.toLowerCase(Locale.ROOT);
   }
 }

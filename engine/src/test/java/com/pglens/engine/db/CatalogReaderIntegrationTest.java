@@ -34,6 +34,10 @@ class CatalogReaderIntegrationTest {
     MonitoredDbContainer.initSchema(DB);
     target =
         new ConnectionTarget(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword(), "pglens_demo");
+    // A materialized view can be indexed, so it is part of the catalog (with its indexes).
+    JdbcTemplate setup = new JdbcTemplate(DataSources.forScan(target));
+    setup.execute("CREATE MATERIALIZED VIEW order_totals AS SELECT id, total_cents FROM orders");
+    setup.execute("CREATE INDEX order_totals_id ON order_totals (id)");
     catalog = new CatalogReader(new JdbcTemplate(DataSources.forScan(target))).read();
   }
 
@@ -47,6 +51,13 @@ class CatalogReaderIntegrationTest {
               assertThat(t.activity().tuplesWritten()).isNotNegative();
               assertThat(t.activity().tuplesRead()).isNotNegative();
             });
+  }
+
+  @Test
+  void seesMaterializedViewsAndTheirIndexes() {
+    assertThat(catalog.table("order_totals"))
+        .hasValueSatisfying(
+            t -> assertThat(t.indexes()).extracting(i -> i.name()).contains("order_totals_id"));
   }
 
   @Test

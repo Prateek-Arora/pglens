@@ -1,9 +1,13 @@
 package com.pglens.engine.db;
 
 import com.pglens.engine.model.ConnectionTarget;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
@@ -42,9 +46,16 @@ public final class DataSources {
         + sql.substring(keyword.end());
   }
 
-  static final String READ_ONLY = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY";
-  static final String STATEMENT_TIMEOUT = "SET statement_timeout = '30s'";
-  static final String LOCK_TIMEOUT = "SET lock_timeout = '5s'";
+  /**
+   * The guards, as connection <em>startup</em> options: read-only (charter safe-by-default;
+   * ADR-0020) plus statement/lock timeouts. They are set when the backend starts, never with {@code
+   * SET}: through a transaction-mode pooler a session {@code SET} would stay on a shared server
+   * connection and make the application's own transactions read-only (measured on PgBouncer 1.24,
+   * ADR-0053). A pooler instead rejects or drops these options, and {@link #verifySessionGuards}
+   * refuses the connection.
+   */
+  static final String GUARD_OPTIONS =
+      "-c default_transaction_read_only=on -c statement_timeout=30s -c lock_timeout=5s";
 
   private static final String APPLICATION_NAME = "pglens";
   // pgjdbc's extended protocol treats the literal $1 in EXPLAIN (GENERIC_PLAN) <text> as a bind
@@ -54,28 +65,73 @@ public final class DataSources {
   private DataSources() {}
 
   /**
-   * Enforces read-only at the database (charter safe-by-default; ADR-0020) plus statement/lock
-   * timeouts on PgLens's single scan connection. Read-only makes the target itself reject any write
-   * — HypoPG's create/re-EXPLAIN/reset still work under it. Session-level, so it sticks for the
-   * whole scan. Throws {@link org.springframework.dao.DataAccessException} if the target rejects
-   * it.
+   * Checks that PgLens's connection to a monitored database is guarded: read-only, and one server
+   * session across statements (HypoPG's hypothetical indexes live in the session). Call it first,
+   * and again whenever the connection may have been re-opened; it only reads. Throws a {@link
+   * org.springframework.dao.DataAccessException} that says what to do when the connection goes
+   * through a transaction-mode pooler (PgBouncer, Supabase port 6543, a Neon {@code -pooler} host)
+   * or the guards are missing.
    */
-  public static void applySessionGuards(JdbcTemplate jdbc) {
-    jdbc.execute(READ_ONLY);
-    jdbc.execute(STATEMENT_TIMEOUT);
-    jdbc.execute(LOCK_TIMEOUT);
+  public static void verifySessionGuards(JdbcTemplate jdbc) {
+    Map<String, Object> first;
+    Map<String, Object> second;
+    try {
+      first = jdbc.queryForMap(SESSION_CHECK);
+      second = jdbc.queryForMap(SESSION_CHECK);
+    } catch (DataAccessException e) {
+      String cause = String.valueOf(e.getMostSpecificCause().getMessage());
+      if (cause.contains("unsupported startup parameter")) {
+        throw new DataAccessResourceFailureException(POOLER_MESSAGE + " (" + cause + ")");
+      }
+      throw e;
+    }
+    boolean readOnly = "on".equals(first.get("ro")) && "on".equals(second.get("ro"));
+    boolean oneSession = Objects.equals(first.get("pid"), second.get("pid"));
+    if (!readOnly || !oneSession) {
+      throw new DataAccessResourceFailureException(POOLER_MESSAGE);
+    }
   }
 
-  /** A reusable single-connection {@link javax.sql.DataSource} for the given target. */
+  static final String POOLER_MESSAGE =
+      "PgLens's read-only guard isn't in effect on this connection — it looks like a connection "
+          + "pooler in transaction mode (PgBouncer, Supabase port 6543, a Neon '-pooler' host). "
+          + "Connect PgLens directly to Postgres (or through a session-mode pool): its read-only "
+          + "guard and HypoPG's hypothetical indexes live in one database session";
+
+  private static final String SESSION_CHECK =
+      introspection(
+          "SELECT pg_backend_pid() AS pid, current_setting('transaction_read_only') AS ro");
+
+  /**
+   * PgLens's guarded connection to a monitored database: {@link #forScan} plus the read-only and
+   * timeout {@link #GUARD_OPTIONS}. Every production read of a monitored database uses this.
+   */
+  public static SingleConnectionDataSource guarded(ConnectionTarget target) {
+    SingleConnectionDataSource ds = forScan(target);
+    Properties props = new Properties();
+    props.putAll(connectionProperties());
+    props.setProperty("options", GUARD_OPTIONS);
+    ds.setConnectionProperties(props);
+    return ds;
+  }
+
+  /**
+   * A reusable single-connection {@link javax.sql.DataSource} for the given target, with no guards
+   * — for setting up test databases. Monitored databases are read with {@link #guarded}.
+   */
   public static SingleConnectionDataSource forScan(ConnectionTarget target) {
     SingleConnectionDataSource ds =
         new SingleConnectionDataSource(
             target.jdbcUrl(), target.user(), target.password(), /* suppressClose= */ true);
+    ds.setConnectionProperties(connectionProperties());
+    ds.setAutoCommit(true);
+    return ds;
+  }
+
+  private static Properties connectionProperties() {
     Properties props = new Properties();
     props.setProperty("ApplicationName", APPLICATION_NAME);
     props.setProperty("preferQueryMode", QUERY_MODE);
-    ds.setConnectionProperties(props);
-    ds.setAutoCommit(true);
-    return ds;
+    return props;
   }
 }

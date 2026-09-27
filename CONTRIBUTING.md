@@ -1,20 +1,27 @@
 # Contributing to PgLens
 
-Thanks for your interest! PgLens is early (Phase 0). This stub will grow as the
-project does.
+Thanks for your interest! PgLens is a release candidate (`v0.1.0-rc`); see
+[`docs/project.md`](docs/project.md) for where it's heading and
+[`docs/backlog.md`](docs/backlog.md) for work that's been thought through but deferred.
 
 ## Development environment
 
-**Prerequisites:** Docker + the Compose plugin, and GNU Make. Start Docker
-Desktop, then:
+**Prerequisites:** Docker + the Compose plugin and GNU Make to run the stack; a JDK 17+ (the
+Gradle wrapper provisions JDK 21) for the Java tests; Node 24 + pnpm for the dashboard.
 
 ```bash
-make up        # start the databases
-make seed      # load demo data
-make warmup    # accumulate pg_stat_statements
-make test      # run the smoke test
-make down      # stop (make clean also removes data volumes)
+make up          # build + start everything, demo included (make up-no-demo: PgLens alone)
+make register    # register the demo database and give its agent a token
+make seed        # load demo data
+make warmup      # accumulate pg_stat_statements
+./gradlew build  # Java: format check, unit + integration tests (needs Docker)
+make e2e         # dashboard end-to-end (Playwright + axe)
+make down        # stop (make clean also removes data volumes)
 ```
+
+Test engine changes on more than the demo schema: `RealWorldSchemaIntegrationTest` covers
+non-public schemas, quoted names, `varchar`, partitions and a least-privilege role — extend it
+when you add a rule.
 
 ## Before you open a PR
 
@@ -27,8 +34,8 @@ make down      # stop (make clean also removes data volumes)
   every push and pull request.
 - **Linters/formatters are the source of truth for style** — match what they
   enforce; we don't restate style rules in prose.
-- Keep changes scoped to the current phase (see [`docs/project.md`](docs/project.md)).
-  New behavior comes with tests.
+- Keep changes scoped (see [`docs/project.md`](docs/project.md)). New behavior comes with tests.
+- Report security issues privately — see [`SECURITY.md`](SECURITY.md).
 
 ## Principles we hold to
 
@@ -36,5 +43,5 @@ make down      # stop (make clean also removes data volumes)
 - **Safe by default** — the monitored database is read-only; never write to it.
 - **Deterministic core, optional AI** — analysis must be correct with the LLM off.
 
-By contributing you agree your contributions are licensed under the
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). By contributing you agree your contributions are licensed under the
 [Apache-2.0 License](LICENSE).

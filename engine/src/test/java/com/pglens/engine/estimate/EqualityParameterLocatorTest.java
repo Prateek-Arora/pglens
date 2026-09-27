@@ -62,6 +62,7 @@ class EqualityParameterLocatorTest {
             null,
             null,
             null,
+            null,
             "Inner",
             null,
             null,
@@ -98,6 +99,7 @@ class EqualityParameterLocatorTest {
             null,
             null,
             null,
+            null,
             "Inner",
             null,
             null,
@@ -124,7 +126,7 @@ class EqualityParameterLocatorTest {
 
   private static PlanNode node(String type, String relation, String alias, String filter) {
     return new PlanNode(
-        type, false, 0, 100, 10, 8, relation, alias, null, null, filter, null, null, null,
+        type, false, 0, 100, 10, 8, relation, null, alias, null, null, filter, null, null, null,
         List.of(), List.of(), null, null, null, null, List.of());
   }
 }

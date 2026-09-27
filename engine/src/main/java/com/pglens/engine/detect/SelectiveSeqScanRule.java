@@ -4,6 +4,7 @@ import com.pglens.engine.detect.PlanColumns.QualifiedColumn;
 import com.pglens.engine.model.Finding;
 import com.pglens.engine.model.Finding.Confidence;
 import com.pglens.engine.model.PlanNode;
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -11,7 +12,8 @@ import java.util.Set;
 
 /**
  * R1 — a sequential scan applying a filter on a column that no index leads with, on a table big
- * enough for the scan to matter. Liberal by design (selectivity only sets confidence, it does not
+ * enough for the scan to matter (a parallel scan too). On a partition the finding targets the
+ * partition tree's root table. Liberal by design (selectivity only sets confidence, it does not
  * gate); HypoPG validation is the false-positive killer.
  */
 final class SelectiveSeqScanRule implements Rule {
@@ -25,10 +27,11 @@ final class SelectiveSeqScanRule implements Rule {
   public List<Finding> evaluate(PlanContext ctx) {
     List<Finding> findings = new ArrayList<>();
     for (PlanNode node : ctx.plan.flatten()) {
-      if (!node.isSeqScan() || node.filter() == null || node.relationName() == null) {
+      String scanned = node.table();
+      if (!node.isSeqScan() || node.filter() == null || scanned == null) {
         continue;
       }
-      long reltuples = ctx.catalog.reltuples(node.relationName());
+      long reltuples = ctx.catalog.reltuples(scanned);
       if (reltuples >= 0 && reltuples < DetectionThresholds.MIN_TABLE_ROWS) {
         continue;
       }
@@ -37,7 +40,7 @@ final class SelectiveSeqScanRule implements Rule {
       for (QualifiedColumn qc : PlanColumns.predicateColumns(node.filter())) {
         String table = ctx.resolveTable(qc.qualifier());
         if (table != null
-            && table.equalsIgnoreCase(node.relationName())
+            && table.equals(scanned)
             && !ctx.catalog.hasIndexLeadingWith(table, qc.column())) {
           unindexed.add(qc.column());
         }
@@ -47,10 +50,10 @@ final class SelectiveSeqScanRule implements Rule {
             new Finding(
                 id(),
                 "Sequential scan with an unindexed filter",
-                node.relationName(),
+                ctx.indexTarget(scanned),
                 List.of(column),
                 confidence(node.planRows(), reltuples),
-                evidence(node, column, reltuples),
+                evidence(node, scanned, column, reltuples),
                 ctx.nodeId(node)));
       }
     }
@@ -70,11 +73,12 @@ final class SelectiveSeqScanRule implements Rule {
         : Confidence.LOW;
   }
 
-  private static String evidence(PlanNode node, String column, long reltuples) {
-    return "Seq Scan on %s filters %s (est. %d of ~%s rows, total cost %.2f)."
+  private static String evidence(PlanNode node, String table, String column, long reltuples) {
+    return "%s on %s filters %s (est. %d of ~%s rows, total cost %.2f)."
         .formatted(
-            node.relationName(),
-            column,
+            node.parallelAware() ? "Parallel Seq Scan" : "Seq Scan",
+            table,
+            SqlIdent.quote(column),
             node.planRows(),
             reltuples < 0 ? "?" : Long.toString(reltuples),
             node.totalCost());

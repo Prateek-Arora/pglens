@@ -6,6 +6,7 @@ import com.pglens.engine.confirm.StatementTiming;
 import com.pglens.engine.confirm.WorkloadStatement;
 import com.pglens.engine.model.AccessMethod;
 import com.pglens.engine.model.IndexCandidate;
+import com.pglens.engine.model.SqlIdent;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -40,7 +41,6 @@ public final class CopyMeasurer {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final String IDENT = "(?:[A-Za-z_][A-Za-z0-9_$]*|\"(?:[^\"]|\"\")+\")";
   private static final Pattern TABLE = Pattern.compile(IDENT + "(?:\\." + IDENT + ")?");
-  private static final Pattern COLUMN = Pattern.compile(IDENT);
   private static final String NAME_PREFIX = "pglens_confirm_";
 
   // Top-level rows only: with pg_stat_statements.track = all, PgLens's own EXPLAIN (VERBOSE)
@@ -144,7 +144,11 @@ public final class CopyMeasurer {
             : "USING " + candidate.accessMethod().sqlUsing() + " ";
     String ddl =
         "CREATE INDEX %s ON %s %s(%s)"
-            .formatted(name, candidate.table(), using, String.join(", ", candidate.columns()));
+            .formatted(
+                name,
+                candidate.table(),
+                using,
+                String.join(", ", candidate.columns().stream().map(SqlIdent::quote).toList()));
     long start = System.nanoTime();
     try (Statement st = c.createStatement()) {
       st.execute("SET LOCAL statement_timeout = " + buildTimeout.toMillis());
@@ -284,17 +288,24 @@ public final class CopyMeasurer {
     }
   }
 
-  // The DDL is built from the report file's table/column names: accept identifiers only, so a
-  // crafted report can't smuggle SQL into the copy.
+  // The DDL is built from the report file's table/column names: the table must be a (qualified)
+  // identifier and each raw column is quoted by SqlIdent.quote, so a crafted report can't smuggle
+  // SQL into the copy; a column holding a statement separator or control character is refused
+  // outright (no real schema needs one).
   static void requireIdentifiers(IndexCandidate candidate) throws SQLException {
     boolean ok =
         TABLE.matcher(candidate.table()).matches()
             && !candidate.columns().isEmpty()
-            && candidate.columns().stream().allMatch(col -> COLUMN.matcher(col).matches());
+            && candidate.columns().stream().allMatch(CopyMeasurer::plainColumnName);
     if (!ok) {
       throw new SQLException(
           "the report's table or column names aren't plain identifiers; not building it", "42602");
     }
+  }
+
+  private static boolean plainColumnName(String column) {
+    return !column.isEmpty()
+        && column.chars().noneMatch(ch -> ch == ';' || Character.isISOControl(ch));
   }
 
   static StatementTiming failure(SQLException e) {

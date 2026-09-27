@@ -12,6 +12,7 @@ import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.parse.PlanParser;
 import com.pglens.engine.rank.CoverageChecks;
+import com.pglens.engine.rank.CoverageChecks.Verdict;
 import com.pglens.server.persistence.AnalysisRepository;
 import com.pglens.server.persistence.AnalysisRepository.AnalyzableQuery;
 import com.pglens.server.persistence.CatalogRepository;
@@ -20,8 +21,12 @@ import com.pglens.server.persistence.MonitoredDb;
 import com.pglens.server.persistence.MonitoredDbRepository;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -148,15 +153,21 @@ public class AnalysisService {
 
   private int analyzeDb(MonitoredDb db, Instant revalidateBefore) {
     CatalogSnapshot catalog = catalogs.load(db.id());
+    List<AnalyzableQuery> queries = analysis.planCapturedQueries(db.id());
+    // Every (query, index) the engine proposes this pass — what the lifecycle keeps (ADR-0051).
+    Set<Verdict> proposed = new HashSet<>();
+    Set<Long> unreadable = new HashSet<>();
     int enqueued = 0;
-    for (AnalyzableQuery q : analysis.planCapturedQueries(db.id())) {
+    for (AnalyzableQuery q : queries) {
       PlanNode plan = parseOrNull(db, q);
       if (plan == null) {
+        unreadable.add(q.queryid());
         continue;
       }
       List<Finding> findings = detector.detect(plan, catalog);
       List<IndexCandidate> candidates = candidateGenerator.generate(findings);
       for (IndexCandidate candidate : candidates) {
+        proposed.add(new Verdict(q.queryid(), candidate.ddl()));
         enqueued +=
             analysis.enqueue(
                 db.id(),
@@ -167,10 +178,11 @@ public class AnalysisService {
                 revalidateBefore);
       }
     }
-    enqueued += enqueueCoverageChecks(db, revalidateBefore);
+    enqueued += enqueueCoverageChecks(db, queries, proposed, revalidateBefore);
     if (enqueued > 0) {
       log.info("analysis for db '{}' enqueued {} validation job(s)", db.name(), enqueued);
     }
+    retire(db, catalog, proposed, unreadable);
     // Hygiene is independent of query plans — it runs over the same catalog + the idx_scan window
     // even when no query produced a candidate this pass.
     runHygiene(db, catalog);
@@ -184,14 +196,32 @@ public class AnalysisService {
    * idempotent + cooldown-gated enqueue bounds them; their verdicts land as ordinary
    * recommendations, which is what lets the advice view say "one index instead of two".
    */
-  private int enqueueCoverageChecks(MonitoredDb db, Instant revalidateBefore) {
+  private int enqueueCoverageChecks(
+      MonitoredDb db,
+      List<AnalyzableQuery> queries,
+      Set<Verdict> proposed,
+      Instant revalidateBefore) {
+    // Only among indexes still proposed: a retired index is no reason for a coverage check.
+    Map<String, Set<Long>> validated = new LinkedHashMap<>();
+    analysis
+        .validatedQueriesByDdl(db.id())
+        .forEach(
+            (ddl, ids) -> {
+              Set<Long> live = new LinkedHashSet<>();
+              ids.stream().filter(id -> proposed.contains(new Verdict(id, ddl))).forEach(live::add);
+              if (!live.isEmpty()) {
+                validated.put(ddl, live);
+              }
+            });
+    CoverageChecks.missing(validated, Set.of())
+        .forEach(c -> proposed.add(new Verdict(c.queryId(), c.ddl())));
     List<CoverageChecks.Check> checks =
-        CoverageChecks.missing(analysis.validatedQueriesByDdl(db.id()), analysis.verdicts(db.id()));
+        CoverageChecks.missing(validated, analysis.verdicts(db.id()));
     if (checks.isEmpty()) {
       return 0;
     }
     Map<Long, String> sqlByQuery = new HashMap<>();
-    for (AnalyzableQuery q : analysis.planCapturedQueries(db.id())) {
+    for (AnalyzableQuery q : queries) {
       sqlByQuery.put(q.queryid(), q.normalizedText());
     }
     int enqueued = 0;
@@ -204,6 +234,43 @@ public class AnalysisService {
       }
     }
     return enqueued;
+  }
+
+  /**
+   * Retires the recommendations the engine no longer proposes: deleted, or kept as <em>applied</em>
+   * when an index that serves one appeared after it was recommended ({@link
+   * RecommendationLifecycle}, ADR-0051).
+   */
+  private void retire(
+      MonitoredDb db, CatalogSnapshot catalog, Set<Verdict> proposed, Set<Long> unreadable) {
+    RecommendationLifecycle.Changes changes =
+        RecommendationLifecycle.changes(
+            analysis.storedRecommendations(db.id()),
+            proposed,
+            unreadable,
+            catalog,
+            (index, since) -> analysis.indexFirstSeen(db.id(), index, since));
+    changes.delete().forEach(r -> analysis.deleteRecommendation(db.id(), r.queryid(), r.ddl()));
+    changes
+        .markApplied()
+        .forEach(
+            a ->
+                analysis.markApplied(db.id(), a.rec().queryid(), a.rec().ddl(), a.index(), a.at()));
+    changes.unapply().forEach(r -> analysis.clearApplied(db.id(), r.queryid(), r.ddl()));
+    for (RecommendationLifecycle.Applied a : changes.markApplied()) {
+      log.info(
+          "db '{}': {} was applied as index {} (first seen {})",
+          db.name(),
+          a.rec().ddl(),
+          a.index(),
+          a.at());
+    }
+    if (!changes.delete().isEmpty()) {
+      log.info(
+          "db '{}': retired {} recommendation(s) the engine no longer proposes",
+          db.name(),
+          changes.delete().size());
+    }
   }
 
   /**

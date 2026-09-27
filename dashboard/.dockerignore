@@ -1,0 +1,11 @@
+node_modules
+.next
+coverage
+test-results
+playwright-report
+blob-report
+.env*
+*.tsbuildinfo
+next-env.d.ts
+.impeccable
+*.md

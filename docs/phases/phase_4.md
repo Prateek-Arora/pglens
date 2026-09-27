@@ -1,6 +1,6 @@
 # Phase 4 — Web API, Security, Dashboard (ship checkpoint)
 
-> **Status: APPROVED 2026-09-26 — 4A in progress (Steps 0–5 built; DoD docs remain).** Verified per `../workflows/plan-verification.md`
+> **Status: APPROVED 2026-09-26 — 4A shipped (`v0.0.7`); 4B in progress (API contract + Step 6 built, ADR-0046).** Verified per `../workflows/plan-verification.md`
 > from the user's draft (`phase_4_dashboard_nextjs.md`, Desktop bundle).
 
 ## 1. Context & prerequisites
@@ -181,6 +181,8 @@ Image: `output: "standalone"`, non-root.
 **Step 6 — Scaffold + auth plumbing.** `dashboard/` app; a server-only data-access module is the
 *only* place that calls the API (reads the `httpOnly` session cookie, sends the bearer, 401 →
 `/login`); login/logout as Server Actions; every data route dynamic; basic security headers.
+*✅ Built 2026-09-26, with the exact API contract it needs (ADR-0046). Stack deviations: ESLint 10
+(9 is deprecated upstream), TypeScript 5.9.3 (tooling doesn't support 7 yet).*
 
 **Step 7 — Screens.**
 1. **Databases / onboarding** — empty state = "Add a database": registers it, shows the token
@@ -197,14 +199,92 @@ Image: `output: "standalone"`, non-root.
 4. **Trends** — per-query mean/total over time (honest axes, gaps for nulls), top movers, new-slow.
 5. **Recommendations** — ranked per index across DBs with evidence + DDL; **hygiene panel**.
 6. **Settings (admin)** — users, API tokens, databases (rotate/delete).
+*✅ Built 2026-09-26 (ADR-0046): every screen on real data, axe-clean. Added for it:
+`QueryEvidence.sqlPreview` (the recommendations page listed bare queryids). Settings also serves
+non-admins (own password, own API tokens). Found live: backlog B27 (system-catalog candidates).*
 
 **Step 8 — Honesty components.** Every number renders through `<Estimate>` / `<Measured>` /
 `<Count>` components that carry the label into tooltips and charts; unit tests assert labels.
+*✅ Built 2026-09-26: labels in tooltip, screen-reader text and `data-kind`; estimates also show a
+visible "est."; a missing measurement is "—" with its reason; charts reuse the same label text.*
 
 **Step 9 — Compose, CI, docs.** `dashboard` service in compose (port 3000; API port bound to
 `127.0.0.1` only); CI `dashboard` job (install, lint, typecheck, unit, build, OpenAPI drift);
 smoke runs Playwright: login → add DB → data appears → detail → copy DDL; README quickstart
 rewritten and timed from a cold clone; reverse-proxy (Caddy) recipe for HTTPS.
+*✅ Built 2026-09-26 (ADR-0046): image (3 stages, non-root, read-only rootfs), compose service on
+`127.0.0.1:3000`, CI `dashboard` + `e2e` jobs, `make e2e`, README quickstart + Caddy recipe. Timed
+from a fresh copy with warm Docker/Gradle caches: dashboard up 41 s, data visible 122 s. The CI
+`e2e` job (fresh runner, cold caches) gives the cold number on its first run.*
+
+**Step 11 — Release readiness: real schemas + distribution (added 2026-09-27, ADR-0049, ADR-0050).**
+A pre-release check on a stock PG17 with an app-like schema found that the demo hid blockers.
+Tables outside `public` got SQL without a schema and HypoPG rejected every candidate. Quoted
+names (`"Post"."authorId"`, Prisma) and `varchar` casts (`(u.status)::text = $1`, Django and
+Rails) got no findings. The README's role setup captured no plans, and the message said
+"can't be generically explained" instead of "permission denied". No image or CLI build was
+published, so the dashboard's `docker run pglens/agent` failed. An agent on the same host failed
+TLS, because the dev certificate didn't name `host.docker.internal`. PgLens's own database was
+published on `0.0.0.0` with its default password.
+
+1. **Identity** (engine, proto, server).
+   - Each table is identified by its SQL name: schema-qualified unless `public`, and quoted by
+     `quote_ident` rules (Postgres 18's keyword list, raw names underneath).
+   - Columns are kept raw and quoted in the SQL.
+   - `PlanColumns` reads quoted identifiers and casts.
+   - A partition's finding targets its root table: HypoPG 1.4 simulates an index on a
+     partitioned parent, and the planner uses it on each partition (verified).
+   - Write load and index size are summed over the partitions.
+   - Proto `TableStat.partition_root`; migration V11.
+2. **Capture diagnostics.**
+   - A failed plan capture carries its reason, in `QueryText.plan_error`, the
+     `query_texts.plan_error` column and the API's `planUnavailableReason`.
+   - Permission-denied captures are retried every interval.
+   - An access pre-check lists the tables the role can't read, with ready-to-run `GRANT`s, in
+     the CLI notes and the agent log.
+   - The `pg_stat_statements` message tells "not created in this database" apart from "not
+     preloaded".
+   - The README gets the full grant list.
+3. **Connectivity and exposure.**
+   - The demo and metadata databases listen on `127.0.0.1` only.
+   - The dev certificate also names `host.docker.internal`, and is re-issued when the requested
+     names change.
+   - The agent logs the root cause of a transport failure (with a TLS hint) instead of "server
+     rejected".
+   - The agent snippet gains the image, `--add-host`, where `ca.pem` comes from, and the grants.
+4. **Distribution.**
+   - One version, `0.1.0-rc`, in `gradle.properties`, `package.json`, the compose defaults and
+     the snippet, checked by `scripts/check_versions.sh`.
+   - Compose images come from `ghcr.io/prateek-arora/pglens-*`, with `build:` kept for `make up`.
+   - A CLI image.
+   - `release.yml` runs on a `v*` tag: it builds the jars, pushes multi-arch images to GHCR, and
+     drafts a pre-release with the CLI jar and checksums.
+5. **Copy.**
+   - The query page says "no rule matched" (and names the gaps) instead of "nothing an index
+     would fix".
+   - The "Not planner-validated" section gives each entry's own reason.
+   - Add `SECURITY.md` and `CHANGELOG.md`, refresh `CONTRIBUTING.md`, and tidy the README.
+6. **Proof.**
+   - A `RealWorldSchemaIntegrationTest` covers a non-public schema, Prisma-style names, a
+     reserved-word table, `varchar`, a partitioned table and a least-privilege role. It
+     asserts planner-validated SQL that also runs on the database.
+   - Re-run the outside-database check (CLI, agent, dashboard) and the fresh-copy quickstart.
+
+Not in this step:
+- **Expression indexes** (`lower(email)`, backlog B9): only the copy says so.
+- **Next 16.3.7:** its security release is due 30 Sep and is still a gate for the tag.
+
+**Step 12 — Release hardening: close the loop, sell the impact (added 2026-09-27, ADR-0051–0053).**
+From the pre-release review: (a) retire advice the engine no longer proposes; mark it *applied* when
+a serving index appears after it; show the query's measured mean before/after; re-capture plans when
+indexes change. (b) Guards as connection startup options; refuse a transaction-mode pooler (real
+PgBouncer IT). (c) Overview-first dashboard, charts on slow queries and trends, est. saved per row,
+LLM status + versions in Settings. (d) `demo` compose profile + `make up-no-demo`; 35-day raw
+retention; `agent_hours`; no catalog-table advice; embedding-size guard. (e) README around
+screenshots; `docs/operations.md`, `docs/cli.md`, `docs/api.md`; GitHub templates; code of conduct.
+**Verification:** unit + IT for the lifecycle, measurement, pooler, plan refresh; PG17/18 compat;
+`make bench-api`; e2e; screenshots of every page (1440/390, both themes, axe); the stranger path on
+a TLS-only database with an app-style schema, through to *applied*; LLM mode end to end.
 
 **Step 10 (optional, cut first) — GraphQL read layer.** Spring for GraphQL over the same service
 methods, read-only, one schema. Only claimed as a skill if completed (ADR-0037).

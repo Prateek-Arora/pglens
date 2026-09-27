@@ -173,8 +173,10 @@ public class StatsReader {
     requireSupportedVersion(target.versionNum(), target.version());
     if (!target.pgss()) {
       throw new PgLensException(
-          "pg_stat_statements is not enabled on the target database. Add it to "
-              + "shared_preload_libraries, restart, then run: CREATE EXTENSION pg_stat_statements;");
+          "The pg_stat_statements extension isn't created in this database (it is created per "
+              + "database). As a superuser, connect to this database and run: CREATE EXTENSION "
+              + "pg_stat_statements; — if Postgres then says it must be loaded via "
+              + "shared_preload_libraries, add pg_stat_statements there and restart first.");
     }
   }
 

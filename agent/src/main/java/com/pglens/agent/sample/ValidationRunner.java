@@ -1,6 +1,7 @@
 package com.pglens.agent.sample;
 
 import com.pglens.agent.config.PglensAgentProperties;
+import com.pglens.agent.grpc.GrpcFailures;
 import com.pglens.agent.grpc.ValidationClient;
 import com.pglens.engine.db.DataSources;
 import com.pglens.engine.db.HypoPGValidator;
@@ -56,17 +57,20 @@ public class ValidationRunner {
     try {
       jobs = validationClient.lease(props.getDbName(), props.getValidation().getMaxLease());
     } catch (RuntimeException leaseFailed) {
-      log.warn("validation lease failed: {}", leaseFailed.toString());
+      log.warn(
+          "validation lease failed: {}",
+          GrpcFailures.describe(
+              leaseFailed, props.getServer().getHost() + ":" + props.getServer().getPort()));
       return;
     }
     if (jobs.isEmpty()) {
       return;
     }
 
-    // Same read-only + timeout guards as the sampler (idempotent). HypoPG's hypothetical indexes
-    // work under read-only and are reset after every candidate — nothing is created on the real DB.
+    // Same read-only + timeout guard check as the sampler. HypoPG's hypothetical indexes work
+    // under read-only and are reset after every candidate — nothing is created on the real DB.
     try {
-      DataSources.applySessionGuards(jdbc);
+      DataSources.verifySessionGuards(jdbc);
     } catch (DataAccessException dbErr) {
       log.warn(
           "monitored-db unavailable for validation: {}", dbErr.getMostSpecificCause().getMessage());

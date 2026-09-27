@@ -141,7 +141,7 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void carriesThePhase25EvidenceOnTheValidatedRecommendation() {
-    assertThat(report.schemaVersion()).isEqualTo("1.4");
+    assertThat(report.schemaVersion()).isEqualTo("1.5");
     // 1.4: every finding points at a node of its query's plan (ADR-0044).
     assertThat(report.queries())
         .flatExtracting(q -> q.findings())
@@ -252,8 +252,8 @@ class PgLensEngineIntegrationTest {
 
   @Test
   void scanSessionGuardsEnforceReadOnlyAtTheDatabase() {
-    JdbcTemplate jdbc = new JdbcTemplate(DataSources.forScan(target));
-    DataSources.applySessionGuards(jdbc);
+    JdbcTemplate jdbc = new JdbcTemplate(DataSources.guarded(target));
+    DataSources.verifySessionGuards(jdbc);
 
     assertThat(jdbc.queryForObject("SHOW transaction_read_only", String.class)).isEqualTo("on");
     assertThatThrownBy(() -> jdbc.execute("UPDATE orders SET status = 'x' WHERE id = 1"))

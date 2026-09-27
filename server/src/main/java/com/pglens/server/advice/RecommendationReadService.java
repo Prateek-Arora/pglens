@@ -4,9 +4,12 @@ import com.pglens.engine.hygiene.IndexHygieneFinding;
 import com.pglens.engine.model.TableWriteLoad;
 import com.pglens.server.persistence.HygieneRepository;
 import com.pglens.server.persistence.MonitoredDb;
+import com.pglens.server.persistence.QueryPreviews;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -19,13 +22,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class RecommendationReadService {
 
-  /** This index's planner-validated evidence for one query. */
+  /**
+   * This index's planner-validated evidence for one query. {@code sqlPreview} is the start of the
+   * query's text (null if the text was never captured), so a reader can tell the queries apart.
+   */
   public record QueryEvidence(
       String queryid,
+      @Nullable String sqlPreview,
       double estimatedMsSaved,
-      String scoreBasis,
+      @Nullable String scoreBasis,
       double plannerCostDropFraction,
-      String rangeLabel) {}
+      @Nullable String rangeLabel) {}
 
   /**
    * One index to consider creating. {@code estimatedMsSaved} sums the per-query estimates, each
@@ -35,19 +42,19 @@ public class RecommendationReadService {
   public record IndexRecommendation(
       String database,
       String ddl,
-      String table,
+      @Nullable String table,
       String accessMethod,
       double estimatedMsSaved,
       boolean actionable,
-      String redundantWith,
-      String footprintLabel,
-      String buildCaution,
-      TableWriteLoad writeLoad,
+      @Nullable String redundantWith,
+      @Nullable String footprintLabel,
+      @Nullable String buildCaution,
+      @Nullable TableWriteLoad writeLoad,
       List<QueryEvidence> queries) {}
 
   /** An index PgLens suggests but HypoPG cannot simulate (GIN/GiST): no planner estimate exists. */
   public record NotPlannerValidated(
-      String ddl, String accessMethod, String reason, List<String> queryids) {}
+      String ddl, String accessMethod, @Nullable String reason, List<String> queryids) {}
 
   public record Recommendations(
       String database,
@@ -61,12 +68,14 @@ public class RecommendationReadService {
 
   private final AdviceService advice;
   private final HygieneRepository hygiene;
+  private final QueryPreviews previews;
   private final JdbcTemplate jdbc;
 
   public RecommendationReadService(
-      AdviceService advice, HygieneRepository hygiene, JdbcTemplate jdbc) {
+      AdviceService advice, HygieneRepository hygiene, QueryPreviews previews, JdbcTemplate jdbc) {
     this.advice = advice;
     this.hygiene = hygiene;
+    this.previews = previews;
     this.jdbc = jdbc;
   }
 
@@ -90,7 +99,12 @@ public class RecommendationReadService {
   }
 
   private List<IndexRecommendation> recommended(MonitoredDb db) {
-    return advice.advice(db.id()).stream()
+    var all = advice.advice(db.id());
+    Map<Long, String> previews =
+        this.previews.of(
+            db.id(),
+            all.stream().flatMap(a -> a.queries().stream()).map(q -> q.queryId()).toList());
+    return all.stream()
         .map(
             a ->
                 new IndexRecommendation(
@@ -109,6 +123,7 @@ public class RecommendationReadService {
                             q ->
                                 new QueryEvidence(
                                     Long.toString(q.queryId()),
+                                    previews.get(q.queryId()),
                                     q.estimatedMsSaved(),
                                     q.scoreBasis(),
                                     q.relativeDrop(),
@@ -121,6 +136,7 @@ public class RecommendationReadService {
     return jdbc.query(
         "SELECT ddl, access_method, min(reason), array_agg(queryid ORDER BY queryid) "
             + "FROM recommendations WHERE db_id = ? AND status = 'NOT_PLANNER_VALIDATED' "
+            + "AND applied_at IS NULL "
             + "GROUP BY ddl, access_method ORDER BY ddl",
         (rs, n) ->
             new NotPlannerValidated(

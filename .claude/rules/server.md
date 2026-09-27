@@ -98,3 +98,7 @@ paths:
   pgvector image) for anything touching Postgres, via `@SpringBootTest` + `@DynamicPropertySource`.
   Park the `@Scheduled` analysis in ITs with a huge `pglens.analysis.initial-delay-ms` and drive
   `run()` directly so counts are deterministic. Style is google-java-format via Spotless.
+- **Response records are the API contract** (ADR-0046). Every component is required in the OpenAPI
+  spec; mark one that can be null with JSpecify `@Nullable` (on the record component), or clients
+  are told it never is. After changing a response shape run `make openapi` and commit
+  `docs/api/openapi.json` (an IT fails on drift), then regenerate the dashboard's types.

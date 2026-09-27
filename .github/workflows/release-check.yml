@@ -1,0 +1,105 @@
+name: release check
+
+# Follows the README the way a stranger would, with only the RELEASED images and no build, on amd64
+# and arm64: anonymous pulls (so the GHCR packages must be public), the demo stack, registration,
+# a workload, and the dashboard. Runs when a release is published — after its packages were made
+# public (release.yml) — and by hand for any released version.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to check, without the v (e.g. 0.1.0-rc)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  quickstart:
+    name: quickstart from released images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      RAW_VERSION: ${{ inputs.version || github.event.release.tag_name }}
+      COMPOSE_FILE: deploy/compose/docker-compose.yml
+      COMPOSE_PROFILES: demo
+    steps:
+      - name: Version
+        run: echo "PGLENS_VERSION=${RAW_VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ env.PGLENS_VERSION }}
+
+      - name: Pull the released images anonymously
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          docker compose pull --quiet monitored-db server agent dashboard
+
+      - name: Start the demo stack without building
+        run: |
+          bash scripts/dev_env.sh
+          docker compose up -d --no-build --wait
+
+      - name: Register, seed and run the workload (README quickstart)
+        run: |
+          make register
+          make seed
+          make warmup
+          sleep 20
+          make warmup
+
+      - name: The overview shows measured time and an index to consider
+        run: |
+          command -v jq >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq jq; }
+          password="$(grep '^PGLENS_ADMIN_PASSWORD=' deploy/compose/.env | tail -1 | cut -d= -f2-)"
+          token="$(jq -n --arg p "$password" '{username: "admin", password: $p}' \
+            | curl -fsS -X POST http://127.0.0.1:8080/api/v1/auth/login \
+                -H 'Content-Type: application/json' --data @- | jq -r .token)"
+          for _ in $(seq 1 24); do
+            overview="$(printf 'header = "Authorization: Bearer %s"\n' "$token" \
+              | curl -fsS --config - http://127.0.0.1:8080/api/v1/overview)"
+            measured="$(jq '.measuredTotalMs' <<<"$overview")"
+            indexes="$(jq '.indexesToConsider' <<<"$overview")"
+            echo "measured ${measured} ms, ${indexes} indexes to consider"
+            if jq -e '.measuredTotalMs > 0 and .indexesToConsider > 0' <<<"$overview" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "no analysis after 4 minutes" >&2
+          docker compose logs --tail 80 server agent >&2
+          exit 1
+
+      - name: The dashboard serves its sign-in page
+        run: curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/login
+
+      - name: The CLI image runs
+        run: docker run --rm "ghcr.io/prateek-arora/pglens-cli:${PGLENS_VERSION}" --version
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: The release's CLI jar matches its checksum and runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir dist && cd dist
+          gh release download "v${PGLENS_VERSION}" --repo "$GITHUB_REPOSITORY" -p '*.jar' -p SHA256SUMS
+          sha256sum -c SHA256SUMS
+          java -jar "pglens-cli-${PGLENS_VERSION}.jar" --version
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

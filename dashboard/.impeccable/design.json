@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-27T02:52:13.981691+00:00",
+  "title": "Design System: PgLens",
+  "extensions": {
+    "colorMeta": {
+      "cobalt-ink": {
+        "role": "primary",
+        "displayName": "Cobalt Ink",
+        "canonical": "oklch(0.5 0.17 260)",
+        "tonalRamp": [
+          "oklch(0.2 0.15 260)",
+          "oklch(0.3 0.15 260)",
+          "oklch(0.4 0.15 260)",
+          "oklch(0.5 0.15 260)",
+          "oklch(0.6 0.15 260)",
+          "oklch(0.7 0.15 260)",
+          "oklch(0.82 0.15 260)",
+          "oklch(0.95 0.15 260)"
+        ]
+      },
+      "inspection-green": {
+        "role": "secondary",
+        "displayName": "Inspection Green",
+        "canonical": "oklch(0.49 0.12 155)",
+        "tonalRamp": [
+          "oklch(0.2 0.11 155)",
+          "oklch(0.3 0.11 155)",
+          "oklch(0.4 0.11 155)",
+          "oklch(0.5 0.11 155)",
+          "oklch(0.6 0.11 155)",
+          "oklch(0.7 0.11 155)",
+          "oklch(0.82 0.11 155)",
+          "oklch(0.95 0.11 155)"
+        ]
+      },
+      "redline-vermilion": {
+        "role": "secondary",
+        "displayName": "Redline Vermilion",
+        "canonical": "oklch(0.58 0.19 32)",
+        "tonalRamp": [
+          "oklch(0.2 0.16 32)",
+          "oklch(0.3 0.16 32)",
+          "oklch(0.4 0.16 32)",
+          "oklch(0.5 0.16 32)",
+          "oklch(0.6 0.16 32)",
+          "oklch(0.7 0.16 32)",
+          "oklch(0.82 0.16 32)",
+          "oklch(0.95 0.16 32)"
+        ]
+      },
+      "metric-mean-teal": {
+        "role": "tertiary",
+        "displayName": "Metric Mean Teal",
+        "canonical": "oklch(0.52 0.1 195)",
+        "tonalRamp": [
+          "oklch(0.2 0.09 195)",
+          "oklch(0.3 0.09 195)",
+          "oklch(0.4 0.09 195)",
+          "oklch(0.5 0.09 195)",
+          "oklch(0.6 0.09 195)",
+          "oklch(0.7 0.09 195)",
+          "oklch(0.82 0.09 195)",
+          "oklch(0.95 0.09 195)"
+        ]
+      },
+      "metric-calls-plum": {
+        "role": "tertiary",
+        "displayName": "Metric Calls Plum",
+        "canonical": "oklch(0.5 0.15 320)",
+        "tonalRamp": [
+          "oklch(0.2 0.13 320)",
+          "oklch(0.3 0.13 320)",
+          "oklch(0.4 0.13 320)",
+          "oklch(0.5 0.13 320)",
+          "oklch(0.6 0.13 320)",
+          "oklch(0.7 0.13 320)",
+          "oklch(0.82 0.13 320)",
+          "oklch(0.95 0.13 320)"
+        ]
+      },
+      "drafting-film": {
+        "role": "neutral",
+        "displayName": "Drafting Film",
+        "canonical": "oklch(0.975 0.006 235)",
+        "tonalRamp": [
+          "oklch(0.2 0.01 235)",
+          "oklch(0.3 0.01 235)",
+          "oklch(0.4 0.01 235)",
+          "oklch(0.5 0.01 235)",
+          "oklch(0.6 0.01 235)",
+          "oklch(0.7 0.01 235)",
+          "oklch(0.82 0.01 235)",
+          "oklch(0.95 0.01 235)"
+        ]
+      },
+      "graphite-ink": {
+        "role": "neutral",
+        "displayName": "Graphite Ink",
+        "canonical": "oklch(0.24 0.025 255)",
+        "tonalRamp": [
+          "oklch(0.2 0.025 255)",
+          "oklch(0.3 0.025 255)",
+          "oklch(0.4 0.025 255)",
+          "oklch(0.5 0.025 255)",
+          "oklch(0.6 0.025 255)",
+          "oklch(0.7 0.025 255)",
+          "oklch(0.82 0.025 255)",
+          "oklch(0.95 0.025 255)"
+        ]
+      },
+      "blueprint-navy": {
+        "role": "neutral",
+        "displayName": "Blueprint Navy",
+        "canonical": "oklch(0.225 0.05 258)",
+        "tonalRamp": [
+          "oklch(0.2 0.05 258)",
+          "oklch(0.3 0.05 258)",
+          "oklch(0.4 0.05 258)",
+          "oklch(0.5 0.05 258)",
+          "oklch(0.6 0.05 258)",
+          "oklch(0.7 0.05 258)",
+          "oklch(0.82 0.05 258)",
+          "oklch(0.95 0.05 258)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page h1."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section heads."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose and table cells, tabular numerals."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Captions over values, est., meta; the 13 px floor."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Every query, DDL and command, syntax-colored."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sheet",
+        "value": "0 1px 2px oklch(0.3 0.05 250 / 0.06), 0 6px 16px -8px oklch(0.3 0.05 250 / 0.12)",
+        "purpose": "Every sheet: tables, cards, code, title block, popovers (dark mode uses a deeper navy variant)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "draw-in",
+        "value": "200ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Dimension bars draw in once from the left; off under reduced motion."
+      },
+      {
+        "name": "disclosure",
+        "value": "150ms ease-out",
+        "purpose": "Summary chevron rotation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px (leaderboard table vs stacked list)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action per form.",
+      "html": "<button class=\"ds-btn-primary\">Add database</button>",
+      "css": ".ds-btn-primary{height:36px;padding:0 14px;border:0;border-radius:4.8px;background:oklch(0.5 0.17 260);color:#fff;font:500 14px 'IBM Plex Sans',system-ui,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:oklch(0.45 0.17 260)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.5 0.17 260 / .5)}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Copy, Sign out, Rotate.",
+      "html": "<button class=\"ds-btn-outline\">Copy</button>",
+      "css": ".ds-btn-outline{height:36px;padding:0 14px;border:1px solid oklch(0.885 0.014 240);border-radius:4.8px;background:#fff;color:oklch(0.24 0.025 255);font:500 14px 'IBM Plex Sans',system-ui,sans-serif}.ds-btn-outline:hover{background:oklch(0.95 0.014 245)}.ds-btn-outline:focus-visible{outline:none;box-shadow:0 0 0 3px oklch(0.5 0.17 260 / .5)}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "36 px field; help text below the row.",
+      "html": "<input class=\"ds-input\" placeholder=\"e.g. shop-prod\">",
+      "css": ".ds-input{height:36px;padding:0 12px;border:1px solid oklch(0.82 0.02 240);border-radius:4.8px;background:oklch(0.975 0.006 235);color:oklch(0.24 0.025 255);font:400 14px 'IBM Plex Sans',system-ui,sans-serif}.ds-input:focus-visible{outline:none;border-color:oklch(0.5 0.17 260);box-shadow:0 0 0 3px oklch(0.5 0.17 260 / .5)}"
+    },
+    {
+      "name": "Segmented Toggle",
+      "kind": "nav",
+      "refersTo": "toggle-current",
+      "description": "Window and sort; sort segments carry their metric ink.",
+      "html": "<nav class=\"ds-seg\"><a class=\"on\">Total time</a><a>Mean time</a><a>Calls</a></nav>",
+      "css": ".ds-seg{display:inline-flex;padding:2px;border:1px solid oklch(0.885 0.014 240);border-radius:4.8px;background:#fff;font:400 14px 'IBM Plex Sans',system-ui,sans-serif}.ds-seg a{padding:4px 12px;border-radius:3.6px;color:oklch(0.46 0.025 250);cursor:pointer}.ds-seg a:hover{color:oklch(0.24 0.025 255)}.ds-seg a.on{background:oklch(0.24 0.025 255);color:#fff;font-weight:500}"
+    },
+    {
+      "name": "Planner-validated Mark",
+      "kind": "chip",
+      "description": "Green outline chip with a check; its dashed twin means not validated.",
+      "html": "<span class=\"ds-ok\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M20 6 9 17l-5-5\"/></svg>Planner-validated</span>",
+      "css": ".ds-ok{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:1px solid oklch(0.49 0.12 155 / .3);border-radius:4.8px;background:oklch(0.96 0.035 155);color:oklch(0.49 0.12 155);font:500 13px 'IBM Plex Sans',system-ui,sans-serif}"
+    },
+    {
+      "name": "Dimension Bar",
+      "kind": "custom",
+      "description": "Measured (solid) and estimate (hatched) bars with an end tick.",
+      "html": "<div class=\"ds-dim\"><span class=\"m\" style=\"width:70%\"></span></div><div class=\"ds-dim est\"><span class=\"m\" style=\"width:42%\"></span></div>",
+      "css": ".ds-dim{position:relative;height:6px;margin:10px 0;color:oklch(0.5 0.17 260);background:linear-gradient(oklch(0.885 0.014 240),oklch(0.885 0.014 240)) center/100% 1px no-repeat}.ds-dim .m{position:absolute;inset:0 auto 0 0;background:currentColor;box-shadow:1px 0 0 0 currentColor}.ds-dim.est .m{background:repeating-linear-gradient(135deg,currentColor 0 1.5px,transparent 1.5px 5px);box-shadow:inset 0 0 0 1px currentColor}"
+    },
+    {
+      "name": "Sheet",
+      "kind": "card",
+      "refersTo": "sheet",
+      "description": "The container for all content.",
+      "html": "<div class=\"ds-sheet\">Where the time goes</div>",
+      "css": ".ds-sheet{padding:20px;border:1px solid oklch(0.885 0.014 240);border-radius:6px;background:#fff;box-shadow:0 1px 2px oklch(0.3 0.05 250 / .06),0 6px 16px -8px oklch(0.3 0.05 250 / .12);font:400 14px 'IBM Plex Sans',system-ui,sans-serif;color:oklch(0.24 0.025 255)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Drafting Sheet",
+    "overview": "PgLens draws query data the way an engineering drawing draws a part: measured in solid ink, planner estimates dashed or hatched. Content lies on white sheets over a cool drafting film (light) or blueprint navy (dark), following the OS. Color is never decoration; each hue has one job.",
+    "keyCharacteristics": [
+      "Solid = measured, dashed/hatched = planner estimate, in text, bars and plan nodes alike.",
+      "To-scale dimension bars with an end tick, read against a round-graduation ruler.",
+      "One ink per metric everywhere: total time, mean time, calls.",
+      "Syntax-colored SQL in JetBrains Mono at 13 px; interface in IBM Plex Sans with tabular numerals.",
+      "White sheets with a soft offset shadow on a cool film; blueprint navy in dark mode.",
+      "Plan problems are redlines: a dashed vermilion outline and a numbered balloon."
+    ],
+    "rules": [
+      {
+        "name": "The One Job Rule",
+        "body": "Every hue has exactly one meaning, the same on every page.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Ink Per Metric Rule",
+        "body": "Total time, mean time and calls always print in their own ink; the sorted metric is bold, never a different color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Hatch, Don't Tint Rule",
+        "body": "An estimate in a bar is hatched in its ink, never a paler tint; a measurement is solid.",
+        "section": "colors"
+      },
+      {
+        "name": "The SQL Is Code Rule",
+        "body": "A query never renders as plain mono text: it goes through SqlInline or SqlBlock.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Numerals are tabular everywhere.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Sheet Rule",
+        "body": "Sheets never nest inside sheets; inner grouping uses rules or a code well.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do render every number through `<Measured>`, `<Estimate>` or `<Count>`. Estimates always carry the dashed underline and \"est.\".",
+      "Do print total time, mean time and calls in their metric inks wherever they appear.",
+      "Do put content on a sheet, and inner structure in rules or code wells.",
+      "Do keep inputs, selects and buttons at 36 px, with help text below the row.",
+      "Do screenshot every route at 1440 and 390 px, in both themes, and run axe before calling visual work done."
+    ],
+    "donts": [
+      "Don't show a query as plain mono text; use `SqlInline` or `SqlBlock`.",
+      "Don't put a grid or pattern on the page background.",
+      "Don't use a pale tint to mean \"estimate\"; hatch it.",
+      "Don't fill a plan problem with a tinted alert panel; draw the redline.",
+      "Don't add a color without a role, or reuse a role color for decoration.",
+      "Don't let \"Planner-validated\" read as \"safe\"; the measure-first step stays beside every validated suggestion."
+    ]
+  }
+}

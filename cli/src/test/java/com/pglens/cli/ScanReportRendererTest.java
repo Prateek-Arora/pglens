@@ -71,7 +71,7 @@ class ScanReportRendererTest {
     String json = ScanReportRenderer.toJson(sampleReport());
     JsonNode root = new ObjectMapper().readTree(json);
 
-    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.4");
+    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.5");
     assertThat(root.get("tableWriteLoad").get(0).get("level").asText()).isEqualTo("WRITE_DOMINANT");
     // Derived flags are part of the 1.1 contract, so a JSON consumer needn't recompute them.
     assertThat(root.get("topRecommendations").get(0).has("actionable")).isTrue();
@@ -158,6 +158,7 @@ class ScanReportRendererTest {
             12_000.0,
             120.0,
             true,
+            null,
             PlanSummary.genericPlan(seqScan("orders", "o", "(customer_id = $1)")),
             List.of(
                 new Finding(
@@ -193,6 +194,7 @@ class ScanReportRendererTest {
             3_000.0,
             60.0,
             true,
+            null,
             PlanSummary.genericPlan(seqScan("orders", "o", "(customer_id = $1)")),
             List.of(
                 new Finding(
@@ -220,6 +222,7 @@ class ScanReportRendererTest {
             1_500.0,
             50.0,
             true,
+            null,
             PlanSummary.genericPlan(seqScan("events", "e", "(payload @> $1)")),
             List.of(
                 new Finding(
@@ -277,6 +280,7 @@ class ScanReportRendererTest {
         1000L,
         8,
         relation,
+        null,
         alias,
         null,
         null,

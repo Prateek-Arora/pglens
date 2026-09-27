@@ -1,5 +1,6 @@
 package com.pglens.engine.db;
 
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import org.springframework.dao.DataAccessException;
@@ -8,10 +9,35 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * Captures the generic plan — {@code EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON)} — for a
  * normalized statement. GENERIC_PLAN (PG16+) plans the {@code $1}-parameterized text without
- * executing it; VERBOSE qualifies columns (needed by the rules). Statements that cannot be planned
- * generically come back empty (skip + mark), never crash.
+ * executing it; VERBOSE qualifies columns (needed by the rules). A statement that can't be planned
+ * comes back as a failed {@link Capture} carrying the reason (skip + mark, never crash) — told
+ * apart when the role simply may not read a table ({@code permission denied}, SQLSTATE 42501),
+ * which granting access fixes (ADR-0049).
  */
 public class PlanCapturer {
+
+  /** SQLSTATE {@code insufficient_privilege}. */
+  static final String INSUFFICIENT_PRIVILEGE = "42501";
+
+  /**
+   * One capture: the plan JSON, or why there is none. {@code permissionDenied} marks a failure the
+   * role's grants cause (worth retrying once access is granted), as opposed to a statement shape
+   * EXPLAIN can't plan generically.
+   */
+  public record Capture(String planJson, String error, boolean permissionDenied) {
+
+    static Capture of(String planJson) {
+      return new Capture(planJson, null, false);
+    }
+
+    public boolean captured() {
+      return planJson != null;
+    }
+
+    public Optional<String> plan() {
+      return Optional.ofNullable(planJson);
+    }
+  }
 
   // pg_stat_statements normalizes a typed literal `TYPE 'text'` to `TYPE $N`, which is a syntax
   // error to EXPLAIN (e.g. `interval $1`). Rewrite it to the equivalent cast `$N::TYPE`, which
@@ -47,13 +73,44 @@ public class PlanCapturer {
 
   /** The plan JSON for {@code normalizedSql}, or empty if it cannot be safely explained. */
   public Optional<String> captureGenericPlanJson(String normalizedSql) {
+    return capture(normalizedSql).plan();
+  }
+
+  /** The plan for {@code normalizedSql}, or the database's reason it couldn't be planned. */
+  public Capture capture(String normalizedSql) {
     String explain =
         "EXPLAIN (GENERIC_PLAN, VERBOSE, FORMAT JSON) " + normalizeForExplain(normalizedSql);
     try {
-      return Optional.ofNullable(jdbc.queryForObject(explain, String.class));
+      String json = jdbc.queryForObject(explain, String.class);
+      return json == null ? failed("EXPLAIN returned no plan", null) : Capture.of(json);
     } catch (DataAccessException cannotExplain) {
-      return Optional.empty();
+      Throwable cause = cannotExplain.getMostSpecificCause();
+      String state = cause instanceof SQLException sql ? sql.getSQLState() : null;
+      return failed(firstLine(cause.getMessage()), state);
     }
+  }
+
+  private static Capture failed(String message, String sqlState) {
+    boolean denied = INSUFFICIENT_PRIVILEGE.equals(sqlState);
+    String reason =
+        denied
+            ? "the PgLens role may not read a table this query uses ("
+                + message
+                + "); grant it USAGE on the schema and SELECT on the table"
+            : "Postgres can't plan this statement generically ("
+                + (sqlState == null ? "" : "SQLSTATE " + sqlState + ": ")
+                + message
+                + ")";
+    return new Capture(null, reason, denied);
+  }
+
+  // "ERROR: permission denied for schema app\n  Position: 21" → the first line, no "ERROR:" prefix.
+  private static String firstLine(String message) {
+    if (message == null) {
+      return "no message";
+    }
+    String line = message.strip().lines().findFirst().orElse("").strip();
+    return line.startsWith("ERROR: ") ? line.substring("ERROR: ".length()) : line;
   }
 
   /**

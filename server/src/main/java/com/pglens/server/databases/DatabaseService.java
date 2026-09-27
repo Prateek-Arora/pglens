@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +38,11 @@ public class DatabaseService {
 
   /** A registered database with its agent's liveness. */
   public record Database(
-      String name, String host, Instant createdAt, Instant lastIngestAt, AgentStatus agent) {}
+      String name,
+      @Nullable String host,
+      Instant createdAt,
+      @Nullable Instant lastIngestAt,
+      AgentStatus agent) {}
 
   /** A new or rotated agent token: returned exactly once. */
   public record AgentCredentials(Database database, String agentToken) {}

@@ -100,13 +100,15 @@ public class SnapshotRepository {
     jdbc.update(
         """
         INSERT INTO query_texts
-          (db_id, queryid, text_hash, normalized_text, plan_json, plan_captured, truncated, last_seen)
-        VALUES (?, ?, ?, ?, ?, ?, ?, now())
+          (db_id, queryid, text_hash, normalized_text, plan_json, plan_captured, plan_error,
+           truncated, last_seen)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, now())
         ON CONFLICT (db_id, queryid) DO UPDATE SET
           text_hash = EXCLUDED.text_hash,
           normalized_text = EXCLUDED.normalized_text,
           plan_json = EXCLUDED.plan_json,
           plan_captured = EXCLUDED.plan_captured,
+          plan_error = EXCLUDED.plan_error,
           truncated = EXCLUDED.truncated,
           last_seen = now()
         """,
@@ -116,6 +118,7 @@ public class SnapshotRepository {
         t.getNormalizedText(),
         t.getPlanJson().isEmpty() ? null : t.getPlanJson(),
         t.getPlanCaptured(),
+        t.getPlanError().isEmpty() ? null : t.getPlanError(),
         t.getTruncated());
   }
 

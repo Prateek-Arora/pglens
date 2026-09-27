@@ -1,5 +1,6 @@
 package com.pglens.engine.detect;
 
+import com.pglens.engine.model.SqlIdent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -8,40 +9,66 @@ import java.util.regex.Pattern;
 /**
  * Pure helpers that pull column references out of EXPLAIN expression strings. EXPLAIN VERBOSE
  * qualifies every column with its table or alias (e.g. {@code (o.customer_id = $1)}), which is what
- * makes this reliable without a SQL parser.
+ * makes this reliable without a SQL parser. Identifiers come as Postgres writes them — bare, or
+ * double-quoted when they need it ({@code "Post"."authorId"}) — and are returned raw (unquoted,
+ * case preserved; ADR-0049). A {@code varchar} or {@code char} column is compared through a relabel
+ * cast ({@code (u.status)::text = $1}), which a B-tree on the column still serves.
  */
 final class PlanColumns {
 
   private PlanColumns() {}
 
-  // qualifier.column <op>  — the right-hand side (a bound parameter, an expression, or a join
+  // One identifier as EXPLAIN prints it: "quoted" (with "" escapes) or bare.
+  private static final String IDENT =
+      "(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_\\u0080-\\uffff][A-Za-z0-9_$\\u0080-\\uffff]*)";
+
+  // qualifier.column, either bare or as a text relabel cast: (qualifier.column)::text. A function
+  // call such as lower(q.c) = $1 matches neither (it needs an expression index — backlog B3).
+  private static final String COLUMN_OPERAND =
+      "(?:\\(("
+          + IDENT
+          + ")\\.("
+          + IDENT
+          + ")\\)::(?:text|bpchar)|("
+          + IDENT
+          + ")\\.("
+          + IDENT
+          + "))";
+
+  // <column operand> <op>  — the right-hand side (a bound parameter, an expression, or a join
   // column) is inspected separately, so `col = $1` and `col >= now() - $1` both qualify but the
   // join `a.x = b.y` does not.
   private static final Pattern COLUMN_COMPARISON =
-      Pattern.compile(
-          "([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)\\s*(?:=|<>|!=|<=|>=|<|>)\\s*");
+      Pattern.compile(COLUMN_OPERAND + "\\s*(?:=|<>|!=|<=|>=|<|>)\\s*");
 
   // A right operand that starts with another qualified column is a join, not an indexable filter.
   private static final Pattern RHS_IS_COLUMN =
-      Pattern.compile("^\\(*[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*");
+      Pattern.compile("^\\(*" + IDENT + "\\.(?:" + IDENT + ")");
 
   private static final Pattern BOUND_PARAM = Pattern.compile("\\$\\d+");
   private static final Pattern CONNECTIVE =
       Pattern.compile("\\s+(?:AND|OR)\\s+", Pattern.CASE_INSENSITIVE);
 
-  // qualifier.column = qualifier.column  — an equi-join condition.
+  // qualifier.column = qualifier.column  — an equi-join condition (either side may be cast).
   private static final Pattern JOIN =
-      Pattern.compile(
-          "([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)"
-              + "\\s*=\\s*"
-              + "([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)");
+      Pattern.compile(COLUMN_OPERAND + "\\s*=\\s*" + COLUMN_OPERAND);
 
   // (qualifier.)?column <gin-op>  — a containment/existence predicate a GIN index can serve.
   // Longer operators must precede their prefixes in the alternation (?| / ?& before ?).
   private static final Pattern JSONB_PREDICATE =
       Pattern.compile(
-          "(?:([A-Za-z_][A-Za-z0-9_]*)\\.)?([A-Za-z_][A-Za-z0-9_]*)"
-              + "\\s*(@>|@\\?|@@|\\?\\||\\?&|\\?)");
+          "(?:(" + IDENT + ")\\.)?(" + IDENT + ")" + "\\s*(@>|@\\?|@@|\\?\\||\\?&|\\?)");
+
+  // A sort key: an optionally qualified column, optionally cast, then an optional direction.
+  private static final Pattern SORT_KEY =
+      Pattern.compile(
+          "^\\(?(?:("
+              + IDENT
+              + ")\\.)?("
+              + IDENT
+              + ")\\)?(?:::[A-Za-z_ ]+?)?"
+              + "(?:\\s+(?:ASC|DESC))?(?:\\s+NULLS\\s+(?:FIRST|LAST))?$",
+          Pattern.CASE_INSENSITIVE);
 
   /**
    * Columns compared against a bound parameter ($N) in a Filter/Index Cond — directly ({@code col =
@@ -58,10 +85,16 @@ final class PlanColumns {
     while (m.find()) {
       String rhs = rightOperand(expr, m.end());
       if (!RHS_IS_COLUMN.matcher(rhs).find() && BOUND_PARAM.matcher(rhs).find()) {
-        out.add(new QualifiedColumn(m.group(1), m.group(2)));
+        out.add(operand(m, 0));
       }
     }
     return out;
+  }
+
+  /** The column of the {@link #COLUMN_OPERAND} starting at group {@code offset + 1}, unquoted. */
+  private static QualifiedColumn operand(Matcher m, int offset) {
+    boolean cast = m.group(offset + 1) != null;
+    return QualifiedColumn.of(m.group(offset + (cast ? 1 : 3)), m.group(offset + (cast ? 2 : 4)));
   }
 
   /** The comparison's right operand: from {@code start} up to the next top-level AND/OR, or end. */
@@ -80,8 +113,8 @@ final class PlanColumns {
     }
     Matcher m = JOIN.matcher(cond);
     while (m.find()) {
-      out.add(new QualifiedColumn(m.group(1), m.group(2)));
-      out.add(new QualifiedColumn(m.group(3), m.group(4)));
+      out.add(operand(m, 0));
+      out.add(operand(m, 4));
     }
     return out;
   }
@@ -98,25 +131,36 @@ final class PlanColumns {
     }
     Matcher m = JSONB_PREDICATE.matcher(expr);
     while (m.find()) {
-      out.add(new JsonbPredicate(new QualifiedColumn(m.group(1), m.group(2)), m.group(3)));
+      out.add(new JsonbPredicate(QualifiedColumn.of(m.group(1), m.group(2)), m.group(3)));
     }
     return out;
   }
 
-  /** The column of a sort key like {@code "o.created_at DESC"} (ASC/DESC/NULLS suffix stripped). */
+  /**
+   * The column of a sort key like {@code "o.created_at DESC"} or {@code p."createdAt" DESC NULLS
+   * LAST} (direction stripped); null for an expression key such as {@code lower(u.email)}.
+   */
   static QualifiedColumn sortColumn(String sortKey) {
     if (sortKey == null || sortKey.isBlank()) {
       return null;
     }
-    String head = sortKey.trim().split("\\s+")[0];
-    int dot = head.indexOf('.');
-    return dot > 0
-        ? new QualifiedColumn(head.substring(0, dot), head.substring(dot + 1))
-        : new QualifiedColumn(null, head);
+    Matcher m = SORT_KEY.matcher(sortKey.strip());
+    return m.matches() ? QualifiedColumn.of(m.group(1), m.group(2)) : null;
   }
 
-  /** A column reference split into its qualifier (table or alias) and column name. */
-  record QualifiedColumn(String qualifier, String column) {}
+  /**
+   * A column reference split into its qualifier (table or alias) and column name, both raw —
+   * unquoted and case preserved ({@code p."authorId"} → {@code p}, {@code authorId}).
+   */
+  record QualifiedColumn(String qualifier, String column) {
+
+    /** From the identifier tokens as EXPLAIN printed them (the qualifier may be absent). */
+    static QualifiedColumn of(String qualifierToken, String columnToken) {
+      return new QualifiedColumn(
+          qualifierToken == null ? null : SqlIdent.unquote(qualifierToken),
+          SqlIdent.unquote(columnToken));
+    }
+  }
 
   /** A column filtered by a GIN-servable operator, paired with that operator's text. */
   record JsonbPredicate(QualifiedColumn column, String operator) {}

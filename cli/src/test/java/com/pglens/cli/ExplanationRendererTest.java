@@ -49,6 +49,7 @@ class ExplanationRendererTest {
           6.1,
           true,
           null,
+          null,
           List.of(
               new Finding(
                   "R1",
@@ -134,7 +135,7 @@ class ExplanationRendererTest {
                 ExplanationRenderer.withExplanations(
                     ScanReportRenderer.toJson(report), List.of(e)));
 
-    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.4");
+    assertThat(root.get("schemaVersion").asText()).isEqualTo("1.5");
     JsonNode first = root.get("explanations").get(0);
     assertThat(first.get("ddl").asText()).isEqualTo(VALIDATED.candidate().ddl());
     assertThat(first.get("source").asText()).isEqualTo("TEMPLATE");

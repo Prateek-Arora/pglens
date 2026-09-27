@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,7 +35,7 @@ class InsightController {
       double measuredRecentTotalMs,
       double measuredPriorTotalMs,
       double deltaMs,
-      Double pctChange) {}
+      @Nullable Double pctChange) {}
 
   /** {@code from} is the recent window's real start (a UTC hour); the prior window is as long. */
   record TopMovers(
@@ -47,7 +48,7 @@ class InsightController {
       Instant firstSeen,
       double measuredTotalMs,
       long calls,
-      Double measuredMeanMs) {}
+      @Nullable Double measuredMeanMs) {}
 
   record NewSlow(
       String database,

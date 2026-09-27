@@ -545,8 +545,14 @@ trends default to hourly points (raw up to 48 h), since no chart needs 8,640 poi
 
 **Caveats.** Absolute times depend on the host; one standalone `EXPLAIN ANALYZE` of the 30-day
 aggregation varied between runs (41.5 ms and 80.9 ms) while the HTTP p95 stayed ~40 ms, so the
-budget is judged on the repeated HTTP measurement. Raw rows are still kept in full (retention/
-downsampling of the raw table: backlog B26).
+budget is judged on the repeated HTTP measurement. Raw rows are now kept 35 days (ADR-0053); the
+rollup is kept.
+
+**The impact endpoints (Step 12, ADR-0051/0052), re-measured 2026-09-27** on the same history plus an
+`agent_hours` row per hour (40 runs after 3 warm-ups; p95, ms): overview 24 h **44.0** (8 kB), overview
+30 d **53.6** (111 kB), a database's 30-day timeline with 5 series **43.3** (204 kB), applied
+indexes **2.2**. The rest of the same run: leaderboard 30 d 48.8, top movers 7 d 52.6, new slow 32.0,
+recommendations 8.6 — every endpoint under 60 ms p95, well inside the 300 ms budget.
 
 ## Reproduce
 

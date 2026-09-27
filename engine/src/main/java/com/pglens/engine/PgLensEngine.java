@@ -8,6 +8,7 @@ import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.db.StatsReader;
 import com.pglens.engine.detect.AntiPatternDetector;
 import com.pglens.engine.hygiene.WriteLoad;
+import com.pglens.engine.model.AccessGap;
 import com.pglens.engine.model.CatalogSnapshot;
 import com.pglens.engine.model.ConnectionTarget;
 import com.pglens.engine.model.Finding;
@@ -45,8 +46,8 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
  *
  * <p>Everything runs over one physical connection (HypoPG is session-local) under a session that is
  * enforced <b>read-only</b> at the database (writes are rejected, not merely discouraged) with
- * statement/lock timeouts — see {@link DataSources#applySessionGuards}. No index is ever created on
- * the target.
+ * statement/lock timeouts — see {@link DataSources#guarded}. No index is ever created on the
+ * target.
  */
 public final class PgLensEngine implements AutoCloseable {
 
@@ -67,7 +68,7 @@ public final class PgLensEngine implements AutoCloseable {
     this.target = target;
     this.dataSource = dataSource;
     this.jdbc = new JdbcTemplate(dataSource);
-    applySessionGuards();
+    verifySessionGuards();
     this.statsReader = new StatsReader(jdbc);
     this.catalogReader = new CatalogReader(jdbc);
     this.planCapturer = new PlanCapturer(jdbc);
@@ -80,7 +81,7 @@ public final class PgLensEngine implements AutoCloseable {
 
   /** Opens a scan-scoped, single-connection engine against the given target. */
   public static PgLensEngine connect(ConnectionTarget target) {
-    return new PgLensEngine(target, DataSources.forScan(target));
+    return new PgLensEngine(target, DataSources.guarded(target));
   }
 
   /** The top {@code limit} slow statements, ranked and hygiene-filtered. */
@@ -183,8 +184,8 @@ public final class PgLensEngine implements AutoCloseable {
    * One statement end-to-end: capture → detect → propose → validate. Shared by scan and explain.
    */
   private QueryReport analyze(StatementStat s, CatalogSnapshot catalog) {
-    PlanNode plan =
-        planCapturer.captureGenericPlanJson(s.query()).map(planParser::parse).orElse(null);
+    PlanCapturer.Capture capture = planCapturer.capture(s.query());
+    PlanNode plan = capture.plan().map(planParser::parse).orElse(null);
     List<Finding> findings = plan == null ? List.of() : detector.detect(plan, catalog);
     List<IndexCandidate> candidates = candidateGenerator.generate(findings);
     List<Recommendation> recommendations = validator.validate(s.query(), candidates);
@@ -196,6 +197,7 @@ public final class PgLensEngine implements AutoCloseable {
         s.totalExecTimeMs(),
         s.meanExecTimeMs(),
         plan != null,
+        plan == null ? capture.error() : null,
         plan == null ? null : PlanSummary.genericPlan(plan),
         findings,
         recommendations);
@@ -246,6 +248,10 @@ public final class PgLensEngine implements AutoCloseable {
     notes.add(
         "GIN/GiST recommendations (jsonb, full-text, LIKE '%…%') are surfaced but not "
             + "planner-validated — HypoPG cannot simulate those access methods.");
+    String access = AccessGap.advice(catalogReader.currentRole(), catalogReader.accessGaps());
+    if (!access.isEmpty()) {
+      notes.add(access);
+    }
     if (!validator.hypopgAvailable()) {
       notes.add(
           "hypopg is not installed on the target, so no recommendation could be planner-validated. "
@@ -262,11 +268,11 @@ public final class PgLensEngine implements AutoCloseable {
     }
   }
 
-  // First touch of the connection: enforce read-only + timeouts. A session-level SET sticks because
-  // the whole scan reuses this one connection.
-  private void applySessionGuards() {
+  // First touch of the connection: the guards come with it (startup options); check they hold and
+  // that it is one session, which HypoPG needs.
+  private void verifySessionGuards() {
     try {
-      DataSources.applySessionGuards(jdbc);
+      DataSources.verifySessionGuards(jdbc);
     } catch (DataAccessException e) {
       dataSource.destroy();
       throw new PgLensException(

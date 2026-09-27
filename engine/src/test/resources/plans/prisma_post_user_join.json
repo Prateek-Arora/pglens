@@ -1,0 +1,61 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Hash Join",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Inner",
+      "Startup Cost": 2791.00,
+      "Total Cost": 8489.53,
+      "Plan Rows": 298739,
+      "Plan Width": 8,
+      "Output": ["p.title", "u.email"],
+      "Inner Unique": true,
+      "Hash Cond": "(p.\"authorId\" = u.id)",
+      "Plans": [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "Post",
+          "Schema": "public",
+          "Alias": "p",
+          "Startup Cost": 0.00,
+          "Total Cost": 4911.00,
+          "Plan Rows": 300000,
+          "Plan Width": 6,
+          "Output": ["p.id", "p.\"authorId\"", "p.\"createdAt\"", "p.title"]
+        },
+        {
+          "Node Type": "Hash",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 1541.00,
+          "Total Cost": 1541.00,
+          "Plan Rows": 100000,
+          "Plan Width": 10,
+          "Output": ["u.email", "u.id"],
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "User",
+              "Schema": "public",
+              "Alias": "u",
+              "Startup Cost": 0.00,
+              "Total Cost": 1541.00,
+              "Plan Rows": 100000,
+              "Plan Width": 10,
+              "Output": ["u.email", "u.id"]
+            }
+          ]
+        }
+      ]
+    },
+    "Query Identifier": 3567969429332938189
+  }
+]

@@ -26,10 +26,16 @@ public class IngestClient {
 
   private final Channel channel;
   private final String token;
+  private final String server;
 
   public IngestClient(Channel channel, String token) {
+    this(channel, token, channel.authority());
+  }
+
+  public IngestClient(Channel channel, String token, String server) {
     this.channel = channel;
     this.token = token == null ? "" : token;
+    this.server = server;
   }
 
   /**
@@ -78,10 +84,11 @@ public class IngestClient {
       Thread.currentThread().interrupt();
       throw new IngestException("interrupted while streaming a sample batch", e);
     } catch (ExecutionException e) {
-      throw new IngestException("server rejected the sample batch", e.getCause());
+      throw new IngestException(GrpcFailures.describe(e.getCause(), server), e.getCause());
     } catch (TimeoutException e) {
       request.onError(e);
-      throw new IngestException("timed out waiting for the ingest watermark", e);
+      throw new IngestException(
+          "timed out waiting for the server at " + server + " to confirm the batch", e);
     }
   }
 

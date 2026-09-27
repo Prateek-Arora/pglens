@@ -13,7 +13,7 @@ public class HealthService extends HealthGrpc.HealthImplBase {
 
   private final String version;
 
-  public HealthService(@Value("${pglens.version:0.0.2}") String version) {
+  public HealthService(@Value("${pglens.version}") String version) {
     this.version = version;
   }
 

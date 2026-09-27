@@ -1,19 +1,20 @@
-# PgLens dev environment (Phase 0).
+# PgLens: its own store (metadata-db), the server and the dashboard — plus, in the `demo` profile, a
+# deliberately slow demo database (monitored-db) and the agent that watches it.
 #
-#   monitored-db : the "customer" database PgLens observes. Enables
-#                  pg_stat_statements + hypopg; seeded with deliberately slow
-#                  data (see demo/). Touched READ-ONLY by PgLens from Phase 2 on.
-#   metadata-db  : PgLens's own store (pgvector). Stands up now so the env is
-#                  complete; first used in Phase 2+.
+#   make up                                   everything, built from source, demo included
+#   make up-no-demo                           PgLens only, for your own databases (ADR-0053)
+#   docker compose up -d                      PgLens only, pulling the released images
+#   docker compose --profile demo up -d       … with the demo
 #
-# One command: `make up` (build + start + wait for health). Ports are exposed on
-# non-default host ports so a local Postgres on 5432 doesn't clash.
+# Released images: ghcr.io/prateek-arora/pglens-*, version PGLENS_VERSION; compose builds any it
+# can't pull (ADR-0050). Ports sit off the defaults so a local Postgres on 5432 doesn't clash.
 
 services:
   monitored-db:
+    profiles: ["demo"]
     build:
       context: ./monitored
-    image: pglens/monitored-db:0.0.0
+    image: ghcr.io/prateek-arora/pglens-demo-db:${PGLENS_VERSION:-0.1.0-rc}
     # pg_stat_statements MUST be loaded via a preload library at server start;
     # setting it with ALTER SYSTEM after boot would not load it. Bake it in here.
     command:
@@ -26,8 +27,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-pglens}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
       POSTGRES_DB: ${MONITORED_DB:-pglens_demo}
+    # This machine only: the demo's superuser password is a well-known default (ADR-0050).
     ports:
-      - "${MONITORED_PORT:-5433}:5432"
+      - "127.0.0.1:${MONITORED_PORT:-5433}:5432"
     volumes:
       - monitored-pgdata:/var/lib/postgresql/data
       # Runs once, on a fresh data volume: registers extensions + creates schema.
@@ -49,8 +51,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-pglens}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pglens}
       POSTGRES_DB: ${METADATA_DB:-pglens_meta}
+    # This machine only: PgLens's own store holds every monitored database's query text and the
+    # login and token hashes, and its superuser password is a default (ADR-0050).
     ports:
-      - "${METADATA_PORT:-5434}:5432"
+      - "127.0.0.1:${METADATA_PORT:-5434}:5432"
     volumes:
       - metadata-pgdata:/var/lib/postgresql/data
       - ./metadata/initdb:/docker-entrypoint-initdb.d:ro
@@ -69,6 +73,7 @@ services:
     entrypoint: ["/bin/sh", "/gen-dev-certs.sh"]
     environment:
       # Extra names for the server certificate, e.g. an agent on another host: DNS:pglens.internal
+      # (host.docker.internal is always included, for an agent container on this machine).
       PGLENS_TLS_EXTRA_SANS: ${PGLENS_TLS_EXTRA_SANS:-}
     volumes:
       - grpc-certs:/certs
@@ -76,13 +81,14 @@ services:
     restart: "no"
 
   # The PgLens server: gRPC ingest/validation + Flyway migrations + scheduled analysis. Talks to the
-  # metadata-db by its service name on the INTERNAL port 5432 (not the host-mapped 5434). The jar is
-  # built on the host by `make up`; the build context is the repo root so the Dockerfile can copy it.
+  # metadata-db by its service name on the INTERNAL port 5432 (not the host-mapped 5434). Built from
+  # the repo root by deploy/compose/java/Dockerfile (Gradle runs inside the build — no JDK needed).
   server:
     build:
       context: ../..
-      dockerfile: deploy/compose/server/Dockerfile
-    image: pglens/server:0.0.2
+      dockerfile: deploy/compose/java/Dockerfile
+      target: server
+    image: ghcr.io/prateek-arora/pglens-server:${PGLENS_VERSION:-0.1.0-rc}
     depends_on:
       metadata-db:
         condition: service_healthy
@@ -109,6 +115,8 @@ services:
       # (`docker compose logs server`). AUTH_MODE=none: one person on their own machine only.
       PGLENS_ADMIN_PASSWORD: ${PGLENS_ADMIN_PASSWORD:-}
       PGLENS_AUTH_MODE: ${PGLENS_AUTH_MODE:-required}
+      # Per-sample history kept this many days; the hourly rollup is kept (ADR-0053).
+      PGLENS_RETENTION_RAW_DAYS: ${PGLENS_RETENTION_RAW_DAYS:-35}
       # Plain-language explanations (Phase 3, ADR-0043) — off unless PGLENS_EXPLAIN_ENABLED=true.
       # Default endpoint: the `llm` profile below. Native Ollama on the host instead:
       # PGLENS_LLM_URL=http://host.docker.internal:11434/v1
@@ -139,10 +147,12 @@ services:
   # database through the API: `make register` after `make up` does that and writes the token into
   # deploy/compose/.env (until then the agent retries, logging UNAUTHENTICATED each cycle — non-fatal).
   agent:
+    profiles: ["demo"]
     build:
       context: ../..
-      dockerfile: deploy/compose/agent/Dockerfile
-    image: pglens/agent:0.0.2
+      dockerfile: deploy/compose/java/Dockerfile
+      target: agent
+    image: ghcr.io/prateek-arora/pglens-agent:${PGLENS_VERSION:-0.1.0-rc}
     depends_on:
       monitored-db:
         condition: service_healthy
@@ -167,6 +177,31 @@ services:
       # A livelier cadence than the 60s default so the demo accumulates trend points quickly.
       PGLENS_SAMPLE_INTERVAL_MS: ${PGLENS_SAMPLE_INTERVAL_MS:-15000}
 
+  # The web dashboard (Phase 4B, ADR-0046): Next.js, whose server code calls the API on the compose
+  # network — the browser only ever talks to the dashboard. On this machine only by default: logins
+  # over plain HTTP must not cross a network (put the README's HTTPS proxy in front to share it).
+  dashboard:
+    build:
+      context: ../../dashboard
+    image: ghcr.io/prateek-arora/pglens-dashboard:${PGLENS_VERSION:-0.1.0-rc}
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      PGLENS_API_URL: http://server:8080
+    ports:
+      - "127.0.0.1:${PGLENS_DASHBOARD_PORT:-3000}:3000"
+    # Nothing in the image needs to change at run time.
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
   # Optional local LLM for plain-language explanations (Phase 3, ADR-0043): `make llm-up`.
   # Needs ~5 GB of free RAM. Docker on macOS has no GPU access, so this runs on the CPU (~15–30 s
   # per explanation); on a Mac, native Ollama (https://ollama.com) uses the GPU and is faster.
@@ -174,7 +209,8 @@ services:
     profiles: ["llm"]
     image: ollama/ollama:0.34.4
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      # This machine only: the model endpoint takes query text and has no login.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - llm-models:/root/.ollama
     healthcheck:

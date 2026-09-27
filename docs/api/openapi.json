@@ -1,0 +1,2263 @@
+{
+  "components" : {
+    "schemas" : {
+      "AcrossDatabases" : {
+        "properties" : {
+          "confirm" : {
+            "$ref" : "#/components/schemas/Confirm"
+          },
+          "recommended" : {
+            "items" : {
+              "$ref" : "#/components/schemas/IndexRecommendation"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "confirm", "recommended" ],
+        "type" : "object"
+      },
+      "AgentCredentials" : {
+        "properties" : {
+          "agentToken" : {
+            "type" : "string"
+          },
+          "database" : {
+            "$ref" : "#/components/schemas/Database"
+          }
+        },
+        "required" : [ "agentToken", "database" ],
+        "type" : "object"
+      },
+      "ApiToken" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "lastUsedAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "createdAt", "id", "lastUsedAt", "name" ],
+        "type" : "object"
+      },
+      "Applied" : {
+        "properties" : {
+          "caveat" : {
+            "type" : "string"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "caveat", "database", "items" ],
+        "type" : "object"
+      },
+      "AppliedIndex" : {
+        "properties" : {
+          "appliedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "ddl" : {
+            "type" : "string"
+          },
+          "index" : {
+            "type" : "string"
+          },
+          "queries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedQuery"
+            },
+            "type" : "array"
+          },
+          "table" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "appliedAt", "database", "ddl", "index", "queries", "table" ],
+        "type" : "object"
+      },
+      "AppliedQuery" : {
+        "properties" : {
+          "callsAfter" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "callsBefore" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "measuredChangeFraction" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredMeanMsAfter" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredMeanMsBefore" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "plannerCostDropFraction" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sqlPreview" : {
+            "type" : [ "string", "null" ]
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "callsAfter", "callsBefore", "measuredChangeFraction", "measuredMeanMsAfter", "measuredMeanMsBefore", "plannerCostDropFraction", "queryid", "sqlPreview", "status" ],
+        "type" : "object"
+      },
+      "Confirm" : {
+        "properties" : {
+          "caveat" : {
+            "type" : "string"
+          },
+          "command" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "caveat", "command" ],
+        "type" : "object"
+      },
+      "CreatedToken" : {
+        "properties" : {
+          "info" : {
+            "$ref" : "#/components/schemas/ApiToken"
+          },
+          "token" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "info", "token" ],
+        "type" : "object"
+      },
+      "Database" : {
+        "properties" : {
+          "agent" : {
+            "enum" : [ "NEVER_CONNECTED", "CONNECTED", "STALE" ],
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "host" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastIngestAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "agent", "createdAt", "host", "lastIngestAt", "name" ],
+        "type" : "object"
+      },
+      "DatabaseSummary" : {
+        "properties" : {
+          "agent" : {
+            "enum" : [ "NEVER_CONNECTED", "CONNECTED", "STALE" ],
+            "type" : "string"
+          },
+          "appliedIndexes" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "indexesToConsider" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "lastSampleAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "queries" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "agent", "appliedIndexes", "calls", "estimatedMsSaved", "indexesToConsider", "lastSampleAt", "measuredMsWithAdvice", "measuredTotalMs", "name", "queries" ],
+        "type" : "object"
+      },
+      "DbTimeline" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "points" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DbTimelinePoint"
+            },
+            "type" : "array"
+          },
+          "series" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Series"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "database", "from", "points", "series", "to", "window" ],
+        "type" : "object"
+      },
+      "DbTimelinePoint" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "hour" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMsBySeries" : {
+            "items" : {
+              "format" : "double",
+              "type" : "number"
+            },
+            "type" : "array"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "sampled" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "estimatedMsSaved", "hour", "measuredMsBySeries", "measuredMsWithAdvice", "measuredTotalMs", "sampled" ],
+        "type" : "object"
+      },
+      "ExplanationSetup" : {
+        "properties" : {
+          "docsProblem" : {
+            "type" : [ "string", "null" ]
+          },
+          "endpointHost" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastFallbackReason" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastPassAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "lastPassTemplateFallbacks" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          },
+          "lastPassWritten" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          },
+          "mode" : {
+            "type" : "string"
+          },
+          "model" : {
+            "type" : [ "string", "null" ]
+          },
+          "remote" : {
+            "type" : "boolean"
+          },
+          "writtenByModel" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "writtenByTemplate" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "docsProblem", "endpointHost", "lastFallbackReason", "lastPassAt", "lastPassTemplateFallbacks", "lastPassWritten", "mode", "model", "remote", "writtenByModel", "writtenByTemplate" ],
+        "type" : "object"
+      },
+      "ExplanationView" : {
+        "properties" : {
+          "ddl" : {
+            "type" : "string"
+          },
+          "docs" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "generatedAt" : {
+            "format" : "date-time",
+            "type" : [ "string", "null" ]
+          },
+          "model" : {
+            "type" : [ "string", "null" ]
+          },
+          "promptVersion" : {
+            "type" : [ "string", "null" ]
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "summary" : {
+            "type" : "string"
+          },
+          "whatTheIndexChanges" : {
+            "type" : "string"
+          },
+          "whyItIsSlow" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "ddl", "docs", "generatedAt", "model", "promptVersion", "source", "summary", "whatTheIndexChanges", "whyItIsSlow" ],
+        "type" : "object"
+      },
+      "Explanations" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "explanations" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ExplanationView"
+            },
+            "type" : "array"
+          },
+          "queryid" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "database", "explanations", "queryid" ],
+        "type" : "object"
+      },
+      "FindingView" : {
+        "properties" : {
+          "columns" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "confidence" : {
+            "type" : "string"
+          },
+          "evidence" : {
+            "type" : "string"
+          },
+          "planNode" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          },
+          "ruleId" : {
+            "type" : "string"
+          },
+          "table" : {
+            "type" : [ "string", "null" ]
+          },
+          "title" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "columns", "confidence", "evidence", "planNode", "ruleId", "table", "title" ],
+        "type" : "object"
+      },
+      "Health" : {
+        "properties" : {
+          "status" : {
+            "type" : "string"
+          },
+          "version" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "status", "version" ],
+        "type" : "object"
+      },
+      "Hygiene" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "findings" : {
+            "items" : {
+              "$ref" : "#/components/schemas/IndexHygieneFinding"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "database", "findings" ],
+        "type" : "object"
+      },
+      "IndexHygieneFinding" : {
+        "properties" : {
+          "definition" : {
+            "type" : "string"
+          },
+          "indexName" : {
+            "type" : "string"
+          },
+          "kind" : {
+            "enum" : [ "DUPLICATE", "REDUNDANT", "UNUSED" ],
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "relatedIndex" : {
+            "type" : [ "string", "null" ]
+          },
+          "table" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "definition", "indexName", "kind", "reason", "relatedIndex", "table" ],
+        "type" : "object"
+      },
+      "IndexRecommendation" : {
+        "properties" : {
+          "accessMethod" : {
+            "type" : "string"
+          },
+          "actionable" : {
+            "type" : "boolean"
+          },
+          "buildCaution" : {
+            "type" : [ "string", "null" ]
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "ddl" : {
+            "type" : "string"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "footprintLabel" : {
+            "type" : [ "string", "null" ]
+          },
+          "queries" : {
+            "items" : {
+              "$ref" : "#/components/schemas/QueryEvidence"
+            },
+            "type" : "array"
+          },
+          "redundantWith" : {
+            "type" : [ "string", "null" ]
+          },
+          "table" : {
+            "type" : [ "string", "null" ]
+          },
+          "writeLoad" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/TableWriteLoad"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "accessMethod", "actionable", "buildCaution", "database", "ddl", "estimatedMsSaved", "footprintLabel", "queries", "redundantWith", "table", "writeLoad" ],
+        "type" : "object"
+      },
+      "Leaderboard" : {
+        "properties" : {
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/LeaderboardEntry"
+            },
+            "type" : "array"
+          },
+          "limit" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "offset" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "sort" : {
+            "type" : "string"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "total" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "from", "items", "limit", "offset", "sort", "to", "total", "window" ],
+        "type" : "object"
+      },
+      "LeaderboardEntry" : {
+        "properties" : {
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredMeanMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "planCaptured" : {
+            "type" : "boolean"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "recommendation" : {
+            "type" : [ "string", "null" ]
+          },
+          "rows" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "sharedBlksHit" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "sharedBlksRead" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "sqlPreview" : {
+            "type" : "string"
+          },
+          "sqlPreviewCut" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "calls", "estimatedMsSaved", "measuredMeanMs", "measuredTotalMs", "planCaptured", "queryid", "recommendation", "rows", "sharedBlksHit", "sharedBlksRead", "sqlPreview", "sqlPreviewCut" ],
+        "type" : "object"
+      },
+      "LoginRequest" : {
+        "properties" : {
+          "password" : {
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "password", "username" ],
+        "type" : "object"
+      },
+      "LoginResponse" : {
+        "properties" : {
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "user" : {
+            "$ref" : "#/components/schemas/UserView"
+          }
+        },
+        "required" : [ "expiresAt", "token", "user" ],
+        "type" : "object"
+      },
+      "Me" : {
+        "properties" : {
+          "authRequired" : {
+            "type" : "boolean"
+          },
+          "role" : {
+            "enum" : [ "ADMIN", "VIEWER" ],
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          },
+          "via" : {
+            "enum" : [ "SESSION", "API_TOKEN", "AUTH_DISABLED" ],
+            "type" : "string"
+          }
+        },
+        "required" : [ "authRequired", "role", "username", "via" ],
+        "type" : "object"
+      },
+      "MeasuredTotals" : {
+        "properties" : {
+          "asOf" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "measuredMeanMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "rows" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "asOf", "calls", "measuredMeanMs", "measuredTotalMs", "rows" ],
+        "type" : "object"
+      },
+      "NewDatabase" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "name" ],
+        "type" : "object"
+      },
+      "NewPassword" : {
+        "properties" : {
+          "password" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "password" ],
+        "type" : "object"
+      },
+      "NewSlow" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/NewSlowView"
+            },
+            "type" : "array"
+          },
+          "minTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "database", "from", "items", "minTotalMs", "to", "window" ],
+        "type" : "object"
+      },
+      "NewSlowView" : {
+        "properties" : {
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "firstSeen" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMeanMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sql" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "calls", "firstSeen", "measuredMeanMs", "measuredTotalMs", "queryid", "sql" ],
+        "type" : "object"
+      },
+      "NewToken" : {
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "name" ],
+        "type" : "object"
+      },
+      "NewUser" : {
+        "properties" : {
+          "password" : {
+            "type" : "string"
+          },
+          "role" : {
+            "enum" : [ "ADMIN", "VIEWER" ],
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "password", "role", "username" ],
+        "type" : "object"
+      },
+      "NotPlannerValidated" : {
+        "properties" : {
+          "accessMethod" : {
+            "type" : "string"
+          },
+          "ddl" : {
+            "type" : "string"
+          },
+          "queryids" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "reason" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "accessMethod", "ddl", "queryids", "reason" ],
+        "type" : "object"
+      },
+      "Overview" : {
+        "properties" : {
+          "applied" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          },
+          "appliedCaveat" : {
+            "type" : "string"
+          },
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "confirm" : {
+            "$ref" : "#/components/schemas/Confirm"
+          },
+          "databases" : {
+            "items" : {
+              "$ref" : "#/components/schemas/DatabaseSummary"
+            },
+            "type" : "array"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "indexesToConsider" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "notPlannerValidated" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "queries" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "timeline" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TimelinePoint"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "topRecommendations" : {
+            "items" : {
+              "$ref" : "#/components/schemas/IndexRecommendation"
+            },
+            "type" : "array"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "applied", "appliedCaveat", "calls", "confirm", "databases", "estimatedMsSaved", "from", "indexesToConsider", "measuredMsWithAdvice", "measuredTotalMs", "notPlannerValidated", "queries", "timeline", "to", "topRecommendations", "window" ],
+        "type" : "object"
+      },
+      "PasswordChange" : {
+        "properties" : {
+          "currentPassword" : {
+            "type" : "string"
+          },
+          "newPassword" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "currentPassword", "newPassword" ],
+        "type" : "object"
+      },
+      "PlanNodeView" : {
+        "properties" : {
+          "alias" : {
+            "type" : [ "string", "null" ]
+          },
+          "children" : {
+            "items" : {
+              "$ref" : "#/components/schemas/PlanNodeView"
+            },
+            "type" : "array"
+          },
+          "estimatedRows" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "estimatedStartupCost" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "estimatedTotalCost" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "estimatedWidth" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "filter" : {
+            "type" : [ "string", "null" ]
+          },
+          "hashCond" : {
+            "type" : [ "string", "null" ]
+          },
+          "id" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "index" : {
+            "type" : [ "string", "null" ]
+          },
+          "indexCond" : {
+            "type" : [ "string", "null" ]
+          },
+          "joinType" : {
+            "type" : [ "string", "null" ]
+          },
+          "nodeType" : {
+            "type" : "string"
+          },
+          "parallelAware" : {
+            "type" : "boolean"
+          },
+          "recheckCond" : {
+            "type" : [ "string", "null" ]
+          },
+          "relation" : {
+            "type" : [ "string", "null" ]
+          },
+          "sortKeys" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "workersPlanned" : {
+            "format" : "int32",
+            "type" : [ "integer", "null" ]
+          }
+        },
+        "required" : [ "alias", "children", "estimatedRows", "estimatedStartupCost", "estimatedTotalCost", "estimatedWidth", "filter", "hashCond", "id", "index", "indexCond", "joinType", "nodeType", "parallelAware", "recheckCond", "relation", "sortKeys", "workersPlanned" ],
+        "type" : "object"
+      },
+      "PlanView" : {
+        "properties" : {
+          "captureMode" : {
+            "type" : "string"
+          },
+          "estimatedTotalCost" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "root" : {
+            "$ref" : "#/components/schemas/PlanNodeView"
+          }
+        },
+        "required" : [ "captureMode", "estimatedTotalCost", "label", "root" ],
+        "type" : "object"
+      },
+      "QueryDetail" : {
+        "properties" : {
+          "applied" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppliedIndex"
+            },
+            "type" : "array"
+          },
+          "confirm" : {
+            "$ref" : "#/components/schemas/Confirm"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "findings" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FindingView"
+            },
+            "type" : "array"
+          },
+          "firstSeen" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "inWindow" : {
+            "$ref" : "#/components/schemas/MeasuredTotals"
+          },
+          "lastSeen" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "plan" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/PlanView"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "planUnavailableReason" : {
+            "type" : [ "string", "null" ]
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "recommendations" : {
+            "items" : {
+              "$ref" : "#/components/schemas/QueryRecommendation"
+            },
+            "type" : "array"
+          },
+          "sinceStatsReset" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/MeasuredTotals"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "sql" : {
+            "type" : "string"
+          },
+          "sqlTruncated" : {
+            "type" : "boolean"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "applied", "confirm", "database", "findings", "firstSeen", "inWindow", "lastSeen", "plan", "planUnavailableReason", "queryid", "recommendations", "sinceStatsReset", "sql", "sqlTruncated", "window" ],
+        "type" : "object"
+      },
+      "QueryEvidence" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "plannerCostDropFraction" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "rangeLabel" : {
+            "type" : [ "string", "null" ]
+          },
+          "scoreBasis" : {
+            "type" : [ "string", "null" ]
+          },
+          "sqlPreview" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "estimatedMsSaved", "plannerCostDropFraction", "queryid", "rangeLabel", "scoreBasis", "sqlPreview" ],
+        "type" : "object"
+      },
+      "QueryRecommendation" : {
+        "properties" : {
+          "accessMethod" : {
+            "type" : "string"
+          },
+          "buildCaution" : {
+            "type" : [ "string", "null" ]
+          },
+          "ddl" : {
+            "type" : "string"
+          },
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "footprintLabel" : {
+            "type" : [ "string", "null" ]
+          },
+          "plannerCostAfter" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "plannerCostBefore" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "plannerCostDropFraction" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "rangeLabel" : {
+            "type" : [ "string", "null" ]
+          },
+          "reason" : {
+            "type" : [ "string", "null" ]
+          },
+          "scoreBasis" : {
+            "type" : [ "string", "null" ]
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "usedByPlanner" : {
+            "type" : [ "boolean", "null" ]
+          },
+          "validatedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [ "accessMethod", "buildCaution", "ddl", "estimatedMsSaved", "footprintLabel", "plannerCostAfter", "plannerCostBefore", "plannerCostDropFraction", "rangeLabel", "reason", "scoreBasis", "status", "usedByPlanner", "validatedAt" ],
+        "type" : "object"
+      },
+      "Recommendations" : {
+        "properties" : {
+          "confirm" : {
+            "$ref" : "#/components/schemas/Confirm"
+          },
+          "database" : {
+            "type" : "string"
+          },
+          "notPlannerValidated" : {
+            "items" : {
+              "$ref" : "#/components/schemas/NotPlannerValidated"
+            },
+            "type" : "array"
+          },
+          "recommended" : {
+            "items" : {
+              "$ref" : "#/components/schemas/IndexRecommendation"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [ "confirm", "database", "notPlannerValidated", "recommended" ],
+        "type" : "object"
+      },
+      "Series" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sqlPreview" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "estimatedMsSaved", "measuredTotalMs", "queryid", "sqlPreview" ],
+        "type" : "object"
+      },
+      "SystemStatus" : {
+        "properties" : {
+          "explanations" : {
+            "$ref" : "#/components/schemas/ExplanationSetup"
+          },
+          "version" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "explanations", "version" ],
+        "type" : "object"
+      },
+      "TableActivity" : {
+        "properties" : {
+          "deleted" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "inserted" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "tuplesRead" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "updated" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [ "deleted", "inserted", "tuplesRead", "updated" ],
+        "type" : "object"
+      },
+      "TableWriteLoad" : {
+        "properties" : {
+          "activity" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/TableActivity"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "label" : {
+            "type" : "string"
+          },
+          "level" : {
+            "enum" : [ "WRITE_DOMINANT", "READ_DOMINANT", "NO_ACTIVITY" ],
+            "type" : "string"
+          },
+          "table" : {
+            "type" : "string"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "activity", "label", "level", "table", "window" ],
+        "type" : "object"
+      },
+      "TimelinePoint" : {
+        "properties" : {
+          "estimatedMsSaved" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "hour" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMsWithAdvice" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          }
+        },
+        "required" : [ "estimatedMsSaved", "hour", "measuredMsWithAdvice", "measuredTotalMs" ],
+        "type" : "object"
+      },
+      "TopMoverView" : {
+        "properties" : {
+          "deltaMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredPriorTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "measuredRecentTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "pctChange" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "sql" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "deltaMs", "measuredPriorTotalMs", "measuredRecentTotalMs", "pctChange", "queryid", "sql" ],
+        "type" : "object"
+      },
+      "TopMovers" : {
+        "properties" : {
+          "database" : {
+            "type" : "string"
+          },
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TopMoverView"
+            },
+            "type" : "array"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "window" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "database", "from", "items", "to", "window" ],
+        "type" : "object"
+      },
+      "Trend" : {
+        "properties" : {
+          "from" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "points" : {
+            "items" : {
+              "$ref" : "#/components/schemas/TrendPointView"
+            },
+            "type" : "array"
+          },
+          "queryid" : {
+            "type" : "string"
+          },
+          "resolution" : {
+            "type" : "string"
+          },
+          "to" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [ "from", "points", "queryid", "resolution", "to" ],
+        "type" : "object"
+      },
+      "TrendPointView" : {
+        "properties" : {
+          "calls" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "capturedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "measuredMeanMs" : {
+            "format" : "double",
+            "type" : [ "number", "null" ]
+          },
+          "measuredTotalMs" : {
+            "format" : "double",
+            "type" : "number"
+          }
+        },
+        "required" : [ "calls", "capturedAt", "measuredMeanMs", "measuredTotalMs" ],
+        "type" : "object"
+      },
+      "UserView" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "role" : {
+            "enum" : [ "ADMIN", "VIEWER" ],
+            "type" : "string"
+          },
+          "username" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "createdAt", "role", "username" ],
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "bearer" : {
+        "description" : "A session token (login) or an API token (read-only).",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  },
+  "info" : {
+    "description" : "Read the slow-query history, plans, index recommendations and explanations PgLens keeps for each monitored database. queryid is a string everywhere (a signed 64-bit value). Numbers named measured… are summed pg_stat_statements deltas; estimated… and plannerCost… are planner estimates.",
+    "license" : {
+      "name" : "Apache-2.0"
+    },
+    "title" : "PgLens API",
+    "version" : "0.1.0-rc"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/api/v1/api-tokens" : {
+      "get" : {
+        "operationId" : "list_2",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/ApiToken"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "api-token-controller" ]
+      },
+      "post" : {
+        "operationId" : "create_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NewToken"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreatedToken"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "api-token-controller" ]
+      }
+    },
+    "/api/v1/api-tokens/{id}" : {
+      "delete" : {
+        "operationId" : "revoke",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "api-token-controller" ]
+      }
+    },
+    "/api/v1/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "operationId" : "logout",
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/databases" : {
+      "get" : {
+        "operationId" : "list_1",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/Database"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "database-controller" ]
+      },
+      "post" : {
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NewDatabase"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentCredentials"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "database-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/applied" : {
+      "get" : {
+        "operationId" : "applied",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Applied"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/hygiene" : {
+      "get" : {
+        "operationId" : "hygiene",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Hygiene"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/new-slow" : {
+      "get" : {
+        "operationId" : "newSlow",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "minTotalMs",
+          "required" : false,
+          "schema" : {
+            "default" : 1000.0,
+            "format" : "double",
+            "type" : "number"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 50,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NewSlow"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/queries" : {
+      "get" : {
+        "operationId" : "leaderboard",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "default" : "total",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 50,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        }, {
+          "in" : "query",
+          "name" : "offset",
+          "required" : false,
+          "schema" : {
+            "default" : 0,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Leaderboard"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "query-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/queries/{queryid}" : {
+      "get" : {
+        "operationId" : "detail",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "queryid",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/QueryDetail"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "query-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/queries/{queryid}/explanation" : {
+      "get" : {
+        "operationId" : "explanation",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "queryid",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Explanations"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "query-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/queries/{queryid}/trend" : {
+      "get" : {
+        "operationId" : "trend",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "queryid",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "resolution",
+          "required" : false,
+          "schema" : {
+            "default" : "auto",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Trend"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "query-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/recommendations" : {
+      "get" : {
+        "operationId" : "recommendations",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Recommendations"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/timeline" : {
+      "get" : {
+        "operationId" : "timeline",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "series",
+          "required" : false,
+          "schema" : {
+            "default" : 5,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DbTimeline"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
+      }
+    },
+    "/api/v1/databases/{db}/top-movers" : {
+      "get" : {
+        "operationId" : "topMovers",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "db",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "7d",
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TopMovers"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/databases/{name}" : {
+      "delete" : {
+        "operationId" : "delete",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "name",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "confirm",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "database-controller" ]
+      },
+      "get" : {
+        "operationId" : "get",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "name",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Database"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "database-controller" ]
+      }
+    },
+    "/api/v1/databases/{name}/token" : {
+      "post" : {
+        "operationId" : "rotateToken",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "name",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AgentCredentials"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "database-controller" ]
+      }
+    },
+    "/api/v1/health" : {
+      "get" : {
+        "operationId" : "health",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Health"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "health-controller" ]
+      }
+    },
+    "/api/v1/me" : {
+      "get" : {
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Me"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/me/password" : {
+      "put" : {
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/overview" : {
+      "get" : {
+        "operationId" : "overview",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "window",
+          "required" : false,
+          "schema" : {
+            "default" : "24h",
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "impact-controller" ]
+      }
+    },
+    "/api/v1/recommendations" : {
+      "get" : {
+        "operationId" : "acrossDatabases",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "default" : 20,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AcrossDatabases"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "insight-controller" ]
+      }
+    },
+    "/api/v1/system" : {
+      "get" : {
+        "operationId" : "system",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "system-controller" ]
+      }
+    },
+    "/api/v1/users" : {
+      "get" : {
+        "operationId" : "list",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "items" : {
+                    "$ref" : "#/components/schemas/UserView"
+                  },
+                  "type" : "array"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      },
+      "post" : {
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NewUser"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserView"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    },
+    "/api/v1/users/{username}" : {
+      "delete" : {
+        "operationId" : "delete_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "username",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    },
+    "/api/v1/users/{username}/password" : {
+      "put" : {
+        "operationId" : "resetPassword",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "username",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NewPassword"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      }
+    }
+  },
+  "security" : [ {
+    "bearer" : [ ]
+  } ],
+  "servers" : [ {
+    "url" : "/"
+  } ]
+}

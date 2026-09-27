@@ -1,5 +1,6 @@
 package com.pglens.agent.sample;
 
+import com.pglens.engine.db.PlanCapturer;
 import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.IndexInfo;
 import com.pglens.engine.model.StatementStat;
@@ -13,7 +14,6 @@ import com.pglens.proto.v1.QueryText;
 import com.pglens.proto.v1.TableStat;
 import com.pglens.proto.v1.ValidateResult;
 import com.pglens.proto.v1.ValidationStatus;
-import java.util.Optional;
 
 /**
  * Pure mappers from engine model types to the wire ({@code .proto}) messages. No I/O, no Spring —
@@ -45,17 +45,18 @@ public final class ProtoMappers {
 
   /**
    * A one-time registration of a query's normalized text and its captured generic plan. An absent
-   * plan (the shape is not generic-plannable) is honestly flagged {@code plan_captured = false}
-   * with empty {@code plan_json}, never a fabricated plan.
+   * plan is honestly flagged {@code plan_captured = false} with empty {@code plan_json} and the
+   * reason in {@code plan_error}, never a fabricated plan.
    */
   public static QueryText toQueryText(
-      StatementStat stat, String textHash, Optional<String> planJson) {
+      StatementStat stat, String textHash, PlanCapturer.Capture capture) {
     return QueryText.newBuilder()
         .setQueryid(stat.queryId())
         .setTextHash(textHash)
         .setNormalizedText(stat.query())
-        .setPlanJson(planJson.orElse(""))
-        .setPlanCaptured(planJson.isPresent())
+        .setPlanJson(capture.plan().orElse(""))
+        .setPlanCaptured(capture.captured())
+        .setPlanError(capture.error() == null ? "" : capture.error())
         .setTruncated(stat.truncated())
         .build();
   }
@@ -105,7 +106,10 @@ public final class ProtoMappers {
    */
   static TableStat toTableStat(TableInfo table) {
     TableStat.Builder b =
-        TableStat.newBuilder().setTableName(table.name()).setEstRows(table.reltuples());
+        TableStat.newBuilder()
+            .setTableName(table.name())
+            .setEstRows(table.reltuples())
+            .setPartitionRoot(table.partitionRoot() == null ? "" : table.partitionRoot());
     TableActivity a = table.activity();
     if (a != null) {
       b.setNTupIns(a.inserted())

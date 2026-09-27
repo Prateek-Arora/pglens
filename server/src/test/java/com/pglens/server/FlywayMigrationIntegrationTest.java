@@ -77,7 +77,23 @@ class FlywayMigrationIntegrationTest {
             "users", // V9
             "sessions",
             "api_tokens",
-            "query_stats_hourly"); // V10
+            "query_stats_hourly", // V10
+            "agent_hours"); // V13
+    // V11 (ADR-0049): why a plan is missing, and each partition's root table.
+    assertThat(
+            jdbc.queryForList(
+                "SELECT table_name || '.' || column_name FROM information_schema.columns "
+                    + "WHERE column_name IN ('plan_error', 'partition_root')",
+                String.class))
+        .containsExactlyInAnyOrder("query_texts.plan_error", "table_catalog.partition_root");
+    // V12 (ADR-0051): the recommendation lifecycle's applied index and when it appeared.
+    assertThat(
+            jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                    + "WHERE table_name = 'recommendations' "
+                    + "AND column_name IN ('applied_index', 'applied_at')",
+                String.class))
+        .containsExactlyInAnyOrder("applied_index", "applied_at");
   }
 
   @Test
@@ -85,14 +101,14 @@ class FlywayMigrationIntegrationTest {
     Integer applied =
         jdbc.queryForObject(
             "SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class);
-    assertThat(applied).isEqualTo(10); // V1 … V10
+    assertThat(applied).isEqualTo(14); // V1 … V14
 
     String version =
         jdbc.queryForObject(
             "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC "
                 + "LIMIT 1",
             String.class);
-    assertThat(version).isEqualTo("10");
+    assertThat(version).isEqualTo("14");
   }
 
   /**

@@ -1,6 +1,7 @@
 package com.pglens.server.persistence;
 
 import com.pglens.engine.rank.CoverageChecks;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -9,15 +10,17 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 /**
  * The reads/writes the scheduled analysis job needs: the queries whose plan was captured (its
- * input) and the validation work-queue enqueue (its output). Recommendation persistence + leasing
- * land in Step 5b.
+ * input), the validation work-queue enqueue (its output), and the recommendation lifecycle —
+ * retiring advice the engine no longer proposes, or marking it applied (ADR-0051).
  */
 @Repository
 public class AnalysisRepository {
@@ -55,7 +58,8 @@ public class AnalysisRepository {
     Map<String, Set<Long>> out = new LinkedHashMap<>();
     jdbc.query(
         "SELECT ddl, queryid FROM recommendations "
-            + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED' ORDER BY ddl, queryid",
+            + "WHERE db_id = ? AND status = 'PLANNER_VALIDATED' AND applied_at IS NULL "
+            + "ORDER BY ddl, queryid",
         (RowCallbackHandler)
             rs ->
                 out.computeIfAbsent(rs.getString("ddl"), k -> new LinkedHashSet<>())
@@ -166,6 +170,83 @@ public class AnalysisRepository {
     return jdbc.update(
         "DELETE FROM validation_jobs WHERE state IN ('DONE', 'FAILED') AND completed_at < ?",
         utc(completedBefore));
+  }
+
+  /** A stored recommendation, as the lifecycle sees it (ADR-0051). */
+  public record StoredRecommendation(
+      long queryid,
+      String ddl,
+      Instant createdAt,
+      @Nullable String appliedIndex,
+      @Nullable Instant activeSince) {
+    public CoverageChecks.Verdict key() {
+      return new CoverageChecks.Verdict(queryid, ddl);
+    }
+  }
+
+  /** Every recommendation stored for {@code dbId}, of any status. */
+  public List<StoredRecommendation> storedRecommendations(long dbId) {
+    return jdbc.query(
+        "SELECT queryid, ddl, created_at, applied_index, active_since FROM recommendations "
+            + "WHERE db_id = ?",
+        (rs, n) ->
+            new StoredRecommendation(
+                rs.getLong("queryid"),
+                rs.getString("ddl"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getString("applied_index"),
+                rs.getTimestamp("active_since") == null
+                    ? null
+                    : rs.getTimestamp("active_since").toInstant()),
+        dbId);
+  }
+
+  /**
+   * When PgLens first saw index {@code indexName} in {@code dbId}'s catalog snapshots — after
+   * {@code since} when given (an index of the same name may have existed before and been dropped).
+   */
+  public Optional<Instant> indexFirstSeen(long dbId, String indexName, @Nullable Instant since) {
+    Timestamp first =
+        jdbc.queryForObject(
+            "SELECT min(captured_at) FROM index_stats WHERE db_id = ? AND index_name = ? "
+                + "AND captured_at > coalesce(?, '-infinity'::timestamptz)",
+            Timestamp.class,
+            dbId,
+            indexName,
+            since == null ? null : utc(since));
+    return Optional.ofNullable(first).map(Timestamp::toInstant);
+  }
+
+  /** Removes a recommendation the engine no longer proposes. */
+  public void deleteRecommendation(long dbId, long queryid, String ddl) {
+    jdbc.update(
+        "DELETE FROM recommendations WHERE db_id = ? AND queryid = ? AND ddl = ?",
+        dbId,
+        queryid,
+        ddl);
+  }
+
+  /** Marks a recommendation applied: {@code index} serves it, first seen at {@code at}. */
+  public void markApplied(long dbId, long queryid, String ddl, String index, Instant at) {
+    jdbc.update(
+        "UPDATE recommendations SET applied_index = ?, applied_at = ?, updated_at = now() "
+            + "WHERE db_id = ? AND queryid = ? AND ddl = ?",
+        index,
+        utc(at),
+        dbId,
+        queryid,
+        ddl);
+  }
+
+  /** The engine proposes an applied recommendation again (its index was dropped). */
+  public void clearApplied(long dbId, long queryid, String ddl) {
+    jdbc.update(
+        "UPDATE recommendations SET applied_index = NULL, applied_at = NULL, "
+            + "active_since = now(), updated_at = now() "
+            + "WHERE db_id = ? AND queryid = ? AND ddl = ?",
+        dbId,
+        queryid,
+        ddl);
   }
 
   private static OffsetDateTime utc(Instant instant) {

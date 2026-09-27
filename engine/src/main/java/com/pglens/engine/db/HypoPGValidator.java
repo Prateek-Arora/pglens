@@ -8,6 +8,7 @@ import com.pglens.engine.model.IndexCandidate;
 import com.pglens.engine.model.IndexFootprint;
 import com.pglens.engine.model.PlanNode;
 import com.pglens.engine.model.Recommendation;
+import com.pglens.engine.model.SqlIdent;
 import com.pglens.engine.model.ValidationResult;
 import com.pglens.engine.model.ValidationResult.Status;
 import com.pglens.engine.model.ValueRangeEstimate;
@@ -266,7 +267,8 @@ public class HypoPGValidator {
       for (ValueSampler.SampledValue v : sampler.sample(b.table(), b.column())) {
         String substituted =
             placeholder.matcher(sql).replaceAll(Matcher.quoteReplacement(v.literal()));
-        out.add(new Variant(b.table() + "." + b.column(), substituted, v.frequency()));
+        out.add(
+            new Variant(b.table() + "." + SqlIdent.quote(b.column()), substituted, v.frequency()));
       }
     }
     return out;
@@ -307,8 +309,12 @@ public class HypoPGValidator {
     try {
       return jdbc.query(
           DataSources.introspection(
+              // A partitioned table stores nothing itself: its size is its leaf partitions'.
               "SELECT hypopg_relation_size(?::oid) AS idx, "
-                  + "pg_relation_size(to_regclass(?)) AS tbl"),
+                  + "(SELECT CASE WHEN c.relkind = 'p' THEN (SELECT COALESCE(sum("
+                  + "pg_relation_size(p.relid)), 0) FROM pg_partition_tree(c.oid) p WHERE p.isleaf)"
+                  + " ELSE pg_relation_size(c.oid) END FROM pg_class c WHERE c.oid = to_regclass(?))"
+                  + " AS tbl"),
           (ResultSetExtractor<IndexFootprint>)
               rs -> {
                 if (!rs.next()) {

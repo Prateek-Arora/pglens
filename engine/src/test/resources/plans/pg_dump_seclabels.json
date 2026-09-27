@@ -1,0 +1,992 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Sort",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 40.45,
+      "Total Cost": 40.48,
+      "Plan Rows": 13,
+      "Plan Width": 76,
+      "Output": ["\"*SELECT* 1\".label", "\"*SELECT* 1\".provider", "\"*SELECT* 1\".classoid", "\"*SELECT* 1\".objoid", "\"*SELECT* 1\".objsubid"],
+      "Sort Key": ["\"*SELECT* 1\".classoid", "\"*SELECT* 1\".objoid", "\"*SELECT* 1\".objsubid"],
+      "Plans": [
+        {
+          "Node Type": "Append",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 0.41,
+          "Total Cost": 40.21,
+          "Plan Rows": 13,
+          "Plan Width": 76,
+          "Subplans Removed": 0,
+          "Plans": [
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 1",
+              "Startup Cost": 0.41,
+              "Total Cost": 8.50,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 1\".label", "\"*SELECT* 1\".provider", "\"*SELECT* 1\".classoid", "\"*SELECT* 1\".objoid", "\"*SELECT* 1\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.41,
+                  "Total Cost": 8.49,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l.objoid", "l.classoid", "l.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l.provider", "l.label"],
+                  "Inner Unique": true,
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 0.27,
+                      "Total Cost": 8.30,
+                      "Plan Rows": 1,
+                      "Plan Width": 80,
+                      "Output": ["l.objoid", "l.classoid", "l.objsubid", "l.provider", "l.label", "rel.relnamespace"],
+                      "Inner Unique": true,
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "pg_seclabel",
+                          "Schema": "pg_catalog",
+                          "Alias": "l",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 0.00,
+                          "Plan Rows": 1,
+                          "Plan Width": 76,
+                          "Output": ["l.objoid", "l.classoid", "l.objsubid", "l.provider", "l.label"],
+                          "Filter": "(l.objsubid = 0)"
+                        },
+                        {
+                          "Node Type": "Index Scan",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Scan Direction": "Forward",
+                          "Index Name": "pg_class_oid_index",
+                          "Relation Name": "pg_class",
+                          "Schema": "pg_catalog",
+                          "Alias": "rel",
+                          "Startup Cost": 0.27,
+                          "Total Cost": 8.29,
+                          "Plan Rows": 1,
+                          "Plan Width": 12,
+                          "Output": ["rel.tableoid", "rel.oid", "rel.relnamespace"],
+                          "Index Cond": "(rel.oid = l.objoid)",
+                          "Filter": "(l.classoid = rel.tableoid)"
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Index Only Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "pg_namespace_oid_index",
+                      "Relation Name": "pg_namespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "nsp",
+                      "Startup Cost": 0.13,
+                      "Total Cost": 0.18,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["nsp.oid"],
+                      "Index Cond": "(nsp.oid = rel.relnamespace)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 2",
+              "Startup Cost": 0.69,
+              "Total Cost": 8.83,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 2\".label", "\"*SELECT* 2\".provider", "\"*SELECT* 2\".classoid", "\"*SELECT* 2\".objoid", "\"*SELECT* 2\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.69,
+                  "Total Cost": 8.82,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_1.objoid", "l_1.classoid", "l_1.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_1.provider", "l_1.label"],
+                  "Inner Unique": true,
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 0.55,
+                      "Total Cost": 8.63,
+                      "Plan Rows": 1,
+                      "Plan Width": 80,
+                      "Output": ["l_1.objoid", "l_1.classoid", "l_1.objsubid", "l_1.provider", "l_1.label", "rel_1.relnamespace"],
+                      "Inner Unique": true,
+                      "Join Filter": "((l_1.classoid = rel_1.tableoid) AND (l_1.objoid = rel_1.oid))",
+                      "Plans": [
+                        {
+                          "Node Type": "Nested Loop",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Join Type": "Inner",
+                          "Startup Cost": 0.28,
+                          "Total Cost": 8.30,
+                          "Plan Rows": 1,
+                          "Plan Width": 80,
+                          "Output": ["l_1.objoid", "l_1.classoid", "l_1.objsubid", "l_1.provider", "l_1.label", "att.attrelid"],
+                          "Inner Unique": true,
+                          "Plans": [
+                            {
+                              "Node Type": "Seq Scan",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Relation Name": "pg_seclabel",
+                              "Schema": "pg_catalog",
+                              "Alias": "l_1",
+                              "Startup Cost": 0.00,
+                              "Total Cost": 0.00,
+                              "Plan Rows": 1,
+                              "Plan Width": 76,
+                              "Output": ["l_1.objoid", "l_1.classoid", "l_1.objsubid", "l_1.provider", "l_1.label"],
+                              "Filter": "(l_1.objsubid <> 0)"
+                            },
+                            {
+                              "Node Type": "Index Only Scan",
+                              "Parent Relationship": "Inner",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Scan Direction": "Forward",
+                              "Index Name": "pg_attribute_relid_attnum_index",
+                              "Relation Name": "pg_attribute",
+                              "Schema": "pg_catalog",
+                              "Alias": "att",
+                              "Startup Cost": 0.28,
+                              "Total Cost": 8.30,
+                              "Plan Rows": 1,
+                              "Plan Width": 6,
+                              "Output": ["att.attrelid", "att.attnum"],
+                              "Index Cond": "((att.attrelid = l_1.objoid) AND (att.attnum = l_1.objsubid))"
+                            }
+                          ]
+                        },
+                        {
+                          "Node Type": "Index Scan",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Scan Direction": "Forward",
+                          "Index Name": "pg_class_oid_index",
+                          "Relation Name": "pg_class",
+                          "Schema": "pg_catalog",
+                          "Alias": "rel_1",
+                          "Startup Cost": 0.27,
+                          "Total Cost": 0.31,
+                          "Plan Rows": 1,
+                          "Plan Width": 12,
+                          "Output": ["rel_1.tableoid", "rel_1.oid", "rel_1.relnamespace"],
+                          "Index Cond": "(rel_1.oid = att.attrelid)"
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Index Only Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "pg_namespace_oid_index",
+                      "Relation Name": "pg_namespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "nsp_1",
+                      "Startup Cost": 0.13,
+                      "Total Cost": 0.18,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["nsp_1.oid"],
+                      "Index Cond": "(nsp_1.oid = rel_1.relnamespace)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 3",
+              "Startup Cost": 0.41,
+              "Total Cost": 8.48,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 3\".label", "\"*SELECT* 3\".provider", "\"*SELECT* 3\".classoid", "\"*SELECT* 3\".objoid", "\"*SELECT* 3\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.41,
+                  "Total Cost": 8.47,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_2.objoid", "l_2.classoid", "l_2.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_2.provider", "l_2.label"],
+                  "Inner Unique": true,
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 0.28,
+                      "Total Cost": 8.31,
+                      "Plan Rows": 1,
+                      "Plan Width": 80,
+                      "Output": ["l_2.objoid", "l_2.classoid", "l_2.objsubid", "l_2.provider", "l_2.label", "pro.pronamespace"],
+                      "Inner Unique": true,
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "pg_seclabel",
+                          "Schema": "pg_catalog",
+                          "Alias": "l_2",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 0.00,
+                          "Plan Rows": 1,
+                          "Plan Width": 76,
+                          "Output": ["l_2.objoid", "l_2.classoid", "l_2.objsubid", "l_2.provider", "l_2.label"],
+                          "Filter": "(l_2.objsubid = 0)"
+                        },
+                        {
+                          "Node Type": "Index Scan",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Scan Direction": "Forward",
+                          "Index Name": "pg_proc_oid_index",
+                          "Relation Name": "pg_proc",
+                          "Schema": "pg_catalog",
+                          "Alias": "pro",
+                          "Startup Cost": 0.28,
+                          "Total Cost": 8.30,
+                          "Plan Rows": 1,
+                          "Plan Width": 12,
+                          "Output": ["pro.tableoid", "pro.oid", "pro.pronamespace"],
+                          "Index Cond": "(pro.oid = l_2.objoid)",
+                          "Filter": "(l_2.classoid = pro.tableoid)"
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Index Only Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "pg_namespace_oid_index",
+                      "Relation Name": "pg_namespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "nsp_2",
+                      "Startup Cost": 0.13,
+                      "Total Cost": 0.15,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["nsp_2.oid"],
+                      "Index Cond": "(nsp_2.oid = pro.pronamespace)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 4",
+              "Startup Cost": 0.41,
+              "Total Cost": 8.49,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 4\".label", "\"*SELECT* 4\".provider", "\"*SELECT* 4\".classoid", "\"*SELECT* 4\".objoid", "\"*SELECT* 4\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.41,
+                  "Total Cost": 8.48,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_3.objoid", "l_3.classoid", "l_3.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_3.provider", "l_3.label"],
+                  "Inner Unique": true,
+                  "Plans": [
+                    {
+                      "Node Type": "Nested Loop",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Join Type": "Inner",
+                      "Startup Cost": 0.28,
+                      "Total Cost": 8.30,
+                      "Plan Rows": 1,
+                      "Plan Width": 80,
+                      "Output": ["l_3.objoid", "l_3.classoid", "l_3.objsubid", "l_3.provider", "l_3.label", "typ.typnamespace"],
+                      "Inner Unique": true,
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "pg_seclabel",
+                          "Schema": "pg_catalog",
+                          "Alias": "l_3",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 0.00,
+                          "Plan Rows": 1,
+                          "Plan Width": 76,
+                          "Output": ["l_3.objoid", "l_3.classoid", "l_3.objsubid", "l_3.provider", "l_3.label"],
+                          "Filter": "(l_3.objsubid = 0)"
+                        },
+                        {
+                          "Node Type": "Index Scan",
+                          "Parent Relationship": "Inner",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Scan Direction": "Forward",
+                          "Index Name": "pg_type_oid_index",
+                          "Relation Name": "pg_type",
+                          "Schema": "pg_catalog",
+                          "Alias": "typ",
+                          "Startup Cost": 0.28,
+                          "Total Cost": 8.29,
+                          "Plan Rows": 1,
+                          "Plan Width": 12,
+                          "Output": ["typ.tableoid", "typ.oid", "typ.typnamespace"],
+                          "Index Cond": "(typ.oid = l_3.objoid)",
+                          "Filter": "(l_3.classoid = typ.tableoid)"
+                        }
+                      ]
+                    },
+                    {
+                      "Node Type": "Index Only Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "pg_namespace_oid_index",
+                      "Relation Name": "pg_namespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "nsp_3",
+                      "Startup Cost": 0.13,
+                      "Total Cost": 0.17,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["nsp_3.oid"],
+                      "Index Cond": "(nsp_3.oid = typ.typnamespace)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 5",
+              "Startup Cost": 0.00,
+              "Total Cost": 0.02,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 5\".label", "\"*SELECT* 5\".provider", "\"*SELECT* 5\".classoid", "\"*SELECT* 5\".objoid", "\"*SELECT* 5\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 0.01,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_4.objoid", "l_4.classoid", "l_4.objsubid", "NULL::text", "NULL::oid", "NULL::text", "l_4.provider", "l_4.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "(l_4.objoid = lom.oid)",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_seclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_4",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 76,
+                      "Output": ["l_4.objoid", "l_4.classoid", "l_4.objsubid", "l_4.provider", "l_4.label"],
+                      "Filter": "((l_4.classoid = '2613'::oid) AND (l_4.objsubid = 0))"
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_largeobject_metadata",
+                      "Schema": "pg_catalog",
+                      "Alias": "lom",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 4,
+                      "Output": ["lom.oid", "lom.lomowner", "lom.lomacl"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 6",
+              "Startup Cost": 0.00,
+              "Total Cost": 1.11,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 6\".label", "\"*SELECT* 6\".provider", "\"*SELECT* 6\".classoid", "\"*SELECT* 6\".objoid", "\"*SELECT* 6\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 1.10,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_5.objoid", "l_5.classoid", "l_5.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_5.provider", "l_5.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_5.classoid = lan.tableoid) AND (l_5.objoid = lan.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_seclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_5",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 76,
+                      "Output": ["l_5.objoid", "l_5.classoid", "l_5.objsubid", "l_5.provider", "l_5.label"],
+                      "Filter": "(l_5.objsubid = 0)"
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_language",
+                      "Schema": "pg_catalog",
+                      "Alias": "lan",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 1.04,
+                      "Plan Rows": 4,
+                      "Plan Width": 8,
+                      "Output": ["lan.tableoid", "lan.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 7",
+              "Startup Cost": 0.01,
+              "Total Cost": 1.14,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 7\".label", "\"*SELECT* 7\".provider", "\"*SELECT* 7\".classoid", "\"*SELECT* 7\".objoid", "\"*SELECT* 7\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Hash Join",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.01,
+                  "Total Cost": 1.13,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_6.objoid", "l_6.classoid", "l_6.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_6.provider", "l_6.label"],
+                  "Inner Unique": false,
+                  "Hash Cond": "((nsp_4.tableoid = l_6.classoid) AND (nsp_4.oid = l_6.objoid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_namespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "nsp_4",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 1.06,
+                      "Plan Rows": 6,
+                      "Plan Width": 8,
+                      "Output": ["nsp_4.tableoid", "nsp_4.oid"]
+                    },
+                    {
+                      "Node Type": "Hash",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 76,
+                      "Output": ["l_6.objoid", "l_6.classoid", "l_6.objsubid", "l_6.provider", "l_6.label"],
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "pg_seclabel",
+                          "Schema": "pg_catalog",
+                          "Alias": "l_6",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 0.00,
+                          "Plan Rows": 1,
+                          "Plan Width": 76,
+                          "Output": ["l_6.objoid", "l_6.classoid", "l_6.objsubid", "l_6.provider", "l_6.label"],
+                          "Filter": "(l_6.objsubid = 0)"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 8",
+              "Startup Cost": 0.00,
+              "Total Cost": 0.03,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 8\".label", "\"*SELECT* 8\".provider", "\"*SELECT* 8\".classoid", "\"*SELECT* 8\".objoid", "\"*SELECT* 8\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 0.01,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_7.objoid", "l_7.classoid", "l_7.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_7.provider", "l_7.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_7.classoid = evt.tableoid) AND (l_7.objoid = evt.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_seclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_7",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 76,
+                      "Output": ["l_7.objoid", "l_7.classoid", "l_7.objsubid", "l_7.provider", "l_7.label"],
+                      "Filter": "(l_7.objsubid = 0)"
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_event_trigger",
+                      "Schema": "pg_catalog",
+                      "Alias": "evt",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 8,
+                      "Output": ["evt.tableoid", "evt.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 9",
+              "Startup Cost": 0.00,
+              "Total Cost": 0.03,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 9\".label", "\"*SELECT* 9\".provider", "\"*SELECT* 9\".classoid", "\"*SELECT* 9\".objoid", "\"*SELECT* 9\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 0.01,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_8.objoid", "l_8.classoid", "l_8.objsubid", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_8.provider", "l_8.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_8.classoid = p.tableoid) AND (l_8.objoid = p.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_seclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_8",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 76,
+                      "Output": ["l_8.objoid", "l_8.classoid", "l_8.objsubid", "l_8.provider", "l_8.label"],
+                      "Filter": "(l_8.objsubid = 0)"
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_publication",
+                      "Schema": "pg_catalog",
+                      "Alias": "p",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 8,
+                      "Output": ["p.tableoid", "p.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 10",
+              "Startup Cost": 0.00,
+              "Total Cost": 0.03,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 10\".label", "\"*SELECT* 10\".provider", "\"*SELECT* 10\".classoid", "\"*SELECT* 10\".objoid", "\"*SELECT* 10\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 0.01,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_9.objoid", "l_9.classoid", "0", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_9.provider", "l_9.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_9.classoid = s.tableoid) AND (l_9.objoid = s.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_shseclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_9",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 72,
+                      "Output": ["l_9.objoid", "l_9.classoid", "l_9.provider", "l_9.label"]
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_subscription",
+                      "Schema": "pg_catalog",
+                      "Alias": "s",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 8,
+                      "Output": ["s.tableoid", "s.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 11",
+              "Startup Cost": 0.00,
+              "Total Cost": 1.11,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 11\".label", "\"*SELECT* 11\".provider", "\"*SELECT* 11\".classoid", "\"*SELECT* 11\".objoid", "\"*SELECT* 11\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 1.10,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_10.objoid", "l_10.classoid", "0", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_10.provider", "l_10.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_10.classoid = dat.tableoid) AND (l_10.objoid = dat.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_shseclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_10",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 72,
+                      "Output": ["l_10.objoid", "l_10.classoid", "l_10.provider", "l_10.label"]
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_database",
+                      "Schema": "pg_catalog",
+                      "Alias": "dat",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 1.04,
+                      "Plan Rows": 4,
+                      "Plan Width": 8,
+                      "Output": ["dat.tableoid", "dat.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 12",
+              "Startup Cost": 0.00,
+              "Total Cost": 1.06,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 12\".label", "\"*SELECT* 12\".provider", "\"*SELECT* 12\".classoid", "\"*SELECT* 12\".objoid", "\"*SELECT* 12\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Nested Loop",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.00,
+                  "Total Cost": 1.05,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_11.objoid", "l_11.classoid", "0", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_11.provider", "l_11.label"],
+                  "Inner Unique": true,
+                  "Join Filter": "((l_11.classoid = spc.tableoid) AND (l_11.objoid = spc.oid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_shseclabel",
+                      "Schema": "pg_catalog",
+                      "Alias": "l_11",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 72,
+                      "Output": ["l_11.objoid", "l_11.classoid", "l_11.provider", "l_11.label"]
+                    },
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_tablespace",
+                      "Schema": "pg_catalog",
+                      "Alias": "spc",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 1.02,
+                      "Plan Rows": 2,
+                      "Plan Width": 8,
+                      "Output": ["spc.tableoid", "spc.oid"]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Subquery Scan",
+              "Parent Relationship": "Member",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Alias": "*SELECT* 13",
+              "Startup Cost": 0.01,
+              "Total Cost": 1.31,
+              "Plan Rows": 1,
+              "Plan Width": 76,
+              "Output": ["\"*SELECT* 13\".label", "\"*SELECT* 13\".provider", "\"*SELECT* 13\".classoid", "\"*SELECT* 13\".objoid", "\"*SELECT* 13\".objsubid"],
+              "Plans": [
+                {
+                  "Node Type": "Hash Join",
+                  "Parent Relationship": "Subquery",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Join Type": "Inner",
+                  "Startup Cost": 0.01,
+                  "Total Cost": 1.30,
+                  "Plan Rows": 1,
+                  "Plan Width": 144,
+                  "Output": ["l_12.objoid", "l_12.classoid", "0", "NULL::text", "NULL::oid", "NULL::text COLLATE \"C\"", "l_12.provider", "l_12.label"],
+                  "Inner Unique": false,
+                  "Hash Cond": "((rol.tableoid = l_12.classoid) AND (rol.oid = l_12.objoid))",
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "pg_authid",
+                      "Schema": "pg_catalog",
+                      "Alias": "rol",
+                      "Startup Cost": 0.00,
+                      "Total Cost": 1.16,
+                      "Plan Rows": 16,
+                      "Plan Width": 8,
+                      "Output": ["rol.tableoid", "rol.oid"]
+                    },
+                    {
+                      "Node Type": "Hash",
+                      "Parent Relationship": "Inner",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Startup Cost": 0.00,
+                      "Total Cost": 0.00,
+                      "Plan Rows": 1,
+                      "Plan Width": 72,
+                      "Output": ["l_12.objoid", "l_12.classoid", "l_12.provider", "l_12.label"],
+                      "Plans": [
+                        {
+                          "Node Type": "Seq Scan",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Relation Name": "pg_shseclabel",
+                          "Schema": "pg_catalog",
+                          "Alias": "l_12",
+                          "Startup Cost": 0.00,
+                          "Total Cost": 0.00,
+                          "Plan Rows": 1,
+                          "Plan Width": 72,
+                          "Output": ["l_12.objoid", "l_12.classoid", "l_12.provider", "l_12.label"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Query Identifier": 4782678155027226578
+  }
+]

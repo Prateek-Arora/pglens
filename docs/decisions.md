@@ -24,7 +24,7 @@
 | [ADR-0017](#adr-0017) | 2026-08-25 | Recommendation ranking = real total time × validated relative drop; btree-prefix dedupe (flag, don't sum) | Accepted |
 | [ADR-0018](#adr-0018) | 2026-08-25 | `--json` contract = the model records themselves (ScanReport v1.0), NON_NULL; scan is query-centric + a cross-query top-recs summary | Accepted |
 | [ADR-0019](#adr-0019) | 2026-08-26 | R7 GIN rule: containment/existence operators (`@>`/`?`/…) → GIN candidate, surfaced but not planner-validated; LIKE-trigram deferred | Accepted |
-| [ADR-0020](#adr-0020) | 2026-08-26 | Safety: enforce read-only at the DB via session characteristics on the one scan connection; prove it + the whole pipeline with an E2E Testcontainers test; add a Java CI job | Accepted |
+| [ADR-0020](#adr-0020) | 2026-08-26 | Safety: enforce read-only at the DB via session characteristics on the one scan connection; prove it + the whole pipeline with an E2E Testcontainers test; add a Java CI job | Accepted (the session `SET` became startup options: ADR-0053) |
 | [ADR-0021](#adr-0021) | 2026-08-26 | Verification hardening: rewrite typed-literal params so EXPLAIN can plan them (closes a silent-skip bug); R1 detects range/expression predicates; mark PgLens's own introspection so hygiene drops it; centralize rule thresholds | Accepted |
 | [ADR-0022](#adr-0022) | 2026-08-27 | Capture-robustness harness (shape-stressor pack + skip-rate assertion) guards the silent-skip class; start a deferred-work backlog; pre-commit index-hygiene to Phase 2 | Accepted |
 | [ADR-0023](#adr-0023) | 2026-08-29 | Phase 2 topology = `a-pull` (edge HypoPG validation via agent-lease; unary + client/server-streaming, no bidi) | Accepted |
@@ -50,12 +50,20 @@
 | [ADR-0043](#adr-0043) | 2026-09-26 | Phase 3 plain-language explanations: any OpenAI-compatible endpoint, LLM phrases 3 fields only, guard + template fallback; eval → `--plain` = template, `=llm` opt-in | Accepted |
 | [ADR-0044](#adr-0044) | 2026-09-26 | Phase 4: Spring Boot 3.5 (EOL) → 4.1 first; 4A `v0.0.7` headless (TLS, auth, registration, REST) + 4B `v0.1.0-rc` dashboard; BFF, string queryids, confirm command on every rec | Accepted |
 | [ADR-0045](#adr-0045) | 2026-09-26 | Hourly rollup of `query_stats` (V10, trigger-maintained) for the API's windowed reads; windows start on UTC hours; long trends hourly | Accepted |
+| [ADR-0046](#adr-0046) | 2026-09-26 | Phase 4B dashboard stack: Next 16 App Router, server-only data layer, httpOnly cookie session, pinned deps + strict pnpm gates | Accepted |
+| [ADR-0047](#adr-0047) | 2026-09-26 | Dashboard visual pass: semantic color roles, self-hosted fonts, honest estimate styling | Accepted (palette superseded by ADR-0048) |
+| [ADR-0048](#adr-0048) | 2026-09-26 | Dashboard visual world "Drafting Sheet": measured solid / estimate hatched, syntax-colored SQL, one ink per metric | Accepted |
+| [ADR-0049](#adr-0049) | 2026-09-27 | Real-schema identity: tables = schema-qualified-unless-public quoted identities, raw columns, partitions → root, `::text` relabel casts; capture failures carry their reason + access advice | Accepted |
+| [ADR-0050](#adr-0050) | 2026-09-27 | Distribution: one version, GHCR multi-arch images + a drafted release from a tag, Docker-only builds; databases on 127.0.0.1; dev cert names `host.docker.internal`, re-issued on change | Accepted |
+| [ADR-0051](#adr-0051) | 2026-09-27 | Recommendation lifecycle: retire advice the engine no longer proposes; keep it as *applied* when a serving index appears after it; measured before/after from the hourly rollup; re-capture plans when indexes change | Accepted |
+| [ADR-0052](#adr-0052) | 2026-09-27 | The dashboard opens on an impact overview (measured time, share with an index to try, hatched planner estimate, what to fix first, built-and-measured); charts only in existing role inks; `/system` status | Accepted |
+| [ADR-0053](#adr-0053) | 2026-09-27 | Monitored-DB guards as connection startup options (never session `SET`) and a transaction-mode pooler refused; `demo` compose profile; 35-day raw retention; no catalog-table candidates | Accepted |
 
 ---
 
 ## ADR-0001
 **Collector/server language = Java + Spring Boot** · 2026-08-21 · Accepted
-- **Context:** Need a language/framework for the collector agent and central server; also aligning with the user's job-search skill targets (Java/Spring is a "have").
+- **Context:** Need a language/framework for the collector agent and central server; Java/Spring is also the stack the maintainer knows best.
 - **Decision:** Java 21 + Spring Boot for both agent and server. `[ASSUMPTION: Java 21 until Phase 0 pins exact versions.]`
 - **Alternatives:** Go (great gRPC ergonomics, but off the user's skill target) · Node/TS (already covered by the dashboard).
 - **Consequences:** Production-shaped, keeps the tool real; slightly heavier than Go for a collector agent. Pin versions in Phase 0.
@@ -314,7 +322,7 @@
 
 ## ADR-0037
 **2026-09-24 plan review outcomes: honest positioning, a Phase 2.5 accuracy sprint before Phase 3, TLS + dashboard auth + registration pulled into the Phase-4 ship bar, and tag renumbering** · 2026-09-24 · Accepted (Phase 2.5 *scope* pending user approval)
-- **Context:** An unbiased re-review of the full plan bundle (overview, 8 phase files, the 2026-08-21 verification report) against the shipped code (Phases 0–2) and fresh web research. Sound: the safety model, honesty scaffolding, deterministic-core design and engineering rigour all check out (164 tests green). Findings: **(a) market** — the plan calls HypoPG validation "the differentiating part" and says no tool occupies PgLens's square, but HypoPG-checked index advice is standard: Dexter (2017), PoWA (remote collector + history + web UI + HypoPG-checked suggestions), Supabase `index_advisor`, Postgres MCP Pro (MIT, ~3.3k★, pgss + HypoPG + DTA-style workload search), pganalyze (CP-SAT workload model with write overhead); pgAssistant pairs deterministic advisors with Ollama. Xata Agent (OSS AI Postgres agent) was archived June 2026. **(b) accuracy** — *whether* an index helps is trustworthy (planner-used + ≥15 % gate), *how much* is not (generic plans: −98.7 % vs ~−57 % real on the demo), selection is per-query with no write cost, and the only accuracy oracle is self-authored. **(c) ship bar** — "ship after Phase 4" would ship with no agent↔server TLS (the token travels in cleartext), an unauthenticated dashboard showing all query text, and a SQL bootstrap (`make register`) instead of a registration API, contradicting "usable by a team in < 10 min". **(d) plan defects** — the Phase-3 file tags `v0.0.3`, already used by the Phase-2 hardening patch; the verification report's claim that an official Neon Terraform provider exists is wrong (Neon sponsors the community `kislerdm/neon`, not officially maintained); the README called a HypoPG estimate a "measured cost delta"; `project.md` was stale. **(e) timeline** — Phases 0–2 took 9 calendar days (Aug 22–30) against a multi-week estimate: build speed isn't the constraint, the user's depth of understanding is (the job-search value depends on defending the design in interviews).
+- **Context:** An unbiased re-review of the full plan bundle (overview, 8 phase files, the 2026-08-21 verification report) against the shipped code (Phases 0–2) and fresh web research. Sound: the safety model, honesty scaffolding, deterministic-core design and engineering rigour all check out (164 tests green). Findings: **(a) market** — the plan calls HypoPG validation "the differentiating part" and says no tool occupies PgLens's square, but HypoPG-checked index advice is standard: Dexter (2017), PoWA (remote collector + history + web UI + HypoPG-checked suggestions), Supabase `index_advisor`, Postgres MCP Pro (MIT, ~3.3k★, pgss + HypoPG + DTA-style workload search), pganalyze (CP-SAT workload model with write overhead); pgAssistant pairs deterministic advisors with Ollama. Xata Agent (OSS AI Postgres agent) was archived June 2026. **(b) accuracy** — *whether* an index helps is trustworthy (planner-used + ≥15 % gate), *how much* is not (generic plans: −98.7 % vs ~−57 % real on the demo), selection is per-query with no write cost, and the only accuracy oracle is self-authored. **(c) ship bar** — "ship after Phase 4" would ship with no agent↔server TLS (the token travels in cleartext), an unauthenticated dashboard showing all query text, and a SQL bootstrap (`make register`) instead of a registration API, contradicting "usable by a team in < 10 min". **(d) plan defects** — the Phase-3 file tags `v0.0.3`, already used by the Phase-2 hardening patch; the verification report's claim that an official Neon Terraform provider exists is wrong (Neon sponsors the community `kislerdm/neon`, not officially maintained); the README called a HypoPG estimate a "measured cost delta"; `project.md` was stale. **(e) timeline** — Phases 0–2 took 9 calendar days (Aug 22–30) against a multi-week estimate: build speed isn't the constraint, the maintainer's depth of understanding is.
 - **Decision:** (1) **Positioning:** stop presenting HypoPG validation as the differentiator. Lead with the integrated, history-aware loop (continuous `pg_stat_statements` history → planner-checked recs → window-based hygiene → regressions) that needs **only pgss + hypopg** (both available on RDS, Cloud SQL/Azure/Supabase/Neon-class managed Postgres), stays private (local LLM), and labels every number. The Phase-7 comparison table must include PoWA, Dexter, Postgres MCP Pro, pgAssistant and pganalyze, date-stamped. (2) **Insert Phase 2.5 — Recommendation Accuracy Sprint** (`docs/phases/phase_2_5.md`: representative-value estimates, write-overhead + overlap awareness, an external-workload benchmark) **before Phase 3**, since the LLM only phrases the engine's facts. Its scope is *proposed* and needs plan-verification + approval (ADR-0008). (3) **Phase-4 ship bar amended:** agent↔server TLS, a basic dashboard login, and the registration API (B10) move into Phase 4 (from Phase 6 / backlog); OIDC stays optional in Phase 6. (4) **Tags renumbered:** Phase 2.5 = `v0.0.4`, Phase 3 = `v0.0.5`; Phase 4 stays `v0.1.0-rc`. (5) **Timeline:** drop the week-based calendar as a planning tool; each phase's DoD gains a teach-back check (explain the phase's key decisions without notes, e.g. via the teacher skill). (6) **Phase 3 scope note:** the RAG corpus adds little *product* value when the facts are already in the prompt — keep it small and treat it primarily as the skill track; decide separate `explain-svc` vs an in-server module during Phase-3 verification. (7) Corrected the plan bundle (Desktop copies) and repo docs accordingly.
 - **Alternatives:** proceed straight to Phase 3 (rejected: LLM prose over a mis-ranked list amplifies the error) · build a full CP-SAT workload model now (rejected: YAGNI until the external benchmark shows sprawl — backlog B16) · keep TLS/auth in Phase 6 and ship Phase 4 as "demo only" (rejected: contradicts the plan of record's "usable tool" bar) · pivot the product to a narrower niche (e.g. CI/PR-time index linting) (not decided — noted for Phase 7 positioning; pganalyze/lint and Datapace already probe it).
 - **Consequences:** one extra phase before the LLM work; Phase 4 grows by TLS + a login + a registration API; the README/launch copy loses the "novel" framing but gains a claim that survives an HN fact-check. Nothing previously shipped is reverted.
@@ -521,4 +529,370 @@
   11.3 ms insert** of a 500-row interval, once a minute per database. Windows can be up to 59 min
   longer than their name (a "24h" window starts on the hour before); the response's `from` says so.
   Raw-row retention becomes possible later (backlog B26).
+
+
+## ADR-0046
+**Dashboard foundations: an exact API contract, a server-only data layer, pinned stack** · 2026-09-26 · Accepted
+- **Context:** Phase 4B (`v0.1.0-rc`) adds the Next.js dashboard over the 4A API (ADR-0044). The
+  plan asked for types generated from the OpenAPI spec with drift failing CI. The spec springdoc
+  served had **no `required` lists** and no nulls, so every generated TypeScript field was optional —
+  the dashboard couldn't tell "no measurement" from a bug — and its server URL changed with the port.
+- **Decision (contract):** every record component is **required** (Jackson always writes it); only
+  a component annotated JSpecify **`@Nullable`** may be null, published as OpenAPI 3.1
+  `type: [T, "null"]` or `anyOf: [$ref, {type: null}]` (`RecordSchemaConverter`). Server URL `/`;
+  responses declared `application/json`. The spec is **committed** as `docs/api/openapi.json` (sorted
+  keys); `OpenApiSpecIntegrationTest` fails when it differs from what the server serves, and
+  `make openapi` rewrites it. The dashboard generates `src/lib/api/schema.d.ts` from that file
+  (`pnpm api:types`); CI regenerates and diffs it. Rule that follows: **a response field that can
+  be null must carry `@Nullable`**, or clients are told it never is.
+- **Decision (security shape):** the browser talks only to Next.js; a **server-only data-access
+  layer** (`src/lib/api/server.ts`, `import "server-only"`) is the only code that calls the API,
+  forwarding the httpOnly session cookie as a bearer token (401 → `/login?next=`, 404 → not-found).
+  The cookie is `__Host-pglens_session` (Secure) behind HTTPS and `pglens_session` on plain-HTTP
+  localhost; `sameSite=lax`, 7-day cap (the API's absolute session limit; it stays the authority).
+  Login/logout are Server Actions (Next checks their Origin against the host — CSRF). `?next=` is
+  accepted only as a local path. The layout reads the user for display only; access is checked by
+  each page's own API calls. `src/proxy.ts` sets a **per-request CSP nonce**
+  (`script-src 'nonce-…' 'strict-dynamic'`) and passes the path on — it is never an auth check.
+  Every page renders per request (`connection()` in the root layout: a prerendered page can't carry
+  the nonce, and none is the same for every user).
+- **Stack, pinned exactly (deviations from the plan in bold):** Next **16.3.6** (16.3.7, a security
+  release due 2026-09-30, must be pinned before tagging `v0.1.0-rc`) · React 19.2.8 (the pair Next
+  tested; 19.3.0 exists) · Node **24.21.0** LTS · pnpm **12.6.0** · TypeScript **5.9.3, not 7**
+  (typescript-eslint and openapi-typescript don't support 7 yet) · **ESLint 10.11.0, not 9**: 9.39
+  is deprecated upstream; Next's bundled react plugin needs `settings.react.version` set explicitly
+  under 10 (it auto-detects via an API 10 removed) — every Next rule was checked firing · Tailwind
+  4.3.3 + shadcn/ui (radix-nova, components copied in) · Recharts 3.10.1 · Shiki 4.4.3 ·
+  sql-formatter 15.9.0 · openapi-typescript 7.13.0 + openapi-fetch 0.17.0 · Vitest 5.0.2 ·
+  Playwright 1.63.0 + axe 4.13.0.
+- **Supply chain:** pnpm `minimumReleaseAge: 1440` set explicitly, which makes it **strict** (a
+  day-old version fails the install; it caught `@types/node@24.19.0`); `next` is exempt so a security
+  release can be pinned the day it ships. `trustPolicy: no-downgrade` refuses a version published
+  with weaker provenance than an earlier one (possible takeover); three hits were checked by hand
+  (old releases by the same maintainers) and excluded **by exact version**. Install scripts off
+  (`allowBuilds`). shadcn's CLI added its 4-day-old `cn` package; we kept `clsx` + `tailwind-merge`
+  behind `@/lib/utils`. Fonts are self-hosted from npm (ADR-0047), so builds fetch nothing from a font CDN.
+- **Other choices:** `typedRoutes` (a link to a page that doesn't exist fails the typecheck) ·
+  `output: "standalone"` for a small non-root image · HSTS left to the TLS proxy (sent from Next it
+  would pin plain-HTTP localhost) · `style-src 'unsafe-inline'` because Shiki and Recharts render
+  inline style attributes a nonce can't cover (scripts stay nonce-only) · Next's generated
+  `AGENTS.md`/`CLAUDE.md` turned off (`agentRules: false`); the same guidance lives in
+  `.claude/rules/dashboard.md` · Playwright runs the full Chromium in new headless mode
+  (`channel: "chromium"`), not the separate headless shell.
+- **Screens and delivery (Steps 7–9):** view state (window, sort, page) lives in the URL, so
+  views are shareable and server-rendered with no client JavaScript. SQL is formatted
+  (sql-formatter) and highlighted (Shiki) on the server; Shiki escapes the text, which comes from
+  the monitored database. The plan tree highlights the node each finding names
+  (`FindingView.planNode`) with the evidence beside it. Charts start the y-axis at zero, break the
+  line where the query didn't run (no row, ADR-0034: a gap over 2.5× the usual step), and come with
+  the numbers as a table. **Honesty components:** every number renders through `<Measured>`,
+  `<Estimate>` or `<Count>` (tooltip + screen-reader suffix + `data-kind`); estimates also show a
+  visible "est.", and a missing measurement is "—" with the reason, never 0 — unit-tested. The API
+  gained `QueryEvidence.sqlPreview`: the recommendations page otherwise listed bare queryids, which
+  fails the "stranger decides what to fix first" bar. Image: three stages, standalone output,
+  non-root UID 10001, read-only root filesystem, published on `127.0.0.1:3000` only (plain-HTTP
+  logins stay on the machine; the README's Caddy recipe adds HTTPS). CI: a `dashboard` job
+  (format, lint, typecheck, unit, build, spec→types drift, `pnpm audit`) and an `e2e` job (full
+  compose stack → Playwright + axe; `make e2e` locally). Playwright traces and reports are **off in
+  CI and never uploaded**: they record typed values, including the admin password.
+- **Alternatives:** a hand-written TypeScript client (rejected: drifts silently) · `@NotNull` on
+  every required field (rejected: 90% of fields; nullable is the exception, so mark that) · browser
+  calls straight to the API with CORS (rejected: the token would live in JavaScript) · auth in
+  `proxy.ts` (rejected: Next's own guidance, and the 2025 middleware-bypass CVE) · Auth.js
+  (rejected: the API already owns users and sessions; a second session system adds nothing).
+- **Consequences:** the generated types are exact (`measuredMeanMs: number | null`), so the
+  compiler makes every screen handle "no measurement". A server change to a response shape now
+  needs `make openapi` + `pnpm api:types` in the same PR, or CI fails. Dashboard commands need
+  Node 24 (`nvm use 24.21.0`; the host default stays 22).
+
+## ADR-0047
+**Dashboard visual language: "precision instrument"** · 2026-09-26 · Accepted
+- **Context:** the 4B dashboard worked but read as a stock shadcn template (user: "the UI looks
+  bland"). An impeccable critique (design review + browser measurements) scored it **27/40** and
+  found three P1s: nothing visual said "Postgres performance tool" and the measured-vs-estimate
+  distinction — the product's core idea — was only words; the query page put the answer (which
+  index, what it saves) ~1,100 px down under a 19-digit queryid heading; and phones overflowed by
+  149–679 px, crushing the SQL column to "SELEC T o…". The user chose the "precision instrument"
+  tone and all three P1s.
+- **Decision (identity), revised the same day:** the first cut (teal "signal" accent, cool-gray
+  page, black buttons) was rejected by the user on review — the colors competed, 12 px gray text was
+  hard to skim, and form buttons didn't line up — and the verification had only looked at two of
+  eight pages. Shipped instead: **ink on white with conventional semantic colors** a data tool is
+  scanned by — **blue** = you can act on it (buttons, links, current tab, focus), **green** =
+  validated or healthy (planner-validated badge, agent connected), **amber** = a problem PgLens found
+  in a plan, **red** = danger (OKLCH tokens in `globals.css`). **Estimates look different**: a
+  dashed underline (`.estimate-mark`, the data-vis convention for "projected") on every
+  `<Estimate>`, on top of "est." and the screen-reader label; measurements stay solid ink. **IBM
+  Plex Sans + Plex Mono**, self-hosted from npm (`@fontsource*`, OFL) through `next/font/local` —
+  nothing is fetched from a font CDN at build or run time; tabular numerals; a **13 px floor** for
+  small text (`--text-xs`). **One control height** (36 px inputs, selects and buttons; help text
+  under the row, not inside it). A reticle wordmark; a PgLens Shiki theme instead of GitHub's red
+  and purple. Recommendation cards lead with the numbers and the DDL; value ranges, index size and
+  write load sit behind a "Details" toggle (build cautions stay visible). The plan tree's 4 px amber
+  side-border became a tinted panel with an icon. Settings uses a two-column (label | controls)
+  layout; the databases list is full-width clickable rows.
+- **Decision (layout):** the query page leads with the answer — the SQL as the heading (queryid
+  below it in small mono), then a **suggested-index strip** (best index: validated first, then by
+  estimated time saved; DDL with copy; est. saved; a link to the evidence and the `pglens confirm`
+  step), then totals, SQL, the full recommendation cards, the explanation, the plan, and a compact
+  trend chart last. Phones get a stacked leaderboard (one entry per query), a header whose links
+  take their own scrollable row, copy buttons above code instead of over it, scroll containers
+  that keyboard users can focus, and taller tap targets. Every page has its own tab title and a
+  skip link.
+- **Alternatives:** a single invented accent (teal "signal": tried and rejected — it left no
+  familiar "action" color) · a dark "ops console" look (rejected by the user) · Geist/Inter (the
+  category's default faces) · italic or colored estimates (italic reads as emphasis; color alone
+  fails colour-blind users).
+- **Consequences:** `numbers.tsx` still owns the honesty labels; the visual mark rides on it, so
+  every page got it at once. Two new runtime dependencies (font files only). axe is clean at
+  1440 px and 390 px on all 8 pages; the e2e suite's measured-number check now looks inside the
+  table (the phone list is hidden at desktop width). Deferred from the same critique: leaderboard
+  emphasis (a relative-time bar; explicit "no advice" state) and distilling the recommendation
+  cards' caveat paragraphs was done in the revision. Lesson: verify every page at both widths
+  before calling a visual pass done — axe passing says nothing about alignment or taste.
+
+## ADR-0048
+**Dashboard visual world: "Drafting Sheet"** · 2026-09-26 · Accepted (supersedes ADR-0047's palette and SQL styling)
+- **Context:** after ADR-0047 the dashboard was consistent but, in the user's words, "only black and
+  white", "boring", and the queries were "still big to read"; they asked for code-block SQL, "the
+  best color theme", "visually very good … like people would like to use it. No AI slop", and left
+  the direction to us ("professional and clean"). Users are mostly developers at a desk beside a
+  (often dark) editor. Product truth moved into `dashboard/PRODUCT.md`; the impeccable skill's
+  direction round offered four directions (Drafting Sheet, Editor Theme, Cathode Numerals, Step
+  Row) plus the category standard.
+- **Decision:** the **Drafting Sheet** — an engineering drawing's conventions applied to query
+  data. **Measured = solid ink; planner estimate = dashed/hatched**, the drafting convention for a
+  hidden edge, now also in every bar (`.hatch`), not only the `.estimate-mark` underline. **Light
+  mode** = cool drafting film with white "sheets" (`.sheet`: border + soft offset shadow) for
+  tables, cards and code; **dark mode** = blueprint navy with chalk ink. Dark follows the OS
+  (`prefers-color-scheme`; no toggle yet). **Syntax-colored SQL everywhere a query appears**
+  (`SqlInline` in lists, `SqlBlock` for full text): violet keywords, teal functions, warm literals
+  and `$n` parameters, set as CSS variables so the same server-rendered Shiki output follows the
+  theme; **JetBrains Mono** (OFL, self-hosted) for code, replacing Plex Mono, for its larger
+  x-height at 13 px. **One ink per metric** everywhere (total = cobalt/cyan, mean = teal/mint,
+  calls = plum/lilac): sort toggles, the sorted column, totals and the trend line. **Scale bars**:
+  the leaderboard draws each query's share of the sorted metric to scale under its SQL; the plan
+  tree draws each node's planner cost (hatched); recommendation cards draw planner cost now vs
+  with the index (both hatched). Plan findings are **redlines** (vermilion, the drafting markup
+  color) instead of amber. A **title block** heads each database (name, agent state, last sample);
+  agent states are drawn marks (live / stale / no data yet) with words. Query detail steps
+  through the ranking with ◀ ▶ and **j / k**. Semantic meanings from ADR-0047 are unchanged
+  (primary = act, green = validated/healthy, red = danger).
+- **Alternatives:** *Editor Theme* (a dark IDE look — attractive but indistinguishable from many
+  dev tools) · *Cathode Numerals* (Nixie glow — loved in the dark, but bans the rules dense tables
+  need) · *Step Row* (drum-machine hourly strips — clear, but reads toy-like) · the category
+  standard (what the user called boring) · a page-wide faint grid (built, then removed: the design
+  detector flags it as a generated-UI signature, and the sheets carry the world without it).
+- **Consequences:** every SQL render is highlighted server-side (one Shiki highlighter, tokens
+  rendered as React text, so query text still can't inject markup). The query page makes one
+  more API call (the ranking, `limit=200`) for previous/next. Colors live only in `globals.css`
+  tokens (both themes); charts read the same variables. axe is clean on all 8 routes at 1440 and
+  390 px in both themes; the unit and e2e suites needed no change. Impeccable artifacts:
+  `dashboard/PRODUCT.md`, the surface brief under `dashboard/.impeccable/`, and `DESIGN.md`.
+
+## ADR-0049
+**Real-schema identity: schemas, quoted names, partitions — and saying why a plan is missing** · 2026-09-27 · Accepted
+- **Context:** a pre-release check (the user asked "is it ready to release?") scanned a stock PG17
+  with an app-like schema instead of the demo, following the README. Every blocker came from the
+  demo's shape (one `public` schema, lower-case names, `text` columns, a superuser-granted role):
+  (1) the README's role (`pg_read_all_stats` only) captured **no** plans and the CLI said "can't be
+  generically explained" — the real error was `permission denied for schema app`; (2) tables
+  outside `public` got `CREATE INDEX … ON projects (…)`, so HypoPG rejected **every** candidate
+  ("relation does not exist") and the SQL failed when pasted; (3) quoted names — Prisma's default
+  `"Post"."authorId"` — got **no findings**, because `PlanColumns` only matched bare identifiers,
+  and a stray finding rendered `ON UserAccounts`, which Postgres folds to `useraccounts`; (4)
+  `varchar` columns (Django, Rails) got none either: EXPLAIN prints `(u.status)::text = $1`;
+  (5) a partitioned table got one index per partition; (6) `CatalogSnapshot` (engine) and
+  `CatalogRepository` (server) keyed and lower-cased names without a schema, so two schemas'
+  `orders` collided. The `CatalogSnapshot` javadoc called it an "MVP single-schema assumption".
+- **Decision:** (a) a table's **identity** is `SqlIdent.table(schema, name)`: schema-qualified
+  unless `public`, each part quoted exactly as `quote_ident` would (PG18's reserved-keyword list;
+  an IT checks it against `pg_get_keywords()` on each major). It is the key everywhere (catalog,
+  findings, candidates, proto, server rows, API) and valid SQL as written, so `to_regclass`, HypoPG
+  and a pasted `CREATE INDEX` all resolve it. **Columns are raw names** (unquoted, case kept) and
+  quoted when rendered. EXPLAIN's quoted tokens are unquoted on the way in (`PlanColumns`,
+  `EqualityParameterLocator` accept `"…"` identifiers). Generated index names are lower-case,
+  sanitized and hashed past 63 bytes. (b) A **text/bpchar relabel cast** on a column counts as the
+  column (a B-tree on a varchar column serves it); other casts and functions still don't (B3). The
+  rare `int::text` compare is extracted too — HypoPG then finds the index unused and suppresses it.
+  (c) A **partition's** finding targets its root (`pg_partition_root`, carried as
+  `TableInfo.partitionRoot` / proto `TableStat.partition_root` / `table_catalog.partition_root`,
+  migration V11): verified that HypoPG 1.4 simulates an index on a partitioned parent and the
+  planner uses it on every partition, so validation needs no special case; the root's rows and
+  write activity are its leaves' sums, and the footprint compares against the leaves' size.
+  Indexes attached to a partitioned index count as constraint-backed (they can't be dropped
+  alone). (d) **Capture failures carry their reason** (`PlanCapturer.Capture`; `--json` 1.5
+  `planError`; proto `QueryText.plan_error`; API `planUnavailableReason`), SQLSTATE 42501 phrased
+  as the missing grant; an **access pre-check** (`CatalogReader.accessGaps`) names the schemas the
+  role can't read with the exact `GRANT`s, in the CLI notes and (once per change) the agent log;
+  the agent **retries permission-denied captures** each interval and re-sends the text once it
+  works, so a grant fixes the dashboard without a restart.
+- **Alternatives:** *always schema-qualify* (`public.orders`) — strictly search-path-proof, but
+  changes every existing identity and the demo output for no practical gain (a shadowing `$user`
+  schema is rare, and HypoPG would then fail visibly) · *quote in Java only for mixed case* —
+  misses reserved words (`"order"`, `"user"` are common table names) · *key the catalog by oid* —
+  not stable across the agent/server boundary or restarts · *validate per partition* — needless
+  once HypoPG simulates the parent's index, and would recommend N indexes where Postgres wants one
+  · *silently skip unreadable tables* — the old behavior; it looked like a PgLens bug.
+- **Consequences:** `RealWorldSchemaIntegrationTest` (non-public schema, Prisma names, `"order"`
+  / `"user"`, varchar, a partitioned table, a least-privilege role) proves the whole path: the
+  role first gets the exact grants, then every validated DDL runs as written. Lower-case `public`
+  tables keep their old identity, so existing history needs no rewrite; a mixed-case or non-public
+  table's rows from before are superseded by the next snapshot. Expression and partial indexes are
+  still not suggested (B3, B4) — the dashboard now says so instead of "nothing an index would fix".
+
+## ADR-0050
+**Distribution: one version, released images, Docker-only builds; nothing exposed by default** · 2026-09-27 · Accepted
+- **Context:** the same check found PgLens couldn't be installed from outside this repo: the
+  dashboard's *Add a database* said `docker run pglens/agent:0.0.2`, an image in no registry; the
+  CLI needed a clone, a JDK and Gradle while the README showed `pglens scan`; plain `docker compose
+  up` failed without host-built jars; versions disagreed (jars `0.0.1-SNAPSHOT`, images `0.0.2`,
+  server `0.0.7`, dashboard `0.1.0`). An agent container on the same host failed TLS (the dev
+  certificate didn't name `host.docker.internal`) and logged "server rejected the sample batch".
+  PgLens's own database — every monitored database's query text, the login and token hashes — was
+  published on `0.0.0.0:5434` with the superuser password `pglens`.
+- **Decision:** (a) **One version** (`0.1.0-rc`) in `build.gradle.kts`, `dashboard/package.json`,
+  `dashboard/src/lib/release.ts` and the compose defaults, checked by `scripts/check_versions.sh`
+  (in `make lint`/CI, and against the tag on release); the server's reported version and the CLI's
+  `--version` come from the build. (b) **One Java Dockerfile** (`deploy/compose/java/Dockerfile`,
+  targets `server`, `agent`, `cli`): Gradle runs in a build stage on `$BUILDPLATFORM` (jars are
+  platform-independent), so `make up` needs only Docker and a multi-arch build doesn't compile
+  under emulation. (c) Compose names the **released images**
+  (`ghcr.io/prateek-arora/pglens-*:${PGLENS_VERSION}`) and keeps `build:` — verified: `docker
+  compose up` pulls, and builds from source when the pull is denied. (d) `release.yml` on a `v*`
+  tag: versions must match the tag; push amd64+arm64 images to GHCR; build the CLI jar + SHA256SUMS;
+  create a **draft** (pre-)release with notes from `CHANGELOG.md` — publishing stays a human step
+  (principle 5), and new GHCR packages must be made public once by hand. (e) Both databases bind
+  `127.0.0.1` (only the agents' TLS gRPC port stays on the network). (f) The dev certificate also
+  names `host.docker.internal`, records its names, and is re-issued (with a new CA — the old key is
+  gone) when `PGLENS_TLS_EXTRA_SANS` changes. (g) The agent describes a transport failure by its
+  cause (`GrpcFailures`: TLS name mismatch → add the name; UNAUTHENTICATED → the token). (h) The
+  agent snippet names the released image, `--add-host=host.docker.internal:host-gateway`, how to
+  get `ca.pem`, and the grants.
+- **Alternatives:** *Docker Hub* (a separate account and token; GHCR uses the repo's own) ·
+  *keep host-built jars* (fast incremental dev builds, but a JDK for every user and a two-step
+  release) · *a Gradle-built image (Jib)* (no Dockerfile, but another plugin and a different path
+  from the dashboard's) · *generate a random database password in `make up`* (right for new
+  installs, but it breaks existing volumes whose password was set at init; binding to localhost
+  removes the exposure without that) · *a native CLI binary (GraalVM)* (no Java needed, but Spring
+  + JDBC reflection config for one convenience; the image covers "no install").
+- **Consequences:** the first `make up` compiles inside Docker (95 s cold here; the Gradle cache
+  persists in a BuildKit cache mount). Upgrading from 0.0.7 re-issues the dev certificates once, so
+  remote agents need the new `ca.pem` (CHANGELOG). Pulling released images needs the GHCR packages
+  made public; until the first tag is pushed, compose builds from source.
+
+## ADR-0051
+**Recommendation lifecycle: retire, apply, measure** · 2026-09-27 · Accepted
+- **Context:** the pre-release review built a recommended index on a fresh-clone demo
+  (`orders(customer_id)`): five minutes later the dashboard still recommended it, "≈410 ms est.
+  saved". `recommendations` rows were only ever upserted — nothing removed advice the engine had
+  stopped proposing — so a built index, a changed plan, or an older engine's DDL format (which
+  showed every index twice, plus indexes on `pg_catalog` tables) stayed forever. Plans were also
+  captured once per query per agent, so the query page kept showing the old sequential scan.
+  Meanwhile PgLens *had* the evidence of the fix: the query's measured mean fell 7.0 ms → 3–4.6 ms in
+  its own time-series. The loop the product exists for — see advice, measure, build, confirm — was
+  broken at its last step, and its most persuasive number was never shown.
+- **Decision:** (a) Each analysis pass collects the (query, DDL) pairs the engine proposes — its
+  candidates plus the coverage checks among still-proposed indexes — and retires every stored
+  recommendation outside that set (`RecommendationLifecycle`, pure): **applied** when an existing
+  index *serves* it (`IndexCandidate.servedBy`: same table and method, not partial, key starts
+  with the candidate's columns — any name) **and** PgLens first saw that index after the advice
+  was recorded (`min(index_stats.captured_at)` > `created_at`, so an index the user already had is
+  never credited); otherwise **deleted**. A query whose plan didn't parse this pass keeps its
+  advice. Proposed again (the index was dropped) → un-applied. (b) V12 adds `applied_index`,
+  `applied_at`; every "to do" read (advice, leaderboard verdict, query recommendations,
+  explanations, coverage input) excludes applied rows. (c) **Measured before/after**
+  (`AppliedReadService`, `ImpactMath`): mean time per call = Σ total / Σ calls, up to 7 days each
+  side of `applied_at`, split **exactly at the sample the index appeared in** (that batch's
+  `captured_at` equals `applied_at`; it belongs to neither side) while per-sample rows are kept, so
+  a result shows minutes after the build; past raw retention (ADR-0053) the hourly rollup is used,
+  leaving out the whole hour. "Before" never starts earlier than `active_since` (V14: set when an
+  applied recommendation became advice again), so a rebuilt index's earlier life never counts as
+  before. Reported only when both sides have ≥ 10 calls (`MEASURED`), else `MEASURING` /
+  `NO_BASELINE`. Every response carries the caveat: a before/after comparison, not a
+  controlled experiment. (d) The agent re-captures a known query's plan when the catalog's index
+  fingerprint changes (all plans stay due until the server has them) and at least every
+  `plan-refresh-ms` (1 h); a failed re-capture keeps the stored plan and waits the full period.
+- **Alternatives:** *timestamp-based expiry* (`last_proposed_at` older than N passes → delete:
+  simpler, but a transient parse failure or restart would drop live advice, and it can't tell
+  "built" from "gone") · *credit any matching index* (would claim indexes the user had long before
+  PgLens said anything) · *hourly-only before/after* (tried first: survives retention, but a
+  user waited up to two hours to see a result, and one noisy hour dominated it) · *re-capture every plan every
+  cycle* (200 generic EXPLAINs a minute for nothing) · *record `confirm` results as the "after"*
+  (B24: a copy isn't production; the time-series is the real after).
+- **Consequences:** the first pass after upgrading removed 110 stale rows on the dev stack (catalog
+  advice from `pg_dump`, superseded formats) and kept the 8 live indexes. Live check: an index built
+  at 08:55:02 was marked applied at 08:55:09. The before/after is honest in both directions — on
+  the demo's skewed data some queries got *slower* with the recommended index, and the card says
+  so in the redline ink. A dropped-then-rebuilt index gets a new `applied_at`.
+
+## ADR-0052
+**The dashboard opens on the impact** · 2026-09-27 · Accepted
+- **Context:** the review found the home page was a list of database names and the Trends page had
+  no chart; the one chart sat at the bottom of the query page; the leaderboard hid the estimated
+  saving on other pages. The user asked that the product "sell itself": metrics, diagrams and
+  charts first, showing the best impact — without breaking principle 1 (no fabricated evidence) or
+  the design system (one job per hue, ADR-0048).
+- **Decision:** (a) `/` is an **Overview** across databases (`GET /api/v1/overview`): measured
+  query time, calls and queries; the measured time *in queries with an index to try* and its share;
+  the **planner-estimated saving** — per query, the window's measured time × the ranking drop
+  (`RankingScore.drop`) of its best active index, summed (so one query's time is never counted
+  twice), always an `<Estimate>`; indexes to consider; an hourly chart; *What to fix first* (top 3
+  across databases, with the measure-first caveat); *Built and measured* (ADR-0051); the
+  databases with their own totals; *Add a database* folded away. With no database it is an
+  onboarding page. (b) **Charts only in existing inks:** measured time is a solid area in the
+  total-time ink, the estimate a hatched area of the same ink (the drafting convention); the busiest
+  queries are small multiples (sparklines), not a stacked chart that would need five new hues;
+  before/after bars use green for faster and the redline for slower — the roles DESIGN.md already
+  gives them. (c) **Zero vs gap:** `query_stats` has no row for a query that didn't run, so an hour is
+  a *gap* only when the agent sent no batch (no `table_stats` snapshot that hour); a reported hour
+  with no query rows is a real zero. (d) `GET /databases/{db}/timeline` (hourly totals, estimate,
+  top-N series) feeds the slow-query and trends charts; leaderboard rows carry `estimatedMsSaved`.
+  (e) `GET /system`: the server version (Spring Boot build info, no timestamp) and how explanations
+  are written — template, or model, host, remote or not, the last pass — shown in *Settings*, with
+  a version-mismatch warning under *About*.
+- **Alternatives:** *a stacked area by query* (the classic "where the time goes" picture, but a
+  categorical palette the design system forbids, and hard to read past 3 bands) · *"X% faster"
+  headline from estimates* (the number that sells best and the one PgLens must never print) ·
+  *sum per-index savings* (double-counts a query two indexes help) · *client-side aggregation of the
+  hourly rows* (up to 144 k rows for 30 days × 200 queries; SQL `unnest` of the drop map instead).
+- **Consequences:** five new read endpoints and an OpenAPI schema-name clash caught in type
+  generation (`Explanations` → `ExplanationSetup`). README screenshots come from the live demo.
+
+## ADR-0053
+**Pooler-safe guards, a demo profile, and bounded storage** · 2026-09-27 · Accepted
+- **Context:** (a) the guard of ADR-0020 was `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`
+  plus timeouts on the scan connection. Reproduced on PgBouncer 1.24 in transaction mode: after
+  PgLens connected through it, the next client got the same server connection and `CREATE TABLE`
+  failed with "cannot execute … in a read-only transaction" — pointing PgLens at a pooled Supabase
+  (6543) or Neon (`-pooler`) URL could break the application's writes, and HypoPG's session-local
+  indexes would land on one backend and the EXPLAIN on another. (b) `docker compose up` always
+  started the demo database and a demo agent that logs `UNAUTHENTICATED` until registered. (c)
+  `query_stats`, `index_stats` and `table_stats` grew per sample forever (B26); `index_stats` alone
+  is a row per index per minute. (d) `pg_dump`'s catalog queries produced index advice on
+  `pg_catalog` tables (B27), and a hosted embedding model of another vector size re-embedded the
+  corpus every pass only for the insert to fail.
+- **Decision:** (a) `DataSources.guarded()` passes `-c default_transaction_read_only=on -c
+  statement_timeout=30s -c lock_timeout=5s` as the JDBC `options` **startup parameter**, and
+  `verifySessionGuards()` only reads (backend pid twice + `transaction_read_only`). A pooler rejects
+  or drops startup options (PgBouncer: "unsupported startup parameter in options"), so PgLens
+  refuses with a message to connect directly — having set nothing on any server connection. Never a
+  session `SET` on a monitored database. `forScan()` stays unguarded for test setup only.
+  `ConnectionPoolerIntegrationTest` runs a real PgBouncer. (b) `monitored-db` and `agent` are the
+  compose profile `demo`; `make up` includes it, `make up-no-demo` and plain `docker compose up` don't.
+  (c) `RetentionService` deletes per-sample rows older than `pglens.retention.raw-days` (default 35,
+  minimum 31 — the longest window) hourly; the hourly rollup stays (its trigger is INSERT-only, so it
+  stays exact), and before/after reads it. Hygiene's "unused" and write load now describe the last
+  35 days. (d) `CatalogSnapshot.indexable()` drops findings on system schemas (and, when the catalog
+  is known, on tables outside it) in the detector, for the CLI and server alike; `KnowledgeStore`
+  probes one embedding and remembers a model whose size isn't 768.
+- **Alternatives:** *keep `SET` and only detect a pooler by pid* (the leak happens before detection,
+  and a single client often gets the same backend back, so it isn't detected) · *wrap each HypoPG
+  check in a transaction* (fixes HypoPG under pooling but not the guard leak) · *support poolers via
+  `SET LOCAL` in explicit transactions everywhere* (a larger change to every read path, for a mode
+  where direct connections are always available) · *TimescaleDB retention* (another extension for
+  a `DELETE`) · *a separate production compose file* (two files to keep in step).
+- **Consequences:** a connection string with its own `options` parameter is overridden by PgLens's
+  (none of PgLens's documented setups use one). Upgrading: plain `docker compose up` needs `--profile
+  demo` for the demo (CHANGELOG). The docs-links feature is off for non-768 embedding models.
 
