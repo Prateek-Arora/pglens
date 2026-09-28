@@ -329,9 +329,15 @@ class CopyConfirmerIntegrationTest {
     assertThat(r.statements().unusable()).isEqualTo(2); // no_such_table + the writer
     assertThat(r.statements().shapesMatched()).isEqualTo(3);
 
-    // No statement value or text reaches the report.
+    // No statement value or text reaches the report. The report holds measured timings, which can
+    // contain the digits 4242 by chance, so look for the value only as a string or a literal.
     String json = new ObjectMapper().writeValueAsString(r);
-    assertThat(json).doesNotContain(SECRET).doesNotContain("4242").doesNotContain("FROM orders");
+    assertThat(json)
+        .doesNotContain(SECRET)
+        .doesNotContain("\"4242\"")
+        .doesNotContain("'4242'")
+        .doesNotContain("= 4242")
+        .doesNotContain("FROM orders");
   }
 
   // --- helpers ---------------------------------------------------------------------------------
