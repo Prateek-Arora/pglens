@@ -556,8 +556,8 @@
   (`script-src 'nonce-…' 'strict-dynamic'`) and passes the path on — it is never an auth check.
   Every page renders per request (`connection()` in the root layout: a prerendered page can't carry
   the nonce, and none is the same for every user).
-- **Stack, pinned exactly (deviations from the plan in bold):** Next **16.3.6** (16.3.7, a security
-  release due 2026-09-30, must be pinned before tagging `v0.1.0-rc`) · React 19.2.8 (the pair Next
+- **Stack, pinned exactly (deviations from the plan in bold):** Next **16.3.7** (the security
+  release, pinned 2026-09-29, the day it shipped; `eslint-config-next` stays on 16.3.6, lint-only) · React 19.2.8 (the pair Next
   tested; 19.3.0 exists) · Node **24.21.0** LTS · pnpm **12.6.0** · TypeScript **5.9.3, not 7**
   (typescript-eslint and openapi-typescript don't support 7 yet) · **ESLint 10.11.0, not 9**: 9.39
   is deprecated upstream; Next's bundled react plugin needs `settings.react.version` set explicitly
