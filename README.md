@@ -150,4 +150,4 @@ contribute.
 
 ## License
 
-[Apache-2.0](LICENSE).
+[Apache-2.0](LICENSE). Attribution and third-party notices are in [NOTICE](NOTICE).

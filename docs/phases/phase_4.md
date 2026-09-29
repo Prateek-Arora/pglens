@@ -272,7 +272,7 @@ published on `0.0.0.0` with its default password.
 
 Not in this step:
 - **Expression indexes** (`lower(email)`, backlog B9): only the copy says so.
-- **Next 16.3.7:** its security release is due 30 Sep and is still a gate for the tag.
+- **Next 16.3.7:** its security release was a gate for the tag. Pinned 2026-09-29, the day it shipped.
 
 **Step 12 — Release hardening: close the loop, sell the impact (added 2026-09-27, ADR-0051–0053).**
 From the pre-release review: (a) retire advice the engine no longer proposes; mark it *applied* when
