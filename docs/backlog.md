@@ -371,6 +371,14 @@ not violate) · **Effort/type** (`good-first-issue` / `needs-design`) · **Refs*
 - **Constraints:** `CatalogReader` already excludes these schemas, so a candidate whose table isn't in the `CatalogSnapshot` can be dropped before validation. Separately, a HypoPG *error* is not the charter-#6 "can't simulate this access method" case — give it its own status (or `SUPPRESSED` with the reason) rather than `NOT_PLANNER_VALIDATED`.
 - **Effort/type:** `good-first-issue`. **Refs:** charter #6, ADR-0005.
 
+### B28. Allow PgBouncer in session mode (read `pgbouncer.pool_mode`)
+- **What:** PgLens refuses every PgBouncer today, session mode included. PgBouncer rejects the guards' startup `options` before any pool mode applies (checked on 1.24 in session mode, 2026-10-01: "unsupported startup parameter in options: default_transaction_read_only"). Session mode gives a client its own server connection for the whole session, so guards and HypoPG are safe there.
+  - PgBouncer 1.26.0 (2026-09-23) sends `pgbouncer.pool_mode` as a `ParameterStatus` at login. When it says `session`, connect without the startup options and set the guards on the session; `verifySessionGuards()` still checks them.
+  - In `transaction` or `statement` mode, refuse with a message that names the mode.
+- **Why deferred:** a direct connection always works, and the guard path is safety-critical, so it needs its own tests rather than a quick change.
+- **Constraints:** 1.26 also tracks `default_transaction_read_only` on PG 14+, but not `statement_timeout` or `lock_timeout`, and HypoPG still needs the hypothetical index and its EXPLAIN on one backend: transaction mode stays refused. Older PgBouncers and other poolers (Supavisor, Neon) don't send `pool_mode`; when it's missing, keep today's refusal. Extend `ConnectionPoolerIntegrationTest` with a 1.26 image in both modes.
+- **Effort/type:** `needs-design`. **Refs:** ADR-0020, ADR-0053.
+
 ## Adding to this backlog
 When a phase deliberately skips a worthwhile item, add it here (don't bury it in a commit message):
 follow the **What / Why deferred / Constraints / Effort / Refs** shape, tag it `good-first-issue` or
