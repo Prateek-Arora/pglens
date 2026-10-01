@@ -18,8 +18,8 @@ agent, server, API and CLI.
   `/databases/{db}/timeline`, `/databases/{db}/applied`, `/system`.
 - **Built and measured**: when an index PgLens recommended appears on the database (any name, as
   long as it serves the recommendation), the advice retires and PgLens compares each query's
-  **measured** mean time per call in the 7 days before against the time since, split at the sample
-  the index appeared in, once both sides have 10 calls (ADR-0051).
+  **measured** mean time per call in the 7 days before against up to 7 days since, split at the
+  sample the index appeared in, once both sides have 10 calls (ADR-0051).
 - **Settings → Plain-language explanations** shows whether the template or a model writes them, the
   model and its host, and how its last pass went; *About* shows the server's version.
 - **`make up-no-demo`** and the compose profile `demo`: plain `docker compose up` now starts PgLens
@@ -74,6 +74,8 @@ agent, server, API and CLI.
 - `--json` contract **1.5**: `planError` per query; table names are identities
   (schema-qualified unless `public`, quoted as Postgres would), columns are raw names.
 - One version everywhere (`0.1.0-rc`), checked in CI.
+- The dashboard is on Next.js 16.3.7, the security release of 29 September.
+- A [NOTICE](NOTICE) file credits the PostgreSQL documentation excerpts and the shadcn/ui components.
 
 ### Upgrading from 0.0.7
 Run `make up`: history carries over (migrations V11–V14; the first analysis pass then removes
