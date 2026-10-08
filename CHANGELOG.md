@@ -4,6 +4,12 @@ All notable changes to PgLens. Versions follow [SemVer](https://semver.org/); be
 version may change the `--json` contract or the API (each change is listed here and versioned in
 the contract itself). The *why* behind each change is in [`docs/decisions.md`](docs/decisions.md).
 
+## [Unreleased]
+
+### Security
+- The dashboard is on Next.js 16.3.8, the security release of 30 September (server-side request
+  forgery in image optimization), with sharp 0.35.5 and source-map-js 1.2.2.
+
 ## [0.1.0-rc]
 
 The first release candidate of the complete self-hosted tool: the web dashboard on top of the
